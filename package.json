@@ -1,0 +1,35 @@
+{
+  "name": "strongbus",
+  "version": "1.0.0",
+  "description": "\"Strongly typed, battle-tested event bus\"",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "bus",
+    "message-bus",
+    "event",
+    "events",
+    "event-bus",
+    "message",
+    "pubsub",
+    "pub-sub",
+    "emitter",
+    "event-emitter"
+  ],
+  "author": "Ethan Ferrari <github@ethanferrari.io>",
+  "license": "MIT",
+  "dependencies": {
+    "core-decorators": "^0.20.0",
+    "eventemitter3": "^3.1.0",
+    "lodash": "^4.17.10"
+  },
+  "devDependencies": {
+    "@types/jasmine": "^2.8.8",
+    "@types/lodash": "^4.14.116",
+    "@types/node": "^10.9.4",
+    "jasmine": "^3.2.0",
+    "typescript": "^2.8.4"
+  }
+}
