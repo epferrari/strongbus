@@ -7,20 +7,22 @@ export type TypedMsgBusEventHandler<TEvent, TMsgTypeMap extends object> =
     : () => void;
 
 export type TypedMsgBusProxyHandler<TMsgTypeMap extends object> =
-  <T extends keyof TMsgTypeMap>(event: T, payload: TMsgTypeMap[T], ...args: any[]) => void;
+  <T extends StringKeys<TMsgTypeMap>>(event: T, payload: TMsgTypeMap[T], ...args: any[]) => void;
+
+type StringKeys<T extends object> = Exclude<keyof T, number>;
 
 @autobind
-export default class TypedMsgBus<MsgTypeMap extends object> extends MsgBus<(keyof MsgTypeMap)> {
+export default class TypedMsgBus<MsgTypeMap extends object> extends MsgBus<(StringKeys<MsgTypeMap>)> {
   constructor(options?: MsgBusOptions) {
     super(options);
   }
 
-  public on<T extends MsgBusListenable<keyof MsgTypeMap>>(
+  public on<T extends MsgBusListenable<Exclude<keyof MsgTypeMap, number>>>(
     event: T,
     handler: TypedMsgBusEventHandler<T, MsgTypeMap>
   ): EventSubscription {
     if(Array.isArray(event)) {
-      return this.any(event as (keyof MsgTypeMap)[], () => (handler as any)());
+      return this.any(event as StringKeys<MsgTypeMap>[], () => (handler as any)());
     } else if(event === MsgBus.reservedEvents.EVERY) {
       const wrappedHandler = () => (handler as any)();
       this.bus.on(event as '*', wrappedHandler);
@@ -31,7 +33,7 @@ export default class TypedMsgBus<MsgTypeMap extends object> extends MsgBus<(keyo
     }
   }
 
-  public emit<T extends keyof MsgTypeMap>(
+  public emit<T extends Exclude<keyof MsgTypeMap, number>>(
     event: T,
     message: MsgTypeMap[T],
     ...args: any[]

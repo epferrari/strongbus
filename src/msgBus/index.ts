@@ -154,6 +154,7 @@ export default abstract class MsgBus<TEvent extends Event> {
     const delegates = Array.from(this._delegates.keys());
     const delegateListenersByEvent: {[event: string]: ListenerFn[]} = delegates.reduce((acc, delegate) => {
       forEach(delegate.listeners, (listeners: ListenerFn[], event: Event) => {
+        event = event.toString()
         if(acc[event]) {
           acc[event] = [
             ...acc[event],
