@@ -1,5 +1,5 @@
 import MsgBus, {Event, EventSubscription, MsgBusOptions} from './';
-import {default as IEventEmitter, EventEmitter, ListenerFn} from 'eventemitter3';
+import * as EventEmitter from 'eventemitter3';
 
 describe('abstract class MsgBus', () => {
   class MockImplementation extends MsgBus<any> {
@@ -10,7 +10,7 @@ describe('abstract class MsgBus', () => {
     }
 
     // pass thru to instance's internal bus
-    public on(event: Event|Event[], handler: ListenerFn): EventSubscription {
+    public on(event: Event|Event[], handler: EventEmitter.ListenerFn): EventSubscription {
       this.bus.on(event as Event, handler);
       return function() {} as EventSubscription;
     }
@@ -24,7 +24,7 @@ describe('abstract class MsgBus', () => {
     protected handleUnexpectedEvent(event: Event, ...args: any[]): void {}
   }
 
-  let msgBus: MockImplementation, onTestEvent, onAnyEvent, onEveryEvent, bus: IEventEmitter;
+  let msgBus: MockImplementation, onTestEvent, onAnyEvent, onEveryEvent, bus: EventEmitter;
 
   beforeEach(() => {
     msgBus = new MockImplementation();

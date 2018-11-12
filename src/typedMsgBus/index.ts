@@ -1,28 +1,30 @@
 import {autobind} from 'core-decorators';
 import MsgBus, {EventSubscription, MsgBusOptions, MsgBusListenable} from '../msgBus';
 
-export type TypedMsgBusEventHandler<TEvent, TMsgTypeMap extends object> =
+export type TypedMsgBusEventHandler<TEvent, TMsgTypeMap extends MsgBusTypeMap> =
   TEvent extends keyof TMsgTypeMap
     ? (msg: TMsgTypeMap[TEvent], ...args: any[]) => void
     : () => void;
 
-export type TypedMsgBusProxyHandler<TMsgTypeMap extends object> =
-  <T extends StringKeys<TMsgTypeMap>>(event: T, payload: TMsgTypeMap[T], ...args: any[]) => void;
+export type TypedMsgBusProxyHandler<TMsgTypeMap extends MsgBusTypeMap> =
+  <T extends keyof TMsgTypeMap>(event: T, payload: TMsgTypeMap[T], ...args: any[]) => void;
 
-type StringKeys<T extends object> = Exclude<keyof T, number>;
+export type MsgBusTypeMap = {
+  [event: string]: any;
+};
 
 @autobind
-export default class TypedMsgBus<MsgTypeMap extends object> extends MsgBus<(StringKeys<MsgTypeMap>)> {
+export default class TypedMsgBus<MsgTypeMap extends MsgBusTypeMap> extends MsgBus<keyof MsgTypeMap> {
   constructor(options?: MsgBusOptions) {
     super(options);
   }
 
-  public on<T extends MsgBusListenable<Exclude<keyof MsgTypeMap, number>>>(
+  public on<T extends MsgBusListenable<keyof MsgTypeMap>>(
     event: T,
     handler: TypedMsgBusEventHandler<T, MsgTypeMap>
   ): EventSubscription {
     if(Array.isArray(event)) {
-      return this.any(event as StringKeys<MsgTypeMap>[], () => (handler as any)());
+      return this.any(event as (keyof MsgTypeMap)[], () => (handler as any)());
     } else if(event === MsgBus.reservedEvents.EVERY) {
       const wrappedHandler = () => (handler as any)();
       this.bus.on(event as '*', wrappedHandler);
@@ -33,7 +35,7 @@ export default class TypedMsgBus<MsgTypeMap extends object> extends MsgBus<(Stri
     }
   }
 
-  public emit<T extends Exclude<keyof MsgTypeMap, number>>(
+  public emit<T extends keyof MsgTypeMap>(
     event: T,
     message: MsgTypeMap[T],
     ...args: any[]
