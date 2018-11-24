@@ -1,0 +1,18 @@
+{
+  "version": "3.1.6",
+  "compilerOptions": {
+    "sourceMap": true,
+    "noImplicitAny": true,
+    "moduleResolution": "node",
+    "module": "commonjs",
+    "target": "es6",
+    "allowJs": true,
+    "experimentalDecorators": true,
+    "baseUrl": ".",
+    "outputDir": "./build"
+  },
+  "compileOnSave": false,
+  "include": [
+    "./src/**/*"
+  ]
+}
