@@ -1,4 +1,5 @@
-import {default as IEventEmitter, EventEmitter, ListenerFn} from 'eventemitter3';
+import * as IEventEmitter from 'eventemitter3';
+import {EventEmitter, ListenerFn} from 'eventemitter3';
 import {autobind} from 'core-decorators';
 import strEnum from '../utils/strEnum';
 import {forEach, uniq, compact, size, over} from 'lodash';
@@ -68,7 +69,7 @@ export default abstract class MsgBus<TEvent extends Event> {
   public any(events: TEvent[], handler: (event: TEvent, ...args: any[]) => void): EventSubscription {
     return over(
       events.map(e => {
-        const _handler = (...payload) => handler(e, ...payload);
+        const _handler = (...payload: any[]) => handler(e, ...payload);
         this.bus.on(e, _handler);
         return () => this.bus.removeListener(e, _handler);
       })
@@ -168,7 +169,7 @@ export default abstract class MsgBus<TEvent extends Event> {
     }, {} as {[event: string]: ListenerFn[]});
 
     const allEvents = uniq([...Object.keys(ownListeners), ...Object.keys(delegateListenersByEvent)]);
-    return allEvents.reduce((acc, event) => {
+    return allEvents.reduce((acc: {[event: string]: ListenerFn[]}, event: string) => {
       const eventListeners = compact([
         ...(ownListeners[event] || []),
         ...(delegateListenersByEvent[event] || [])

@@ -9,7 +9,7 @@
     "allowJs": true,
     "experimentalDecorators": true,
     "baseUrl": ".",
-    "outputDir": "./build"
+    "outDir": "./build"
   },
   "compileOnSave": false,
   "include": [

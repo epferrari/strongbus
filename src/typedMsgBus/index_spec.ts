@@ -77,7 +77,7 @@ describe('TypedMsgBus', () => {
   });
 
   describe('given an event is raised that has no listeners', () => {
-    const mightThrow = b => () => b.emit('A', 'no', 'listeners');
+    const mightThrow = (b: any) => () => b.emit('A', 'no', 'listeners');
 
     describe('given the instance was created with options.allowUnhandledEvents = true (default)', () => {
       it('throws an error', () => {

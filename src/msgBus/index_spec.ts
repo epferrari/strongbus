@@ -1,5 +1,6 @@
 import MsgBus, {Event, EventSubscription, MsgBusOptions} from './';
-import {default as IEventEmitter, EventEmitter, ListenerFn} from 'eventemitter3';
+import * as IEventEmitter from 'eventemitter3';
+import {EventEmitter, ListenerFn} from 'eventemitter3';
 
 describe('abstract class MsgBus', () => {
   class MockImplementation extends MsgBus<any> {
@@ -24,7 +25,11 @@ describe('abstract class MsgBus', () => {
     protected handleUnexpectedEvent(event: Event, ...args: any[]): void {}
   }
 
-  let msgBus: MockImplementation, onTestEvent, onAnyEvent, onEveryEvent, bus: IEventEmitter;
+  let msgBus: MockImplementation,
+    onTestEvent: jasmine.Spy,
+    onAnyEvent: jasmine.Spy,
+    onEveryEvent: jasmine.Spy,
+    bus: IEventEmitter;
 
   beforeEach(() => {
     msgBus = new MockImplementation();
@@ -246,8 +251,14 @@ describe('abstract class MsgBus', () => {
   });
 
   describe('#hook', () => {
-    let onWillAddListener, onWillRemoveListener, onAddListener, onRemoveListener;
-    let onWillActivate, onActive, onWillIdle, onIdle;
+    let onWillAddListener: jasmine.Spy,
+      onWillRemoveListener: jasmine.Spy,
+      onAddListener: jasmine.Spy,
+      onRemoveListener: jasmine.Spy,
+      onWillActivate: jasmine.Spy,
+      onActive: jasmine.Spy,
+      onWillIdle: jasmine.Spy,
+      onIdle: jasmine.Spy;
 
     beforeEach(() => {
       msgBus.hook('willAddListener', onWillAddListener = jasmine.createSpy('onWillAddListener'));
@@ -306,14 +317,14 @@ describe('abstract class MsgBus', () => {
 
     describe('given MsgBus has delegates', () => {
       let msgBus2: MockImplementation,
-        onDelegateWillAddListener,
-        onDelegateDidAddListener,
-        onDelegateWillRemoveListener,
-        onDelegateDidRemoveListener,
-        onDelegateWillActivate,
-        onDelegateActive,
-        onDelegateWillIdle,
-        onDelegateIdle;
+        onDelegateWillAddListener: jasmine.Spy,
+        onDelegateDidAddListener: jasmine.Spy,
+        onDelegateWillRemoveListener: jasmine.Spy,
+        onDelegateDidRemoveListener: jasmine.Spy,
+        onDelegateWillActivate: jasmine.Spy,
+        onDelegateActive: jasmine.Spy,
+        onDelegateWillIdle: jasmine.Spy,
+        onDelegateIdle: jasmine.Spy;
 
       beforeEach(() => {
         msgBus2 = new MockImplementation();
@@ -383,7 +394,7 @@ describe('abstract class MsgBus', () => {
   });
 
   describe('#monitor', () => {
-    let handleActiveChange;
+    let handleActiveChange: jasmine.Spy;
 
     beforeEach(() => {
       msgBus.monitor(handleActiveChange = jasmine.createSpy('handleActiveChange'));

@@ -3,8 +3,9 @@ import SemiTypedMsgBus from './';
 type TestEvents = 'A'|'B'|'C';
 
 describe('SemiTypedMsgBus', () => {
-  let bus: SemiTypedMsgBus<TestEvents>;
-  let onSingleEvent, onAnyEvent;
+  let bus: SemiTypedMsgBus<TestEvents>,
+    onSingleEvent: jasmine.Spy,
+    onAnyEvent: jasmine.Spy;
 
   beforeEach(() => {
     bus = new SemiTypedMsgBus<TestEvents>();
@@ -59,7 +60,7 @@ describe('SemiTypedMsgBus', () => {
   });
 
   describe('given an event is raised that has no listeners', () => {
-    const mightThrow = b => () => b.emit('A', 'no', 'listeners');
+    const mightThrow = (b: any) => () => b.emit('A', 'no', 'listeners');
 
     describe('given the instance was created with options.allowUnhandledEvents = false', () => {
       it('throws an error', () => {
