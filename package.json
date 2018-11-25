@@ -6,7 +6,9 @@
   "types": "lib/index.d.js",
   "scripts": {
     "build": "tsc",
+    "lint": "./node_modules/.bin/tslint -c tslint.json -p tsconfig.json",
     "test": "npm run build && ./node_modules/.bin/jasmine lib/**/*_spec.js",
+    "validate": "npm run test && npm run lint",
     "postinstall": "npm run build"
   },
   "keywords": [
@@ -36,6 +38,7 @@
     "@types/lodash": "^4.14.116",
     "@types/node": "^10.9.4",
     "jasmine": "^3.2.0",
+    "tslint": "^5.11.0",
     "typescript": "^3.0.1"
   }
 }

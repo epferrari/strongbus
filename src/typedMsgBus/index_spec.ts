@@ -28,7 +28,7 @@ describe('TypedMsgBus', () => {
     });
 
     it('returns an unsubscribe function', () => {
-      const unsub = bus.on('A', function() {} as HandlerA);
+      const unsub = bus.on('A', () => { return; });
       expect(bus.hasListeners).toBeTruthy();
 
       unsub();

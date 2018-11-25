@@ -3,9 +3,9 @@ import SemiTypedMsgBus from './';
 type TestEvents = 'A'|'B'|'C';
 
 describe('SemiTypedMsgBus', () => {
-  let bus: SemiTypedMsgBus<TestEvents>,
-    onSingleEvent: jasmine.Spy,
-    onAnyEvent: jasmine.Spy;
+  let bus: SemiTypedMsgBus<TestEvents>;
+  let onSingleEvent: jasmine.Spy;
+  let onAnyEvent: jasmine.Spy;
 
   beforeEach(() => {
     bus = new SemiTypedMsgBus<TestEvents>();

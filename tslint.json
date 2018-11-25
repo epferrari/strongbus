@@ -28,6 +28,7 @@
     "jsdoc-format": true,
     "match-default-export-name": true,
     "max-file-line-count": 200,
+    "max-line-length": [true, 200],
     "max-classes-per-file": 3,
     "member-access": true,
     "member-ordering": false,
@@ -66,11 +67,10 @@
       true,
       "single",
       "jsx-single",
-      "ignore-escape"
+      "avoid-escape"
     ],
     "radix": true,
     "semicolon": true,
-    "space-before-function-paren": false,
     "trailing-comma": [
       true,
       {
@@ -80,6 +80,13 @@
     ],
     "triple-equals": true,
     "use-isnan": true,
+    "variable-name": [
+      true,
+      "ban-keywords",
+      "check-format",
+      "allow-leading-underscore",
+      "allow-pascal-case"
+    ],
     "whitespace": [
       true,
       "check-decl",

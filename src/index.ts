@@ -4,8 +4,8 @@ export {
   EventSubscription
 } from './msgBus';
 export {
-  default as SemiTypedMsgBus,
+  default as SemiTypedMsgBus
 } from './semiTypedMsgBus';
 export {
-  default as TypedMsgBus,
+  default as TypedMsgBus
 } from './typedMsgBus';

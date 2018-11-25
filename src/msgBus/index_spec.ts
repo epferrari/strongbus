@@ -1,6 +1,5 @@
 import MsgBus, {Event, EventSubscription, MsgBusOptions} from './';
-import * as IEventEmitter from 'eventemitter3';
-import {EventEmitter, ListenerFn} from 'eventemitter3';
+import * as EventEmitter from 'eventemitter3';
 
 describe('abstract class MsgBus', () => {
   class MockImplementation extends MsgBus<any> {
@@ -11,9 +10,9 @@ describe('abstract class MsgBus', () => {
     }
 
     // pass thru to instance's internal bus
-    public on(event: Event|Event[], handler: ListenerFn): EventSubscription {
+    public on(event: Event|Event[], handler: EventEmitter.ListenerFn): EventSubscription {
       this.bus.on(event as Event, handler);
-      return function() {} as EventSubscription;
+      return () => { return; };
     }
 
     // just pass thru the event to the intstance's internal bus
@@ -22,14 +21,16 @@ describe('abstract class MsgBus', () => {
       return this.emulateListenerCount;
     }
 
-    protected handleUnexpectedEvent(event: Event, ...args: any[]): void {}
+    protected handleUnexpectedEvent(event: Event, ...args: any[]): void {
+      // Do nothing
+    }
   }
 
-  let msgBus: MockImplementation,
-    onTestEvent: jasmine.Spy,
-    onAnyEvent: jasmine.Spy,
-    onEveryEvent: jasmine.Spy,
-    bus: IEventEmitter;
+  let msgBus: MockImplementation;
+  let onTestEvent: jasmine.Spy;
+  let onAnyEvent: jasmine.Spy;
+  let onEveryEvent: jasmine.Spy;
+  let bus: EventEmitter;
 
   beforeEach(() => {
     msgBus = new MockImplementation();
@@ -115,7 +116,8 @@ describe('abstract class MsgBus', () => {
   });
 
   describe('#pipe', () => {
-    let msgBus2: MockImplementation, msgBus3: MockImplementation;
+    let msgBus2: MockImplementation;
+    let msgBus3: MockImplementation;
 
     beforeEach(() => {
       msgBus2 = new MockImplementation({emulateListenerCount: true});
@@ -191,7 +193,8 @@ describe('abstract class MsgBus', () => {
   });
 
   describe('#unpipe', () => {
-    let msgBus2: MockImplementation, msgBus3: MockImplementation;
+    let msgBus2: MockImplementation;
+    let msgBus3: MockImplementation;
 
     beforeEach(() => {
       msgBus2 = new MockImplementation({emulateListenerCount: true});
@@ -251,14 +254,14 @@ describe('abstract class MsgBus', () => {
   });
 
   describe('#hook', () => {
-    let onWillAddListener: jasmine.Spy,
-      onWillRemoveListener: jasmine.Spy,
-      onAddListener: jasmine.Spy,
-      onRemoveListener: jasmine.Spy,
-      onWillActivate: jasmine.Spy,
-      onActive: jasmine.Spy,
-      onWillIdle: jasmine.Spy,
-      onIdle: jasmine.Spy;
+    let onWillAddListener: jasmine.Spy;
+    let onWillRemoveListener: jasmine.Spy;
+    let onAddListener: jasmine.Spy;
+    let onRemoveListener: jasmine.Spy;
+    let onWillActivate: jasmine.Spy;
+    let onActive: jasmine.Spy;
+    let onWillIdle: jasmine.Spy;
+    let onIdle: jasmine.Spy;
 
     beforeEach(() => {
       msgBus.hook('willAddListener', onWillAddListener = jasmine.createSpy('onWillAddListener'));
@@ -316,15 +319,15 @@ describe('abstract class MsgBus', () => {
     });
 
     describe('given MsgBus has delegates', () => {
-      let msgBus2: MockImplementation,
-        onDelegateWillAddListener: jasmine.Spy,
-        onDelegateDidAddListener: jasmine.Spy,
-        onDelegateWillRemoveListener: jasmine.Spy,
-        onDelegateDidRemoveListener: jasmine.Spy,
-        onDelegateWillActivate: jasmine.Spy,
-        onDelegateActive: jasmine.Spy,
-        onDelegateWillIdle: jasmine.Spy,
-        onDelegateIdle: jasmine.Spy;
+      let msgBus2: MockImplementation;
+      let onDelegateWillAddListener: jasmine.Spy;
+      let onDelegateDidAddListener: jasmine.Spy;
+      let onDelegateWillRemoveListener: jasmine.Spy;
+      let onDelegateDidRemoveListener: jasmine.Spy;
+      let onDelegateWillActivate: jasmine.Spy;
+      let onDelegateActive: jasmine.Spy;
+      let onDelegateWillIdle: jasmine.Spy;
+      let onDelegateIdle: jasmine.Spy;
 
       beforeEach(() => {
         msgBus2 = new MockImplementation();
@@ -451,7 +454,7 @@ describe('abstract class MsgBus', () => {
           });
           msgBus.on('*', onAnyEvent);
           expect(msgBus.listeners).toEqual({
-            testEvent: [onTestEvent],
+            'testEvent': [onTestEvent],
             '*': [onAnyEvent]
           });
         });
