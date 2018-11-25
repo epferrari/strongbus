@@ -5,11 +5,11 @@
   "main": "lib/index.js",
   "types": "lib/index.d.js",
   "scripts": {
-    "build": "tsc",
+    "build": "./node_modules/.bin/tsc",
     "lint": "./node_modules/.bin/tslint -c tslint.json -p tsconfig.json",
     "test": "npm run build && ./node_modules/.bin/jasmine lib/**/*_spec.js",
     "validate": "npm run test && npm run lint",
-    "postinstall": "npm run build"
+    "install": "([ -d ./src ] && [ ! -d ./lib ] && mkdir lib && npm install . &&  npm run build) || echo ''"
   },
   "keywords": [
     "bus",
