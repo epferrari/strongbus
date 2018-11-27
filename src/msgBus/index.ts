@@ -1,4 +1,4 @@
-import {default as IEventEmitter, EventEmitter, ListenerFn} from 'eventemitter3';
+import * as EventEmitter from 'eventemitter3';
 import {autobind} from 'core-decorators';
 import strEnum from '../utils/strEnum';
 import {forEach, uniq, compact, size, over} from 'lodash';
@@ -46,11 +46,11 @@ export default abstract class MsgBus<TEvent extends Event> {
   private _active = false;
   private _delegates = new Map<MsgBus<Event>, EventSubscription[]>();
 
-  protected lifecycle: IEventEmitter<MsgBusLifecycle> = new EventEmitter<MsgBusLifecycle>();
-  protected bus: IEventEmitter = new EventEmitter();
+  protected lifecycle: EventEmitter<MsgBusLifecycle> = new EventEmitter<MsgBusLifecycle>();
+  protected bus: EventEmitter = new EventEmitter();
   protected config: MsgBusOptions;
 
-  public abstract on(event: MsgBusListenable<TEvent>, handler: Function): EventSubscription;
+  public abstract on(event: MsgBusListenable<TEvent>, handler: (...args: any[]) => void): EventSubscription;
   public abstract emit(event: TEvent, ...args: any[]): boolean;
   protected abstract handleUnexpectedEvent(event: TEvent, ...args: any[]): void;
 
@@ -68,9 +68,9 @@ export default abstract class MsgBus<TEvent extends Event> {
   public any(events: TEvent[], handler: (event: TEvent, ...args: any[]) => void): EventSubscription {
     return over(
       events.map(e => {
-        const _handler = (...payload) => handler(e, ...payload);
-        this.bus.on(e, _handler);
-        return () => this.bus.removeListener(e, _handler);
+        const aHandler = (...payload: any[]) => handler(e, ...payload);
+        this.bus.on(e, aHandler);
+        return () => this.bus.removeListener(e, aHandler);
       })
     );
   }
@@ -114,7 +114,7 @@ export default abstract class MsgBus<TEvent extends Event> {
     this._delegates.delete(delegate);
   }
 
-  public hook(event: MsgBusLifecycle, handler: ListenerFn): EventSubscription {
+  public hook(event: MsgBusLifecycle, handler: EventEmitter.ListenerFn): EventSubscription {
     this.lifecycle.on(event, handler);
     return () => this.lifecycle.removeListener(event, handler);
   }
@@ -149,12 +149,12 @@ export default abstract class MsgBus<TEvent extends Event> {
       .reduce((acc, d) => (d.hasListeners || acc), false);
   }
 
-  public get listeners(): {[event: string]: ListenerFn[]} {
+  public get listeners(): {[event: string]: EventEmitter.ListenerFn[]} {
     const ownListeners = this.ownListeners;
     const delegates = Array.from(this._delegates.keys());
-    const delegateListenersByEvent: {[event: string]: ListenerFn[]} = delegates.reduce((acc, delegate) => {
-      forEach(delegate.listeners, (listeners: ListenerFn[], event: Event) => {
-        event = event.toString()
+    const delegateListenersByEvent: {[event: string]: EventEmitter.ListenerFn[]} = delegates.reduce((acc, delegate) => {
+      forEach(delegate.listeners, (listeners: EventEmitter.ListenerFn[], event: Event) => {
+        event = event.toString();
         if(acc[event]) {
           acc[event] = [
             ...acc[event],
@@ -165,10 +165,10 @@ export default abstract class MsgBus<TEvent extends Event> {
         }
       });
       return acc;
-    }, {} as {[event: string]: ListenerFn[]});
+    }, {} as {[event: string]: EventEmitter.ListenerFn[]});
 
     const allEvents = uniq([...Object.keys(ownListeners), ...Object.keys(delegateListenersByEvent)]);
-    return allEvents.reduce((acc, event) => {
+    return allEvents.reduce((acc: {[event: string]: EventEmitter.ListenerFn[]}, event: string) => {
       const eventListeners = compact([
         ...(ownListeners[event] || []),
         ...(delegateListenersByEvent[event] || [])
@@ -180,7 +180,7 @@ export default abstract class MsgBus<TEvent extends Event> {
     }, {});
   }
 
-  private get ownListeners(): {[event: string]: ListenerFn[]} {
+  private get ownListeners(): {[event: string]: EventEmitter.ListenerFn[]} {
     return this.bus.eventNames().reduce((acc, event) => {
       return {
         ...acc,
@@ -196,18 +196,17 @@ export default abstract class MsgBus<TEvent extends Event> {
   }
 
   private configure(options?: MsgBusOptions) {
-    this.config = Object.assign(
-      {},
-      defaultOptions,
-      {name: `Anonymous`},
-      options
-    );
+    this.config = {
+      ...defaultOptions,
+      name: `Anonymous`,
+      ...options
+    };
   }
 
   private decorateOnMethod() {
-    const on: IEventEmitter['on'] = (...args) => EventEmitter.prototype.on.call(this.bus, ...args);
+    const on: EventEmitter['on'] = (...args) => EventEmitter.prototype.on.call(this.bus, ...args);
 
-    this.bus.on = (event: TEvent, handler: ListenerFn, context?: any): IEventEmitter => {
+    this.bus.on = (event: TEvent, handler: EventEmitter.ListenerFn, context?: any): EventEmitter => {
       const {maxListeners, potentialMemoryLeakWarningThreshold} = this.config;
       const n: number = this.bus.listeners(event).length;
       if(n > maxListeners) {
@@ -224,7 +223,7 @@ export default abstract class MsgBus<TEvent extends Event> {
 
   private decorateEmitMethod() {
 
-    const raise: IEventEmitter['emit'] = (...args): boolean => EventEmitter.prototype.emit.call(this.bus, ...args);
+    const raise: EventEmitter['emit'] = (...args): boolean => EventEmitter.prototype.emit.call(this.bus, ...args);
 
     this.bus.emit = (event: TEvent, ...args: any[]): boolean => {
       let handled = false;
@@ -248,9 +247,9 @@ export default abstract class MsgBus<TEvent extends Event> {
   }
 
   private decorateRemoveListenerMethod() {
-    const removeListener: IEventEmitter['removeListener'] = (...args): IEventEmitter => EventEmitter.prototype.removeListener.call(this.bus, ...args);
+    const removeListener: EventEmitter['removeListener'] = (...args): EventEmitter => EventEmitter.prototype.removeListener.call(this.bus, ...args);
 
-    this.bus.removeListener = (event: TEvent, handler: ListenerFn, context?: any, once?: boolean): IEventEmitter => {
+    this.bus.removeListener = (event: TEvent, handler: EventEmitter.ListenerFn, context?: any, once?: boolean): EventEmitter => {
       this.willRemoveListener(event);
       const emitter = removeListener(event, handler, context, once);
       this.didRemoveListener(event);

@@ -1,0 +1,18 @@
+{
+  "version": "3.1.6",
+  "compilerOptions": {
+    "sourceMap": false,
+    "noImplicitAny": true,
+    "moduleResolution": "node",
+    "module": "commonjs",
+    "target": "es6",
+    "experimentalDecorators": true,
+    "baseUrl": ".",
+    "outDir": "./lib",
+    "declaration": true
+  },
+  "compileOnSave": false,
+  "include": [
+    "./src/**/*"
+  ]
+}
