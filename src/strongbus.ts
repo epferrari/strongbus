@@ -1,28 +1,24 @@
 import * as EventEmitter from 'eventemitter3';
 import {autobind} from 'core-decorators';
-import strEnum from './utils/strEnum';
+import {strEnum} from './utils/strEnum';
+import {StringKeys} from './utils/stringKeys';
 import {forEach, uniq, compact, size, over} from 'lodash';
 
 export type EventSubscription = () => void;
-export type Event = string|symbol;
+export type Event = string;
 export type Listenable<E extends Event> = E|E[]|'*';
-
-export type Options = {
-  allowUnhandledEvents?: boolean;
-  maxListeners?: number;
-  name?: string;
-  potentialMemoryLeakWarningThreshold?: number;
-};
-
-export type EventHandler<TEvent, TEventMap extends object> =
-  TEvent extends StringKeys<TEventMap>
-    ? (payload: TEventMap[TEvent]) => void
-    : () => void;
-
+type SingleEventHandler<TEventMap extends object> =
+  <T extends StringKeys<TEventMap>>(payload: TEventMap[T]) => void;
+type AmbiguousEventHandler = () => void;
 export type ProxyHandler<TEventMap extends object> =
   <T extends StringKeys<TEventMap>>(event: T, payload: TEventMap[T]) => void;
 
-type StringKeys<T extends object> = Exclude<keyof T, number>;
+export type EventHandler<TEventMap extends object, TEvent> =
+  TEvent extends StringKeys<TEventMap>[]
+    ? ProxyHandler<TEventMap>
+    : TEvent extends StringKeys<TEventMap>
+      ? SingleEventHandler<TEventMap>
+      : AmbiguousEventHandler;
 
 export const Lifecycle = strEnum([
   'willActivate',
@@ -36,31 +32,59 @@ export const Lifecycle = strEnum([
 ]);
 export type Lifecycle = keyof typeof Lifecycle;
 
-
-
-const defaultOptions: Options = {
-  allowUnhandledEvents: true,
-  maxListeners: 50,
-  potentialMemoryLeakWarningThreshold: 500
-};
+/**
+ * @prop allowUnhandledEvents [true] - should the Bus throw an error when an event is emitted and there are no listeners
+ * @prop maxListeners [50] - number of max listeners expected for events. Will raise a benign info message when exceeded.
+ *  Bus will still accept listeners after the this threshold is exceeded.
+ * @prop name [Anonymous] - a name for the bus. included in warn/info messages and errors thrown
+ * @prop potentialMemoryLeakWarningThreshold [500] - when to raise a more serious warning about high listener counts.
+ */
+export interface Options {
+  allowUnhandledEvents?: boolean;
+  maxListeners?: number;
+  name?: string;
+  potentialMemoryLeakWarningThreshold?: number;
+}
 
 @autobind
-export abstract class Bus<TEventMap extends object> {
+export class Bus<TEventMap extends object = object> {
+
+  private static defaultOptions: Required<Options> = {
+    allowUnhandledEvents: true,
+    maxListeners: 50,
+    name: 'Anonymous',
+    potentialMemoryLeakWarningThreshold: 500
+  };
 
   protected static reservedEvents = {
     EVERY: '*',
     PROXY: '@@PROXY@@'
   };
 
+  public static set defaultAllowUnhandledEvents(allow: boolean) {
+    this.defaultOptions.allowUnhandledEvents = allow;
+  }
+
+  public static set defaultMaxListeners(max: number) {
+    this.defaultOptions.maxListeners = max;
+  }
+
+  public static set defaultMemoryLeakWarningThreshold(threshold: number) {
+    this.defaultOptions.potentialMemoryLeakWarningThreshold = threshold;
+  }
+
   private _active = false;
   private _delegates = new Map<Bus<TEventMap>, EventSubscription[]>();
 
-  protected lifecycle: EventEmitter<Lifecycle> = new EventEmitter<Lifecycle>();
-  protected bus: EventEmitter = new EventEmitter();
-  protected config: Options;
+  private lifecycle: EventEmitter<Lifecycle> = new EventEmitter<Lifecycle>();
+  private bus: EventEmitter = new EventEmitter();
+  private readonly options: Required<Options>;
 
   constructor(options?: Options) {
-    this.configure(options);
+    this.options = {
+      ...Bus.defaultOptions,
+      ...options
+    };
     this.decorateOnMethod();
     this.decorateEmitMethod();
     this.decorateRemoveListenerMethod();
@@ -80,18 +104,23 @@ export abstract class Bus<TEventMap extends object> {
     throw new Error(errorMessage);
   }
 
+  /**
+   * @description subscribe a callback to event(s)
+   *  alias of <Bus>.every when invoked with `*`
+   *  alias of <Bus>.any when invoked with an array of events
+   */
   public on<T extends Listenable<StringKeys<TEventMap>>>(
     event: T,
-    handler: EventHandler<T, TEventMap>
+    handler: EventHandler<TEventMap, T>
   ): EventSubscription {
     if(Array.isArray(event)) {
-      return this.any(event as StringKeys<TEventMap>[], () => (handler as any)());
+      return this.any(event, handler as ProxyHandler<TEventMap>);
     } else if(event === Bus.reservedEvents.EVERY) {
       const wrappedHandler = () => (handler as any)();
       this.bus.on(event as '*', wrappedHandler);
       return () => this.bus.removeListener(event as '*', wrappedHandler);
     } else {
-      this.bus.on(event as string, handler);
+      this.bus.on(event as StringKeys<TEventMap>, handler);
       return () => this.bus.removeListener(event as string, handler);
     }
   }
@@ -104,12 +133,13 @@ export abstract class Bus<TEventMap extends object> {
   }
 
   /**
-   * @description Handle multiple events with the same handler. Handler receives raised event as first argument, payload as second argument
+   * @description Handle multiple events with the same handler.
+   * Handler receives raised event as first argument, payload as second argument
    */
   public any<T extends StringKeys<TEventMap>>(events: T[], handler: ProxyHandler<TEventMap>): EventSubscription {
     return over(
       events.map((e: T) => {
-        const anyHandler = (payload: TEventMap[T] ) => handler(e, payload);
+        const anyHandler = (payload: TEventMap[T]) => handler(e, payload);
         this.bus.on(e, anyHandler);
         return () => this.bus.removeListener(e, anyHandler);
       })
@@ -117,12 +147,21 @@ export abstract class Bus<TEventMap extends object> {
   }
 
   /**
-   * @description Handle ALL events raised with a single handler. Handler is invoked with no payload, and is unaware of the event that was emitted
+   * @description Handle ALL events raised with a single handler.
+   * Handler is invoked with no payload, and is unaware of the event that was emitted
    */
   public every(handler: () => void): EventSubscription {
     const {EVERY} = Bus.reservedEvents;
-    this.bus.on(EVERY, handler);
-    return () => this.bus.removeListener(EVERY, handler);
+    const wrappedHandler = () => handler();
+    this.bus.on(EVERY, wrappedHandler);
+    return () => this.bus.removeListener(EVERY, wrappedHandler);
+  }
+
+  /**
+   * @alias every
+   */
+  public all(handler: () => void): EventSubscription {
+    return this.every(handler);
   }
 
   /**
@@ -171,7 +210,7 @@ export abstract class Bus<TEventMap extends object> {
   }
 
   public get name(): string {
-    return `${this.config.name} ${this.constructor.name}`;
+    return `${this.options.name} ${this.constructor.name}`;
   }
 
   public get hasListeners(): boolean {
@@ -235,19 +274,11 @@ export abstract class Bus<TEventMap extends object> {
     this._delegates.clear();
   }
 
-  private configure(options?: Options) {
-    this.config = {
-      ...defaultOptions,
-      name: `Anonymous`,
-      ...options
-    };
-  }
-
   private decorateOnMethod() {
     const on: EventEmitter['on'] = (...args) => EventEmitter.prototype.on.call(this.bus, ...args);
 
     this.bus.on = (event: StringKeys<TEventMap>, handler: EventEmitter.ListenerFn, context?: any): EventEmitter => {
-      const {maxListeners, potentialMemoryLeakWarningThreshold} = this.config;
+      const {maxListeners, potentialMemoryLeakWarningThreshold} = this.options;
       const n: number = this.bus.listeners(event).length;
       if(n > maxListeners) {
         console.info(`${this.name} has ${n} listeners for "${event}", ${maxListeners} max listeners expected.`);
@@ -278,7 +309,7 @@ export abstract class Bus<TEventMap extends object> {
       handled = raise(PROXY, event, payload) || handled;
       handled = this.forward(event, payload) || handled;
 
-      if(!handled && !this.config.allowUnhandledEvents) {
+      if(!handled && !this.options.allowUnhandledEvents) {
         this.handleUnexpectedEvent(event, payload);
       }
       return handled;

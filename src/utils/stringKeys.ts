@@ -1,0 +1,1 @@
+export type StringKeys<T extends object> = Exclude<keyof T, number|symbol>;

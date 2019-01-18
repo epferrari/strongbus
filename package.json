@@ -2,19 +2,6 @@
   "name": "strongbus",
   "version": "1.0.0",
   "description": "Strongly typed, battle-tested event bus",
-  "keywords": ["Typescript", "MsgBus", "EventEmitter"],
-  "main": "lib/index.js",
-  "types": "lib/index.d.js",
-  "scripts": {
-    "build": "./node_modules/.bin/tsc",
-    "lint": "./node_modules/.bin/tslint -c tslint.json -p tsconfig.json",
-    "test": "npm run build && ./node_modules/.bin/jasmine lib/**/*_spec.js",
-    "validate": "npm run test && npm run lint",
-    "install": "([ -d ./src ] && [ ! -d ./lib ] && mkdir lib && npm install . &&  npm run build) || echo ''",
-    "prepare": "npm run build",
-    "version": "git add -A src",
-    "postversion": "git push && git push --tags"
-  },
   "keywords": [
     "bus",
     "message-bus",
@@ -27,6 +14,18 @@
     "emitter",
     "event-emitter"
   ],
+  "main": "lib/strongbus.js",
+  "types": "lib/strongbus.d.js",
+  "scripts": {
+    "build": "./node_modules/.bin/tsc",
+    "lint": "./node_modules/.bin/tslint -c tslint.json -p tsconfig.json",
+    "test": "npm run build && ./node_modules/.bin/jasmine lib/**/*_spec.js",
+    "validate": "npm run test && npm run lint",
+    "install": "([ -d ./src ] && [ ! -d ./lib ] && mkdir lib && npm install . &&  npm run build) || echo ''",
+    "prepare": "npm run build",
+    "version": "git add -A src",
+    "postversion": "git push && git push --tags"
+  },
   "author": "Ethan Ferrari <github@ethanferrari.io>",
   "contributors": [
     "Josh Heyse <josh.heyse@gmail.com>"
