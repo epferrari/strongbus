@@ -22,6 +22,7 @@
     "test": "npm run build && ./node_modules/.bin/jasmine lib/**/*_spec.js",
     "validate": "npm run test && npm run lint",
     "install": "([ -d ./src ] && [ ! -d ./lib ] && mkdir lib && npm install . &&  npm run build) || echo ''",
+    "docs": "./node_modules/.bin/typedoc --out ./docs --mode modules --excludePrivate --excludeProtected ./src/strongbus.ts",
     "prepare": "npm run build",
     "version": "git add -A src",
     "postversion": "git push && git push --tags"
@@ -42,6 +43,7 @@
     "@types/node": "^10.12.10",
     "jasmine": "^3.3.0",
     "tslint": "^5.11.0",
+    "typedoc": "^0.14.2",
     "typescript": "^3.1.6"
   }
 }

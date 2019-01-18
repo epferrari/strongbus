@@ -13,7 +13,7 @@ type AmbiguousEventHandler = () => void;
 export type ProxyHandler<TEventMap extends object> =
   <T extends StringKeys<TEventMap>>(event: T, payload: TEventMap[T]) => void;
 
-export type EventHandler<TEventMap extends object, TEvent> =
+export type OnHandler<TEventMap extends object, TEvent> =
   TEvent extends StringKeys<TEventMap>[]
     ? ProxyHandler<TEventMap>
     : TEvent extends StringKeys<TEventMap>
@@ -111,7 +111,7 @@ export class Bus<TEventMap extends object = object> {
    */
   public on<T extends Listenable<StringKeys<TEventMap>>>(
     event: T,
-    handler: EventHandler<TEventMap, T>
+    handler: OnHandler<TEventMap, T>
   ): EventSubscription {
     if(Array.isArray(event)) {
       return this.any(event, handler as ProxyHandler<TEventMap>);
@@ -150,7 +150,7 @@ export class Bus<TEventMap extends object = object> {
    * @description Handle ALL events raised with a single handler.
    * Handler is invoked with no payload, and is unaware of the event that was emitted
    */
-  public every(handler: () => void): EventSubscription {
+  public every(handler: AmbiguousEventHandler): EventSubscription {
     const {EVERY} = Bus.reservedEvents;
     const wrappedHandler = () => handler();
     this.bus.on(EVERY, wrappedHandler);
@@ -160,7 +160,7 @@ export class Bus<TEventMap extends object = object> {
   /**
    * @alias every
    */
-  public all(handler: () => void): EventSubscription {
+  public all(handler: AmbiguousEventHandler): EventSubscription {
     return this.every(handler);
   }
 
