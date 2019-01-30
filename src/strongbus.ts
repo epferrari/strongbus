@@ -1,50 +1,14 @@
 import * as EventEmitter from 'eventemitter3';
 import {autobind} from 'core-decorators';
 import {forEach, uniq, compact, size, over} from 'lodash';
-import {strEnum} from './types/strEnum';
-import {StringKeys} from './types/stringKeys';
-import {AmbiguousEventHandler, OnHandler, ProxyHandler} from './types/eventHandlers';
+
 import {Logger} from './types/logger';
+import {Lifecycle} from './types/lifecycle';
+import {Options, ListenerThresholds} from './types/options';
+import {StringKeys, ElementType} from './types/utility';
+import * as Events from './types/events';
+import * as EventHandlers from './types/eventHandlers';
 
-export type EventSubscription = () => void;
-export type Event = string;
-export type Listenable<E extends Event> = E|E[]|'*';
-
-export const Lifecycle = strEnum([
-  'willActivate',
-  'active',
-  'willIdle',
-  'idle',
-  'willAddListener',
-  'didAddListener',
-  'willRemoveListener',
-  'didRemoveListener'
-]);
-export type Lifecycle = keyof typeof Lifecycle;
-
-/**
- * @description notify of possible memory leaks
- * @prop info [100] - log info when listener count for an event exceeds this threshold
- * @prop warn [500] - log warn when listener count for an event exeeds this.threshold
- * @prop error [Infinity] - log error total listener count for an event exceeds this threshold
- */
-export interface ListenerThresholds {
-  info: number;
-  warn: number;
-  error: number;
-}
-
-/**
- * @prop allowUnhandledEvents [true] - should the Bus throw an error when an event is emitted and there are no listeners
- * @prop name [Anonymous] - a name for the bus. included in warn/info messages and errors thrown
- * @prop thresholds
- */
-export interface Options {
-  allowUnhandledEvents?: boolean;
-  name?: string;
-  thresholds?: Partial<ListenerThresholds>;
-  logger?: Logger;
-}
 
 @autobind
 export class Bus<TEventMap extends object = object> {
@@ -58,11 +22,6 @@ export class Bus<TEventMap extends object = object> {
       error: Infinity
     },
     logger: console
-  };
-
-  protected static reservedEvents = {
-    EVERY: '*',
-    PROXY: '@@PROXY@@'
   };
 
   public static set defaultAllowUnhandledEvents(allow: boolean) {
@@ -81,7 +40,7 @@ export class Bus<TEventMap extends object = object> {
   }
 
   private _active = false;
-  private _delegates = new Map<Bus<TEventMap>, EventSubscription[]>();
+  private _delegates = new Map<Bus<TEventMap>, Events.Subscription[]>();
 
   private lifecycle: EventEmitter<Lifecycle> = new EventEmitter<Lifecycle>();
   private bus: EventEmitter = new EventEmitter();
@@ -120,26 +79,18 @@ export class Bus<TEventMap extends object = object> {
    *  alias of <Bus>.every when invoked with `*`
    *  alias of <Bus>.any when invoked with an array of events
    */
-  public on<T extends Listenable<StringKeys<TEventMap>>>(
-    event: T,
-    handler: OnHandler<TEventMap, T>
-  ): EventSubscription {
+  public on<T extends Events.Listenable<StringKeys<TEventMap>>>(event: T, handler: EventHandlers.EventHandler<TEventMap, T>): Events.Subscription {
     if(Array.isArray(event)) {
-      return this.any(event, handler as ProxyHandler<TEventMap>);
-    } else if(event === Bus.reservedEvents.EVERY) {
-      const wrappedHandler = () => (handler as any)();
-      this.bus.on(event as '*', wrappedHandler);
-      return () => this.bus.removeListener(event as '*', wrappedHandler);
+      return this.any(event, handler as EventHandlers.MultiEventHandler<TEventMap>);
+    } else if(event === Events.WILDCARD) {
+      return this.proxy(handler as EventHandlers.WildcardEventHandler<TEventMap>);
     } else {
       this.bus.on(event as StringKeys<TEventMap>, handler);
       return () => this.bus.removeListener(event as string, handler);
     }
   }
 
-  public emit<T extends StringKeys<TEventMap>>(
-    event: T,
-    payload: TEventMap[T]
-  ): boolean {
+  public emit<T extends StringKeys<TEventMap>>(event: T, payload: TEventMap[T]): boolean {
     return this.bus.emit(event, payload);
   }
 
@@ -147,10 +98,10 @@ export class Bus<TEventMap extends object = object> {
    * @description Handle multiple events with the same handler.
    * Handler receives raised event as first argument, payload as second argument
    */
-  public any<T extends StringKeys<TEventMap>>(events: T[], handler: ProxyHandler<TEventMap>): EventSubscription {
+  public any<TEvents extends StringKeys<TEventMap>[]>(events: TEvents, handler: EventHandlers.MultiEventHandler<TEventMap, TEvents>): Events.Subscription {
     return over(
-      events.map((e: T) => {
-        const anyHandler = (payload: TEventMap[T]) => handler(e, payload);
+      (events as any).map(<TEvent extends ElementType<TEvents>>(e: TEvent) => {
+        const anyHandler = (payload: TEventMap[TEvent]) => handler(e, payload);
         this.bus.on(e, anyHandler);
         return () => this.bus.removeListener(e, anyHandler);
       })
@@ -158,31 +109,19 @@ export class Bus<TEventMap extends object = object> {
   }
 
   /**
-   * @description Handle ALL events raised with a single handler.
-   * Handler is invoked with no payload, and is unaware of the event that was emitted
-   */
-  public every(handler: AmbiguousEventHandler): EventSubscription {
-    const {EVERY} = Bus.reservedEvents;
-    const wrappedHandler = () => handler();
-    this.bus.on(EVERY, wrappedHandler);
-    return () => this.bus.removeListener(EVERY, wrappedHandler);
-  }
-
-  /**
-   * @alias every
-   */
-  public all(handler: AmbiguousEventHandler): EventSubscription {
-    return this.every(handler);
-  }
-
-  /**
    * Create a proxy for all events raised. Like `any`, handlers receive the raised event as first
    * argument and payload as second argument. Think of this as a combination of `any` and `every`
    */
-  public proxy(handler: ProxyHandler<TEventMap>): EventSubscription {
-    const {PROXY} = Bus.reservedEvents;
-    this.bus.on(PROXY, handler);
-    return () => this.bus.removeListener(PROXY, handler);
+  public proxy(handler: EventHandlers.WildcardEventHandler<TEventMap>): Events.Subscription {
+    this.bus.on(Events.WILDCARD, handler);
+    return () => this.bus.removeListener(Events.WILDCARD, handler);
+  }
+
+  /**
+   * @alias proxy
+   */
+  public every(handler: EventHandlers.WildcardEventHandler<TEventMap>): Events.Subscription {
+    return this.proxy(handler);
   }
 
   public pipe<TDelegate extends Bus<TEventMap>>(delegate: TDelegate): TDelegate {
@@ -204,12 +143,12 @@ export class Bus<TEventMap extends object = object> {
     this._delegates.delete(delegate);
   }
 
-  public hook(event: Lifecycle, handler: EventEmitter.ListenerFn): EventSubscription {
+  public hook(event: Lifecycle, handler: EventEmitter.ListenerFn): Events.Subscription {
     this.lifecycle.on(event, handler);
     return () => this.lifecycle.removeListener(event, handler);
   }
 
-  public monitor(handler: (activeState: boolean) => void): EventSubscription {
+  public monitor(handler: (activeState: boolean) => void): Events.Subscription {
     return over([
       this.hook(Lifecycle.active, () => handler(true)),
       this.hook(Lifecycle.idle, () => handler(false))
@@ -230,7 +169,7 @@ export class Bus<TEventMap extends object = object> {
 
   public get hasOwnListeners(): boolean {
     return Boolean(this.bus.eventNames().reduce((acc, event) => {
-      return (this.bus.listeners(event) || acc) as boolean;
+      return (acc || this.hasListenersFor(event.toString() as StringKeys<TEventMap>));
     }, false));
   }
 
@@ -243,7 +182,7 @@ export class Bus<TEventMap extends object = object> {
     const ownListeners = this.ownListeners;
     const delegates = Array.from(this._delegates.keys());
     const delegateListenersByEvent: {[event: string]: EventEmitter.ListenerFn[]} = delegates.reduce((acc, delegate) => {
-      forEach(delegate.listeners, (listeners: EventEmitter.ListenerFn[], event: Event) => {
+      forEach(delegate.listeners, (listeners: EventEmitter.ListenerFn[], event: Events.Event) => {
         event = event.toString();
         if(acc[event]) {
           acc[event] = [
@@ -279,6 +218,19 @@ export class Bus<TEventMap extends object = object> {
     }, {});
   }
 
+  public hasListenersFor<TEvents extends StringKeys<TEventMap>>(event: TEvents): boolean {
+    return this.hasOwnListenersFor(event) || this.hasDelegateListenersFor(event);
+  }
+
+  public hasOwnListenersFor<TEvents extends StringKeys<TEventMap>>(event: TEvents): boolean {
+    return this.bus.listenerCount(event) > 0;
+  }
+
+  public hasDelegateListenersFor<TEvents extends StringKeys<TEventMap>>(event: TEvents): boolean {
+    return Array.from(this._delegates.keys())
+      .reduce((acc, d) => (d.hasListenersFor(event) || acc), false);
+  }
+
   public destroy() {
     this.bus.removeAllListeners();
     this.lifecycle.removeAllListeners();
@@ -311,15 +263,13 @@ export class Bus<TEventMap extends object = object> {
 
     this.bus.emit = <T extends StringKeys<TEventMap>>(event: T, payload: TEventMap[T], ...args: any[]): boolean => {
       let handled = false;
-      const {EVERY, PROXY} = Bus.reservedEvents;
 
-      if(event === EVERY || event === PROXY) {
+      if(event === Events.WILDCARD) {
         throw new Error(`Do not emit "${event}" manually. Reserved for internal use.`);
       }
 
       handled = raise(event, payload) || handled;
-      handled = raise(EVERY, payload) || handled;
-      handled = raise(PROXY, event, payload) || handled;
+      handled = raise(Events.WILDCARD, event, payload) || handled;
       handled = this.forward(event, payload) || handled;
 
       if(!handled && !this.options.allowUnhandledEvents) {

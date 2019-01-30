@@ -1,5 +1,5 @@
-import * as Strongbus from './strongbus';
-import {StringKeys} from './types/stringKeys';
+import * as Strongbus from './';
+import {StringKeys} from './types/utility';
 
 type TestEventMap = {
   foo: string;
@@ -36,13 +36,13 @@ describe('Strongbus.Bus', () => {
   });
 
   describe('#constructor', () => {
-    it('overloads the instance\'s internal emitter\'s emit method to invoke * listeners on any event raised', () => {
+    it('overloads the instance\'s internal emitter\'s emit method to invoke * listeners on every event raised', () => {
       bus.on('foo', onTestEvent);
       bus.on('*', onEveryEvent);
 
       bus.emit('foo', 'eagle');
       expect(onTestEvent).toHaveBeenCalledWith('eagle');
-      expect(onEveryEvent).toHaveBeenCalledWith();
+      expect(onEveryEvent).toHaveBeenCalledWith('foo', 'eagle');
     });
 
     describe('given an unhandled event is raised', () => {
@@ -83,16 +83,19 @@ describe('Strongbus.Bus', () => {
       expect(bus.hasListeners).toBeFalsy();
     });
 
-    describe('given the splat operator to listen on', () => {
+    describe('given the wildcard operator to listen on', () => {
       describe('and given an event is raised', () => {
-        it('invokes the supplied handler with no arguments', () => {
+        it('invokes the supplied handler with event and payload', () => {
           bus.on('*', onEveryEvent);
-          bus.emit('foo', 'racoon');
+          bus.emit('foo', 'raccoon');
           expect(onEveryEvent).toHaveBeenCalledTimes(1);
-          expect(onEveryEvent.calls.mostRecent().args.length).toBe(0);
+          expect(onEveryEvent).toHaveBeenCalledWith('foo', 'raccoon');
           bus.emit('foo', 'squirrel');
           expect(onEveryEvent).toHaveBeenCalledTimes(2);
-          expect(onEveryEvent.calls.mostRecent().args.length).toBe(0);
+          expect(onEveryEvent).toHaveBeenCalledWith('foo', 'squirrel');
+          bus.emit('baz', 5);
+          expect(onEveryEvent).toHaveBeenCalledTimes(3);
+          expect(onEveryEvent).toHaveBeenCalledWith('baz', 5);
         });
       });
     });
@@ -151,20 +154,6 @@ describe('Strongbus.Bus', () => {
       bus.emit('baz', null);
       expect(onAnyEvent).not.toHaveBeenCalled();
       expect((bus as any).handleUnexpectedEvent).toHaveBeenCalledWith('baz', null);
-    });
-  });
-
-  describe('#every', () => {
-    it('adds a single listener for all events, and the listener receives only the payload', () => {
-      bus.every(onEveryEvent);
-
-      bus.emit('foo', null);
-      expect(onEveryEvent).toHaveBeenCalledTimes(1);
-      expect(onEveryEvent.calls.mostRecent().args.length).toEqual(0);
-
-      bus.emit('bar', null);
-      expect(onEveryEvent).toHaveBeenCalledTimes(2);
-      expect(onEveryEvent.calls.mostRecent().args.length).toEqual(0);
     });
   });
 
@@ -564,6 +553,35 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('#hasListenersFor', () => {
+    describe('given an instance has no listeners registered for an event', () => {
+      it('returns false', () => {
+        bus.destroy();
+        expect(bus.hasListenersFor('foo')).toBe(false);
+      });
+
+      describe('given an instance has delegates registered for an event', () => {
+        it('returns true', () => {
+          bus.destroy();
+          const bus2 = new DelegateTestBus({emulateListenerCount: true});
+          bus.pipe(bus2);
+          bus2.on('foo', () => {return; });
+          expect(bus.hasListenersFor('foo')).toBe(true);
+        });
+      });
+    });
+
+    describe('given an instance has listeners registered for an event', () => {
+      it('returns true', () => {
+        bus.destroy();
+        const handleFoo = (payload: string) => {return; };
+        bus.on('foo', handleFoo);
+
+        expect(bus.hasListenersFor('foo')).toBe(true);
+      });
+    });
+  });
+
   describe('#destroy', () => {
     it('removes all event listeners', () => {
       bus = new Strongbus.Bus({allowUnhandledEvents: false});
@@ -609,19 +627,10 @@ describe('Strongbus.Bus', () => {
   });
 
   describe('Reserved events', () => {
-    describe('given the * event is manually raised', () => {
+    describe('given the wildcard (*) event is manually raised', () => {
       it('throws an error', () => {
         bus.on('*', onAnyEvent);
         const shouldThrow = () => bus.emit('*' as any, 'eagle');
-
-        expect(shouldThrow).toThrow();
-      });
-    });
-
-    describe('given the @@PROXY@@ event is manually raised', () => {
-      it('throws an error', () => {
-        bus.on('@@PROXY@@' as any, onAnyEvent);
-        const shouldThrow = () => bus.emit('@@PROXY@@' as any, 'eagle');
 
         expect(shouldThrow).toThrow();
       });
