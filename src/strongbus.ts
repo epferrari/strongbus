@@ -1,24 +1,14 @@
 import * as EventEmitter from 'eventemitter3';
 import {autobind} from 'core-decorators';
-import {strEnum} from './utils/strEnum';
-import {StringKeys} from './utils/stringKeys';
 import {forEach, uniq, compact, size, over} from 'lodash';
+import {strEnum} from './types/strEnum';
+import {StringKeys} from './types/stringKeys';
+import {AmbiguousEventHandler, OnHandler, ProxyHandler} from './types/eventHandlers';
+import {Logger} from './types/logger';
 
 export type EventSubscription = () => void;
 export type Event = string;
 export type Listenable<E extends Event> = E|E[]|'*';
-type SingleEventHandler<TEventMap extends object, T extends StringKeys<TEventMap>> =
-  (payload: TEventMap[T]) => void;
-type AmbiguousEventHandler = () => void;
-export type ProxyHandler<TEventMap extends object> =
-  <T extends StringKeys<TEventMap>>(event: T, payload: TEventMap[T]) => void;
-
-export type OnHandler<TEventMap extends object, TEvent> =
-  TEvent extends StringKeys<TEventMap>[]
-    ? ProxyHandler<TEventMap>
-    : TEvent extends StringKeys<TEventMap>
-      ? SingleEventHandler<TEventMap, TEvent>
-      : AmbiguousEventHandler;
 
 export const Lifecycle = strEnum([
   'willActivate',
@@ -33,27 +23,41 @@ export const Lifecycle = strEnum([
 export type Lifecycle = keyof typeof Lifecycle;
 
 /**
+ * @description notify of possible memory leaks
+ * @prop info [100] - log info when listener count for an event exceeds this threshold
+ * @prop warn [500] - log warn when listener count for an event exeeds this.threshold
+ * @prop error [Infinity] - log error total listener count for an event exceeds this threshold
+ */
+export interface ListenerThresholds {
+  info: number;
+  warn: number;
+  error: number;
+}
+
+/**
  * @prop allowUnhandledEvents [true] - should the Bus throw an error when an event is emitted and there are no listeners
- * @prop maxListeners [50] - number of max listeners expected for events. Will raise a benign info message when exceeded.
- *  Bus will still accept listeners after the this threshold is exceeded.
  * @prop name [Anonymous] - a name for the bus. included in warn/info messages and errors thrown
- * @prop potentialMemoryLeakWarningThreshold [500] - when to raise a more serious warning about high listener counts.
+ * @prop thresholds
  */
 export interface Options {
   allowUnhandledEvents?: boolean;
-  maxListeners?: number;
   name?: string;
-  potentialMemoryLeakWarningThreshold?: number;
+  thresholds?: Partial<ListenerThresholds>;
+  logger?: Logger;
 }
 
 @autobind
 export class Bus<TEventMap extends object = object> {
 
   private static defaultOptions: Required<Options> = {
-    allowUnhandledEvents: true,
-    maxListeners: 50,
     name: 'Anonymous',
-    potentialMemoryLeakWarningThreshold: 500
+    allowUnhandledEvents: true,
+    thresholds: {
+      info: 50,
+      warn: 500,
+      error: Infinity
+    },
+    logger: console
   };
 
   protected static reservedEvents = {
@@ -62,15 +66,18 @@ export class Bus<TEventMap extends object = object> {
   };
 
   public static set defaultAllowUnhandledEvents(allow: boolean) {
-    this.defaultOptions.allowUnhandledEvents = allow;
+    Bus.defaultOptions.allowUnhandledEvents = allow;
   }
 
-  public static set defaultMaxListeners(max: number) {
-    this.defaultOptions.maxListeners = max;
+  public static set defaultThresholds(thresholds: Partial<ListenerThresholds>) {
+    Bus.defaultOptions.thresholds = {
+      ...Bus.defaultOptions.thresholds,
+      ...thresholds
+    };
   }
 
-  public static set defaultMemoryLeakWarningThreshold(threshold: number) {
-    this.defaultOptions.potentialMemoryLeakWarningThreshold = threshold;
+  public static set defaultLogger(logger: Logger) {
+    Bus.defaultOptions.logger = logger;
   }
 
   private _active = false;
@@ -83,7 +90,11 @@ export class Bus<TEventMap extends object = object> {
   constructor(options?: Options) {
     this.options = {
       ...Bus.defaultOptions,
-      ...options
+      ...options || {} as any,
+      thresholds: {
+        ...(options || {} as any).thresholds,
+        ...Bus.defaultOptions.thresholds
+      }
     };
     this.decorateOnMethod();
     this.decorateEmitMethod();
@@ -278,12 +289,14 @@ export class Bus<TEventMap extends object = object> {
     const on: EventEmitter['on'] = (...args) => EventEmitter.prototype.on.call(this.bus, ...args);
 
     this.bus.on = (event: StringKeys<TEventMap>, handler: EventEmitter.ListenerFn, context?: any): EventEmitter => {
-      const {maxListeners, potentialMemoryLeakWarningThreshold} = this.options;
+      const {thresholds, logger} = this.options;
       const n: number = this.bus.listeners(event).length;
-      if(n > maxListeners) {
-        console.info(`${this.name} has ${n} listeners for "${event}", ${maxListeners} max listeners expected.`);
-      } else if(n > potentialMemoryLeakWarningThreshold) {
-        console.warn(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds threshold set to ${potentialMemoryLeakWarningThreshold}`);
+      if(n > thresholds.info) {
+        logger.info(`${this.name} has ${n} listeners for "${event}", ${thresholds.info} max listeners expected.`);
+      } else if(n > thresholds.warn) {
+        logger.warn(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds threshold set to ${thresholds.warn}`);
+      } else if(n > thresholds.error) {
+        logger.error(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds threshold set to ${thresholds.error}`);
       }
       this.willAddListener(event);
       const emitter = on(event, handler, context);

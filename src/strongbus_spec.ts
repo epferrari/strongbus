@@ -1,6 +1,5 @@
 import * as Strongbus from './strongbus';
-import * as EventEmitter from 'eventemitter3';
-import {StringKeys} from './utils/stringKeys';
+import {StringKeys} from './types/stringKeys';
 
 type TestEventMap = {
   foo: string;
@@ -27,7 +26,6 @@ describe('Strongbus.Bus', () => {
   let onTestEvent: jasmine.Spy;
   let onAnyEvent: jasmine.Spy;
   let onEveryEvent: jasmine.Spy;
-  let privateInnerBus: EventEmitter;
 
   beforeEach(() => {
     bus = new Strongbus.Bus<TestEventMap>();
@@ -35,7 +33,6 @@ describe('Strongbus.Bus', () => {
     onAnyEvent = jasmine.createSpy('onAnyEvent');
     onEveryEvent = jasmine.createSpy('onEveryEvent');
     spyOn(bus as any, 'handleUnexpectedEvent');
-    privateInnerBus = (bus as any).bus;
   });
 
   describe('#constructor', () => {
@@ -70,7 +67,7 @@ describe('Strongbus.Bus', () => {
 
   describe('#on', () => {
     it('subscribes handler to an event as a key of its typemap', () => {
-      const handleFoo = jasmine.createSpy('onEventA') as (fooPayload: string) => void;
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
       bus.on('foo', handleFoo);
 
       bus.emit('foo', 'elephant');
@@ -139,19 +136,20 @@ describe('Strongbus.Bus', () => {
       bus = new Strongbus.Bus({allowUnhandledEvents: false});
       spyOn(bus as any, 'handleUnexpectedEvent');
 
-      const unsub = bus.any(['foo', 'bar'], onAnyEvent);
+      const unsubFoo = bus.any(['foo', 'bar'], onAnyEvent);
       bus.emit('foo', null);
       expect(onAnyEvent).toHaveBeenCalledTimes(1);
       expect((bus as any).handleUnexpectedEvent).not.toHaveBeenCalled();
+      onAnyEvent.calls.reset();
 
-      unsub();
+      unsubFoo();
       bus.emit('bar', null);
-      expect(onAnyEvent).toHaveBeenCalledTimes(1);
+      expect(onAnyEvent).not.toHaveBeenCalled();
       expect((bus as any).handleUnexpectedEvent).toHaveBeenCalledWith('bar', null);
       (bus as any).handleUnexpectedEvent.calls.reset();
 
       bus.emit('baz', null);
-      expect(onAnyEvent).toHaveBeenCalledTimes(1);
+      expect(onAnyEvent).not.toHaveBeenCalled();
       expect((bus as any).handleUnexpectedEvent).toHaveBeenCalledWith('baz', null);
     });
   });
