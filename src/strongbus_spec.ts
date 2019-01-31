@@ -583,46 +583,62 @@ describe('Strongbus.Bus', () => {
   });
 
   describe('#destroy', () => {
-    it('removes all event listeners', () => {
+    it('removes all event listeners, triggering proper lifecycle events', () => {
       bus = new Strongbus.Bus({allowUnhandledEvents: false});
       spyOn(bus as any, 'handleUnexpectedEvent');
+      const willRemoveListenerSpy = jasmine.createSpy('willRemoveListener');
+      const didRemoveListenerSpy = jasmine.createSpy('didRemoveListener');
       bus.on('foo', onTestEvent);
+      bus.hook('willRemoveListener', willRemoveListenerSpy);
+      bus.hook('didRemoveListener', didRemoveListenerSpy);
       bus.every(onEveryEvent);
 
       bus.emit('foo', null);
       expect(onTestEvent).toHaveBeenCalled();
       expect(onEveryEvent).toHaveBeenCalled();
+      onTestEvent.calls.reset();
+      onEveryEvent.calls.reset();
 
       bus.destroy();
+
+      expect(willRemoveListenerSpy).toHaveBeenCalledWith('foo');
+      expect(didRemoveListenerSpy).toHaveBeenCalledWith('foo');
+      expect(bus.hasListenersFor('foo')).toBe(false);
       bus.emit('foo', null);
+      expect(onTestEvent).not.toHaveBeenCalled();
+      expect(onEveryEvent).not.toHaveBeenCalled();
       expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
     });
 
     it('removes all hooks', () => {
-      const onAddListener = jasmine.createSpy('onAddListener');
-      bus.hook('didAddListener', onAddListener);
+      const didAddListenerSpy = jasmine.createSpy('onAddListener');
+      bus.hook('didAddListener', didAddListenerSpy);
       bus.on('foo', onTestEvent);
-      expect(onAddListener).toHaveBeenCalledWith('foo');
-      onAddListener.calls.reset();
+      expect(didAddListenerSpy).toHaveBeenCalledWith('foo');
+      didAddListenerSpy.calls.reset();
 
       bus.destroy();
       bus.on('foo', onTestEvent);
-      expect(onAddListener).not.toHaveBeenCalled();
+      expect(didAddListenerSpy).not.toHaveBeenCalled();
     });
 
     it('clears all delegates', () => {
       const bus2 = new DelegateTestBus({});
-      spyOn(bus2, 'emit');
+      bus2.on('foo', onTestEvent);
+      bus2.every(onEveryEvent);
 
       bus.pipe(bus2);
 
       bus.emit('foo', null);
-      expect(bus2.emit).toHaveBeenCalled();
-      (bus2.emit as any).calls.reset();
+      expect(onTestEvent).toHaveBeenCalled();
+      expect(onEveryEvent).toHaveBeenCalled();
+      onTestEvent.calls.reset();
+      onEveryEvent.calls.reset();
 
       bus.destroy();
       bus.emit('foo', null);
-      expect(bus2.emit).not.toHaveBeenCalled();
+      expect(onTestEvent).not.toHaveBeenCalled();
+      expect(onEveryEvent).not.toHaveBeenCalled();
     });
   });
 

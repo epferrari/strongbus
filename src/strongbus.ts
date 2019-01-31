@@ -1,6 +1,6 @@
 import * as EventEmitter from 'eventemitter3';
 import {autobind} from 'core-decorators';
-import {forEach, uniq, compact, size, over} from 'lodash';
+import {forEach, uniq, compact, size, over, flatten} from 'lodash';
 
 import {Logger} from './types/logger';
 import {Lifecycle} from './types/lifecycle';
@@ -8,6 +8,7 @@ import {Options, ListenerThresholds} from './types/options';
 import {StringKeys, ElementType} from './types/utility';
 import * as Events from './types/events';
 import * as EventHandlers from './types/eventHandlers';
+import {randomId} from './utils/randomId';
 
 
 @autobind
@@ -41,9 +42,9 @@ export class Bus<TEventMap extends object = object> {
 
   private _active = false;
   private _delegates = new Map<Bus<TEventMap>, Events.Subscription[]>();
-
-  private lifecycle: EventEmitter<Lifecycle> = new EventEmitter<Lifecycle>();
-  private bus: EventEmitter = new EventEmitter();
+  private readonly lifecycle: EventEmitter<Lifecycle> = new EventEmitter<Lifecycle>();
+  private readonly bus: EventEmitter = new EventEmitter();
+  private readonly subscriptionCache = new Map<string, Events.Subscription>();
   private readonly options: Required<Options>;
 
   constructor(options?: Options) {
@@ -76,7 +77,7 @@ export class Bus<TEventMap extends object = object> {
 
   /**
    * @description subscribe a callback to event(s)
-   *  alias of <Bus>.every when invoked with `*`
+   *  alias of <Bus>.proxy when invoked with wildcard (*)
    *  alias of <Bus>.any when invoked with an array of events
    */
   public on<T extends Events.Listenable<StringKeys<TEventMap>>>(event: T, handler: EventHandlers.EventHandler<TEventMap, T>): Events.Subscription {
@@ -86,7 +87,7 @@ export class Bus<TEventMap extends object = object> {
       return this.proxy(handler as EventHandlers.WildcardEventHandler<TEventMap>);
     } else {
       this.bus.on(event as StringKeys<TEventMap>, handler);
-      return () => this.bus.removeListener(event as string, handler);
+      return this.cacheListener(event as string, handler);
     }
   }
 
@@ -103,7 +104,7 @@ export class Bus<TEventMap extends object = object> {
       (events as any).map(<TEvent extends ElementType<TEvents>>(e: TEvent) => {
         const anyHandler = (payload: TEventMap[TEvent]) => handler(e, payload);
         this.bus.on(e, anyHandler);
-        return () => this.bus.removeListener(e, anyHandler);
+        return this.cacheListener(e, anyHandler);
       })
     );
   }
@@ -114,7 +115,7 @@ export class Bus<TEventMap extends object = object> {
    */
   public proxy(handler: EventHandlers.WildcardEventHandler<TEventMap>): Events.Subscription {
     this.bus.on(Events.WILDCARD, handler);
-    return () => this.bus.removeListener(Events.WILDCARD, handler);
+    return this.cacheListener(Events.WILDCARD, handler);
   }
 
   /**
@@ -139,11 +140,11 @@ export class Bus<TEventMap extends object = object> {
   }
 
   public unpipe<TDelegate extends Bus<TEventMap>>(delegate: TDelegate): void {
-    over(this._delegates.get(delegate))();
+    over(this._delegates.get(delegate) || [])();
     this._delegates.delete(delegate);
   }
 
-  public hook(event: Lifecycle, handler: EventEmitter.ListenerFn): Events.Subscription {
+  public hook(event: Lifecycle, handler: (targetEvent: StringKeys<TEventMap>) => void): Events.Subscription {
     this.lifecycle.on(event, handler);
     return () => this.lifecycle.removeListener(event, handler);
   }
@@ -175,7 +176,7 @@ export class Bus<TEventMap extends object = object> {
 
   public get hasDelegateListeners(): boolean {
     return Array.from(this._delegates.keys())
-      .reduce((acc, d) => (d.hasListeners || acc), false);
+      .reduce((acc, d) => (acc || d.hasListeners), false);
   }
 
   public get listeners(): {[event: string]: EventEmitter.ListenerFn[]} {
@@ -209,6 +210,18 @@ export class Bus<TEventMap extends object = object> {
     }, {});
   }
 
+  private cacheListener(event: string, handler: EventEmitter.ListenerFn): Events.Subscription {
+    const token = randomId();
+    const sub = () => {
+      if(this.subscriptionCache.has(token)) {
+        this.bus.removeListener(event, handler);
+        this.subscriptionCache.delete(token);
+      }
+    };
+    this.subscriptionCache.set(token, sub);
+    return sub;
+  }
+
   private get ownListeners(): {[event: string]: EventEmitter.ListenerFn[]} {
     return this.bus.eventNames().reduce((acc, event) => {
       return {
@@ -232,8 +245,22 @@ export class Bus<TEventMap extends object = object> {
   }
 
   public destroy() {
-    this.bus.removeAllListeners();
+    this.releaseListeners();
     this.lifecycle.removeAllListeners();
+    this.releaseDelegates();
+  }
+
+  private releaseListeners(): void {
+    // any un-invoked unsubscribes will be invoked,
+    // their lifecycle hooks will be triggerd
+    // and they will be cleaned removed from the cache
+    over(Array.from(this.subscriptionCache.values()))();
+    this.bus.removeAllListeners();
+  }
+
+  private releaseDelegates(): void {
+    const delegateSubs: Events.Subscription[] = flatten(Array.from(this._delegates.values()));
+    over(delegateSubs)();
     this._delegates.clear();
   }
 
