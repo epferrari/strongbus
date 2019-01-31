@@ -652,4 +652,40 @@ describe('Strongbus.Bus', () => {
       });
     });
   });
+
+  describe('unsubscribe function return values (Events.Subscription)s', () => {
+    describe('given it is invoked multiple times', () => {
+      it('only invokes lifecycle methods once', () => {
+        const onWillRemoveListener = jasmine.createSpy('willRemoveListener');
+        const onDidRemoveListener = jasmine.createSpy('didAddListener');
+        const onWillIdle = jasmine.createSpy('willIdle');
+        const onIdle = jasmine.createSpy('idle');
+        bus.hook('willRemoveListener', onWillRemoveListener);
+        bus.hook('didRemoveListener', onDidRemoveListener);
+        bus.hook('willIdle', onWillIdle);
+        bus.hook('idle', onIdle);
+
+        const unsub = bus.on('foo', onTestEvent);
+
+        unsub();
+
+        expect(onWillRemoveListener).toHaveBeenCalled();
+        expect(onDidRemoveListener).toHaveBeenCalled();
+        expect(onWillIdle).toHaveBeenCalled();
+        expect(onIdle).toHaveBeenCalled();
+
+        onWillRemoveListener.calls.reset();
+        onDidRemoveListener.calls.reset();
+        onWillIdle.calls.reset();
+        onIdle.calls.reset();
+
+        unsub();
+
+        expect(onWillRemoveListener).not.toHaveBeenCalled();
+        expect(onDidRemoveListener).not.toHaveBeenCalled();
+        expect(onWillIdle).not.toHaveBeenCalled();
+        expect(onIdle).not.toHaveBeenCalled();
+      });
+    });
+  });
 });
