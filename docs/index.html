@@ -895,6 +895,8 @@ img { max-width: 100%; }
 							</div>
 							<input type="checkbox" id="tsd-filter-inherited" checked />
 							<label class="tsd-widget" for="tsd-filter-inherited">Inherited</label>
+							<input type="checkbox" id="tsd-filter-externals" checked />
+							<label class="tsd-widget" for="tsd-filter-externals">Externals</label>
 							<input type="checkbox" id="tsd-filter-only-exported" />
 							<label class="tsd-widget" for="tsd-filter-only-exported">Only exported</label>
 						</div>
@@ -907,34 +909,43 @@ img { max-width: 100%; }
 </header>
 <nav class="tsd-navigation secondary">
 	<ul>
-		<li class=" tsd-kind-class tsd-has-type-parameter">
+		<li class=" tsd-kind-class tsd-has-type-parameter tsd-is-external">
 			<a href="classes/bus.html" class="tsd-kind-icon">Bus</a>
 		</li>
-		<li class=" tsd-kind-interface">
+		<li class=" tsd-kind-interface tsd-is-external">
+			<a href="interfaces/listenerthresholds.html" class="tsd-kind-icon">Listener<wbr>Thresholds</a>
+		</li>
+		<li class=" tsd-kind-interface tsd-is-external">
+			<a href="interfaces/logger.html" class="tsd-kind-icon">Logger</a>
+		</li>
+		<li class=" tsd-kind-interface tsd-is-external">
 			<a href="interfaces/options.html" class="tsd-kind-icon">Options</a>
 		</li>
-		<li class=" tsd-kind-type-alias tsd-is-not-exported">
-			<a href="globals.html#ambiguouseventhandler" class="tsd-kind-icon">Ambiguous<wbr>Event<wbr>Handler</a>
-		</li>
-		<li class=" tsd-kind-type-alias">
+		<li class=" tsd-kind-type-alias tsd-is-external">
 			<a href="globals.html#event" class="tsd-kind-icon">Event</a>
 		</li>
-		<li class=" tsd-kind-type-alias">
-			<a href="globals.html#eventsubscription" class="tsd-kind-icon">Event<wbr>Subscription</a>
+		<li class=" tsd-kind-type-alias tsd-has-type-parameter tsd-is-external">
+			<a href="globals.html#eventhandler" class="tsd-kind-icon">Event<wbr>Handler</a>
 		</li>
-		<li class=" tsd-kind-type-alias tsd-has-type-parameter">
+		<li class=" tsd-kind-type-alias tsd-has-type-parameter tsd-is-external">
 			<a href="globals.html#listenable" class="tsd-kind-icon">Listenable</a>
 		</li>
-		<li class=" tsd-kind-type-alias tsd-has-type-parameter">
-			<a href="globals.html#onhandler" class="tsd-kind-icon">On<wbr>Handler</a>
+		<li class=" tsd-kind-type-alias tsd-has-type-parameter tsd-is-external">
+			<a href="globals.html#multieventhandler" class="tsd-kind-icon">Multi<wbr>Event<wbr>Handler</a>
 		</li>
-		<li class=" tsd-kind-type-alias tsd-has-type-parameter">
-			<a href="globals.html#proxyhandler" class="tsd-kind-icon">Proxy<wbr>Handler</a>
-		</li>
-		<li class=" tsd-kind-type-alias tsd-has-type-parameter tsd-is-not-exported">
+		<li class=" tsd-kind-type-alias tsd-has-type-parameter tsd-is-external">
 			<a href="globals.html#singleeventhandler" class="tsd-kind-icon">Single<wbr>Event<wbr>Handler</a>
 		</li>
-		<li class=" tsd-kind-variable">
+		<li class=" tsd-kind-type-alias tsd-is-external">
+			<a href="globals.html#subscription" class="tsd-kind-icon">Subscription</a>
+		</li>
+		<li class=" tsd-kind-type-alias tsd-is-external">
+			<a href="globals.html#wildcard" class="tsd-kind-icon">WILDCARD</a>
+		</li>
+		<li class=" tsd-kind-type-alias tsd-has-type-parameter tsd-is-external">
+			<a href="globals.html#wildcardeventhandler" class="tsd-kind-icon">Wildcard<wbr>Event<wbr>Handler</a>
+		</li>
+		<li class=" tsd-kind-variable tsd-is-external">
 			<a href="globals.html#lifecycle" class="tsd-kind-icon">Lifecycle</a>
 		</li>
 	</ul>
@@ -946,83 +957,152 @@ img { max-width: 100%; }
 			<h2>Index</h2>
 			<section class="tsd-panel tsd-index-panel">
 				<div class="tsd-index-content">
-					<section class="tsd-index-section ">
+					<section class="tsd-index-section tsd-is-external">
 						<h3>Classes</h3>
 						<ul class="tsd-index-list">
-							<li class="tsd-kind-class tsd-has-type-parameter"><a href="classes/bus.html" class="tsd-kind-icon">Bus</a></li>
+							<li class="tsd-kind-class tsd-has-type-parameter tsd-is-external"><a href="classes/bus.html" class="tsd-kind-icon">Bus</a></li>
 						</ul>
 					</section>
-					<section class="tsd-index-section ">
+					<section class="tsd-index-section tsd-is-external">
 						<h3>Interfaces</h3>
 						<ul class="tsd-index-list">
-							<li class="tsd-kind-interface"><a href="interfaces/options.html" class="tsd-kind-icon">Options</a></li>
+							<li class="tsd-kind-interface tsd-is-external"><a href="interfaces/listenerthresholds.html" class="tsd-kind-icon">Listener<wbr>Thresholds</a></li>
+							<li class="tsd-kind-interface tsd-is-external"><a href="interfaces/logger.html" class="tsd-kind-icon">Logger</a></li>
+							<li class="tsd-kind-interface tsd-is-external"><a href="interfaces/options.html" class="tsd-kind-icon">Options</a></li>
 						</ul>
 					</section>
-					<section class="tsd-index-section ">
+					<section class="tsd-index-section tsd-is-external">
 						<h3>Type aliases</h3>
 						<ul class="tsd-index-list">
-							<li class="tsd-kind-type-alias tsd-is-not-exported"><a href="globals.html#ambiguouseventhandler" class="tsd-kind-icon">Ambiguous<wbr>Event<wbr>Handler</a></li>
-							<li class="tsd-kind-type-alias"><a href="globals.html#event" class="tsd-kind-icon">Event</a></li>
-							<li class="tsd-kind-type-alias"><a href="globals.html#eventsubscription" class="tsd-kind-icon">Event<wbr>Subscription</a></li>
-							<li class="tsd-kind-type-alias tsd-has-type-parameter"><a href="globals.html#listenable" class="tsd-kind-icon">Listenable</a></li>
-							<li class="tsd-kind-type-alias tsd-has-type-parameter"><a href="globals.html#onhandler" class="tsd-kind-icon">On<wbr>Handler</a></li>
-							<li class="tsd-kind-type-alias tsd-has-type-parameter"><a href="globals.html#proxyhandler" class="tsd-kind-icon">Proxy<wbr>Handler</a></li>
-							<li class="tsd-kind-type-alias tsd-has-type-parameter tsd-is-not-exported"><a href="globals.html#singleeventhandler" class="tsd-kind-icon">Single<wbr>Event<wbr>Handler</a></li>
+							<li class="tsd-kind-type-alias tsd-is-external"><a href="globals.html#event" class="tsd-kind-icon">Event</a></li>
+							<li class="tsd-kind-type-alias tsd-has-type-parameter tsd-is-external"><a href="globals.html#eventhandler" class="tsd-kind-icon">Event<wbr>Handler</a></li>
+							<li class="tsd-kind-type-alias tsd-has-type-parameter tsd-is-external"><a href="globals.html#listenable" class="tsd-kind-icon">Listenable</a></li>
+							<li class="tsd-kind-type-alias tsd-has-type-parameter tsd-is-external"><a href="globals.html#multieventhandler" class="tsd-kind-icon">Multi<wbr>Event<wbr>Handler</a></li>
+							<li class="tsd-kind-type-alias tsd-has-type-parameter tsd-is-external"><a href="globals.html#singleeventhandler" class="tsd-kind-icon">Single<wbr>Event<wbr>Handler</a></li>
+							<li class="tsd-kind-type-alias tsd-is-external"><a href="globals.html#subscription" class="tsd-kind-icon">Subscription</a></li>
+							<li class="tsd-kind-type-alias tsd-is-external"><a href="globals.html#wildcard" class="tsd-kind-icon">WILDCARD</a></li>
+							<li class="tsd-kind-type-alias tsd-has-type-parameter tsd-is-external"><a href="globals.html#wildcardeventhandler" class="tsd-kind-icon">Wildcard<wbr>Event<wbr>Handler</a></li>
 						</ul>
 					</section>
-					<section class="tsd-index-section ">
+					<section class="tsd-index-section tsd-is-external">
 						<h3>Variables</h3>
 						<ul class="tsd-index-list">
-							<li class="tsd-kind-variable"><a href="globals.html#lifecycle" class="tsd-kind-icon">Lifecycle</a></li>
+							<li class="tsd-kind-variable tsd-is-external"><a href="globals.html#lifecycle" class="tsd-kind-icon">Lifecycle</a></li>
 						</ul>
 					</section>
 				</div>
 			</section>
 		</section>
-		<section class="tsd-panel-group tsd-member-group ">
+		<section class="tsd-panel-group tsd-member-group tsd-is-external">
 			<h2>Type aliases</h2>
-			<section class="tsd-panel tsd-member tsd-kind-type-alias tsd-is-not-exported">
-				<a name="ambiguouseventhandler" class="tsd-anchor"></a>
-				<h3>Ambiguous<wbr>Event<wbr>Handler</h3>
-				<div class="tsd-signature tsd-kind-icon">Ambiguous<wbr>Event<wbr>Handler<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">function</span></div>
-				<aside class="tsd-sources">
-					<ul>
-						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/b02e25d/src/strongbus.ts#L12">strongbus.ts:12</a></li>
-					</ul>
-				</aside>
-				<div class="tsd-type-declaration">
-					<h4>Type declaration</h4>
-					<ul class="tsd-parameters">
-						<li class="tsd-parameter-siganture">
-							<ul class="tsd-signatures tsd-kind-type-literal tsd-parent-kind-type-alias tsd-is-not-exported">
-								<li class="tsd-signature tsd-kind-icon"><span class="tsd-signature-symbol">(</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">void</span></li>
-							</ul>
-							<ul class="tsd-descriptions">
-								<li class="tsd-description">
-									<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4>
-								</li>
-							</ul>
-						</li>
-					</ul>
-				</div>
-			</section>
-			<section class="tsd-panel tsd-member tsd-kind-type-alias">
+			<section class="tsd-panel tsd-member tsd-kind-type-alias tsd-is-external">
 				<a name="event" class="tsd-anchor"></a>
 				<h3>Event</h3>
 				<div class="tsd-signature tsd-kind-icon">Event<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
 				<aside class="tsd-sources">
 					<ul>
-						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/b02e25d/src/strongbus.ts#L8">strongbus.ts:8</a></li>
+						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/835c55c/src/types/events.ts#L2">types/events.ts:2</a></li>
 					</ul>
 				</aside>
 			</section>
-			<section class="tsd-panel tsd-member tsd-kind-type-alias">
-				<a name="eventsubscription" class="tsd-anchor"></a>
-				<h3>Event<wbr>Subscription</h3>
-				<div class="tsd-signature tsd-kind-icon">Event<wbr>Subscription<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">function</span></div>
+			<section class="tsd-panel tsd-member tsd-kind-type-alias tsd-has-type-parameter tsd-is-external">
+				<a name="eventhandler" class="tsd-anchor"></a>
+				<h3>Event<wbr>Handler</h3>
+				<div class="tsd-signature tsd-kind-icon">Event<wbr>Handler<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">EventHandler&lt;TEventMap, TEvent&gt;</span></div>
 				<aside class="tsd-sources">
 					<ul>
-						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/b02e25d/src/strongbus.ts#L7">strongbus.ts:7</a></li>
+						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/835c55c/src/types/eventHandlers.ts#L14">types/eventHandlers.ts:14</a></li>
+					</ul>
+				</aside>
+			</section>
+			<section class="tsd-panel tsd-member tsd-kind-type-alias tsd-has-type-parameter tsd-is-external">
+				<a name="listenable" class="tsd-anchor"></a>
+				<h3>Listenable</h3>
+				<div class="tsd-signature tsd-kind-icon">Listenable<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">E</span><span class="tsd-signature-symbol"> | </span><span class="tsd-signature-type">E</span><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol"> | </span><a href="globals.html#wildcard" class="tsd-signature-type">WILDCARD</a></div>
+				<aside class="tsd-sources">
+					<ul>
+						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/835c55c/src/types/events.ts#L7">types/events.ts:7</a></li>
+					</ul>
+				</aside>
+			</section>
+			<section class="tsd-panel tsd-member tsd-kind-type-alias tsd-has-type-parameter tsd-is-external">
+				<a name="multieventhandler" class="tsd-anchor"></a>
+				<h3>Multi<wbr>Event<wbr>Handler</h3>
+				<div class="tsd-signature tsd-kind-icon">Multi<wbr>Event<wbr>Handler<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">function</span></div>
+				<aside class="tsd-sources">
+					<ul>
+						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/835c55c/src/types/eventHandlers.ts#L6">types/eventHandlers.ts:6</a></li>
+					</ul>
+				</aside>
+				<div class="tsd-type-declaration">
+					<h4>Type declaration</h4>
+					<ul class="tsd-parameters">
+						<li class="tsd-parameter-siganture">
+							<ul class="tsd-signatures tsd-kind-type-literal tsd-parent-kind-type-alias tsd-has-type-parameter tsd-is-not-exported">
+								<li class="tsd-signature tsd-kind-icon">&lt;TEvent&gt;<span class="tsd-signature-symbol">(</span>event<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">TEvent</span>, payload<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">TEventMap[TEvent]</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">void</span></li>
+							</ul>
+							<ul class="tsd-descriptions">
+								<li class="tsd-description">
+									<h4 class="tsd-type-parameters-title">Type parameters</h4>
+									<ul class="tsd-type-parameters">
+										<li>
+											<h4>TEvent<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">ElementType</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TEventSubset</span><span class="tsd-signature-symbol">&gt;</span></h4>
+										</li>
+									</ul>
+									<h4 class="tsd-parameters-title">Parameters</h4>
+									<ul class="tsd-parameters">
+										<li>
+											<h5>event: <span class="tsd-signature-type">TEvent</span></h5>
+										</li>
+										<li>
+											<h5>payload: <span class="tsd-signature-type">TEventMap[TEvent]</span></h5>
+										</li>
+									</ul>
+									<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4>
+								</li>
+							</ul>
+						</li>
+					</ul>
+				</div>
+			</section>
+			<section class="tsd-panel tsd-member tsd-kind-type-alias tsd-has-type-parameter tsd-is-external">
+				<a name="singleeventhandler" class="tsd-anchor"></a>
+				<h3>Single<wbr>Event<wbr>Handler</h3>
+				<div class="tsd-signature tsd-kind-icon">Single<wbr>Event<wbr>Handler<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">function</span></div>
+				<aside class="tsd-sources">
+					<ul>
+						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/835c55c/src/types/eventHandlers.ts#L4">types/eventHandlers.ts:4</a></li>
+					</ul>
+				</aside>
+				<div class="tsd-type-declaration">
+					<h4>Type declaration</h4>
+					<ul class="tsd-parameters">
+						<li class="tsd-parameter-siganture">
+							<ul class="tsd-signatures tsd-kind-type-literal tsd-parent-kind-type-alias tsd-is-not-exported">
+								<li class="tsd-signature tsd-kind-icon"><span class="tsd-signature-symbol">(</span>payload<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">TEventMap[T]</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">void</span></li>
+							</ul>
+							<ul class="tsd-descriptions">
+								<li class="tsd-description">
+									<h4 class="tsd-parameters-title">Parameters</h4>
+									<ul class="tsd-parameters">
+										<li>
+											<h5>payload: <span class="tsd-signature-type">TEventMap[T]</span></h5>
+										</li>
+									</ul>
+									<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4>
+								</li>
+							</ul>
+						</li>
+					</ul>
+				</div>
+			</section>
+			<section class="tsd-panel tsd-member tsd-kind-type-alias tsd-is-external">
+				<a name="subscription" class="tsd-anchor"></a>
+				<h3>Subscription</h3>
+				<div class="tsd-signature tsd-kind-icon">Subscription<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">function</span></div>
+				<aside class="tsd-sources">
+					<ul>
+						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/835c55c/src/types/events.ts#L3">types/events.ts:3</a></li>
 					</ul>
 				</aside>
 				<div class="tsd-type-declaration">
@@ -1041,33 +1121,24 @@ img { max-width: 100%; }
 					</ul>
 				</div>
 			</section>
-			<section class="tsd-panel tsd-member tsd-kind-type-alias tsd-has-type-parameter">
-				<a name="listenable" class="tsd-anchor"></a>
-				<h3>Listenable</h3>
-				<div class="tsd-signature tsd-kind-icon">Listenable<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">E</span><span class="tsd-signature-symbol"> | </span><span class="tsd-signature-type">E</span><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol"> | </span><span class="tsd-signature-type">"*"</span></div>
+			<section class="tsd-panel tsd-member tsd-kind-type-alias tsd-is-external">
+				<a name="wildcard" class="tsd-anchor"></a>
+				<h3><span class="tsd-flag ts-flagConst">Const</span> WILDCARD</h3>
+				<div class="tsd-signature tsd-kind-icon">WILDCARD<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">"*"</span><span class="tsd-signature-symbol"> =&nbsp;&quot;*&quot;</span></div>
 				<aside class="tsd-sources">
 					<ul>
-						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/b02e25d/src/strongbus.ts#L9">strongbus.ts:9</a></li>
+						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/835c55c/src/types/events.ts#L5">types/events.ts:5</a></li>
+						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/835c55c/src/types/events.ts#L6">types/events.ts:6</a></li>
 					</ul>
 				</aside>
 			</section>
-			<section class="tsd-panel tsd-member tsd-kind-type-alias tsd-has-type-parameter">
-				<a name="onhandler" class="tsd-anchor"></a>
-				<h3>On<wbr>Handler</h3>
-				<div class="tsd-signature tsd-kind-icon">On<wbr>Handler<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">OnHandler&lt;TEventMap, TEvent&gt;</span></div>
+			<section class="tsd-panel tsd-member tsd-kind-type-alias tsd-has-type-parameter tsd-is-external">
+				<a name="wildcardeventhandler" class="tsd-anchor"></a>
+				<h3>Wildcard<wbr>Event<wbr>Handler</h3>
+				<div class="tsd-signature tsd-kind-icon">Wildcard<wbr>Event<wbr>Handler<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">function</span></div>
 				<aside class="tsd-sources">
 					<ul>
-						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/b02e25d/src/strongbus.ts#L16">strongbus.ts:16</a></li>
-					</ul>
-				</aside>
-			</section>
-			<section class="tsd-panel tsd-member tsd-kind-type-alias tsd-has-type-parameter">
-				<a name="proxyhandler" class="tsd-anchor"></a>
-				<h3>Proxy<wbr>Handler</h3>
-				<div class="tsd-signature tsd-kind-icon">Proxy<wbr>Handler<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">function</span></div>
-				<aside class="tsd-sources">
-					<ul>
-						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/b02e25d/src/strongbus.ts#L13">strongbus.ts:13</a></li>
+						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/835c55c/src/types/eventHandlers.ts#L11">types/eventHandlers.ts:11</a></li>
 					</ul>
 				</aside>
 				<div class="tsd-type-declaration">
@@ -1101,54 +1172,17 @@ img { max-width: 100%; }
 					</ul>
 				</div>
 			</section>
-			<section class="tsd-panel tsd-member tsd-kind-type-alias tsd-has-type-parameter tsd-is-not-exported">
-				<a name="singleeventhandler" class="tsd-anchor"></a>
-				<h3>Single<wbr>Event<wbr>Handler</h3>
-				<div class="tsd-signature tsd-kind-icon">Single<wbr>Event<wbr>Handler<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">function</span></div>
-				<aside class="tsd-sources">
-					<ul>
-						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/b02e25d/src/strongbus.ts#L10">strongbus.ts:10</a></li>
-					</ul>
-				</aside>
-				<div class="tsd-type-declaration">
-					<h4>Type declaration</h4>
-					<ul class="tsd-parameters">
-						<li class="tsd-parameter-siganture">
-							<ul class="tsd-signatures tsd-kind-type-literal tsd-parent-kind-type-alias tsd-has-type-parameter tsd-is-not-exported">
-								<li class="tsd-signature tsd-kind-icon">&lt;T&gt;<span class="tsd-signature-symbol">(</span>payload<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">TEventMap[T]</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">void</span></li>
-							</ul>
-							<ul class="tsd-descriptions">
-								<li class="tsd-description">
-									<h4 class="tsd-type-parameters-title">Type parameters</h4>
-									<ul class="tsd-type-parameters">
-										<li>
-											<h4>T<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">StringKeys</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TEventMap</span><span class="tsd-signature-symbol">&gt;</span></h4>
-										</li>
-									</ul>
-									<h4 class="tsd-parameters-title">Parameters</h4>
-									<ul class="tsd-parameters">
-										<li>
-											<h5>payload: <span class="tsd-signature-type">TEventMap[T]</span></h5>
-										</li>
-									</ul>
-									<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4>
-								</li>
-							</ul>
-						</li>
-					</ul>
-				</div>
-			</section>
 		</section>
-		<section class="tsd-panel-group tsd-member-group ">
+		<section class="tsd-panel-group tsd-member-group tsd-is-external">
 			<h2>Variables</h2>
-			<section class="tsd-panel tsd-member tsd-kind-variable">
+			<section class="tsd-panel tsd-member tsd-kind-variable tsd-is-external">
 				<a name="lifecycle" class="tsd-anchor"></a>
 				<h3><span class="tsd-flag ts-flagConst">Const</span> Lifecycle</h3>
 				<div class="tsd-signature tsd-kind-icon">Lifecycle<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">keyof object</span><span class="tsd-signature-symbol"> =&nbsp;strEnum([&#x27;willActivate&#x27;,&#x27;active&#x27;,&#x27;willIdle&#x27;,&#x27;idle&#x27;,&#x27;willAddListener&#x27;,&#x27;didAddListener&#x27;,&#x27;willRemoveListener&#x27;,&#x27;didRemoveListener&#x27;])</span></div>
 				<aside class="tsd-sources">
 					<ul>
-						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/b02e25d/src/strongbus.ts#L23">strongbus.ts:23</a></li>
-						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/b02e25d/src/strongbus.ts#L33">strongbus.ts:33</a></li>
+						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/835c55c/src/types/lifecycle.ts#L3">types/lifecycle.ts:3</a></li>
+						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/835c55c/src/types/lifecycle.ts#L13">types/lifecycle.ts:13</a></li>
 					</ul>
 				</aside>
 			</section>

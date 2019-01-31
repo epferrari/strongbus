@@ -18,17 +18,25 @@ export class Bus<TEventMap extends object = object> {
     name: 'Anonymous',
     allowUnhandledEvents: true,
     thresholds: {
-      info: 50,
+      info: 100,
       warn: 500,
       error: Infinity
     },
     logger: console
   };
 
+  /**
+   * Set the default for Bus.options.allowUnhandledEvents for all instances
+   * @setter `boolean`
+   */
   public static set defaultAllowUnhandledEvents(allow: boolean) {
     Bus.defaultOptions.allowUnhandledEvents = allow;
   }
 
+  /**
+   * Set the default Bus.options.thresholds for all instances
+   * @setter Partial<[[ListenerThresholds]]>
+   */
   public static set defaultThresholds(thresholds: Partial<ListenerThresholds>) {
     Bus.defaultOptions.thresholds = {
       ...Bus.defaultOptions.thresholds,
@@ -36,6 +44,10 @@ export class Bus<TEventMap extends object = object> {
     };
   }
 
+  /**
+   * Set the default logger for all instances to an object that implements [[Logger]] interface
+   * @setter [[Logger]]
+   */
   public static set defaultLogger(logger: Logger) {
     Bus.defaultOptions.logger = logger;
   }
@@ -63,8 +75,9 @@ export class Bus<TEventMap extends object = object> {
 
   /**
    * @override
-   * @param event
-   * @param message
+   * How should the bus handle events emitted that have no listeners.
+   * The default implementation is to throw an error.
+   * Will be invoked when an instance's `options.allowUnhandledEvents = false` (default is true).
    */
   protected handleUnexpectedEvent<T extends StringKeys<TEventMap>>(event: T, payload: TEventMap[T]) {
     const errorMessage = [
@@ -76,9 +89,9 @@ export class Bus<TEventMap extends object = object> {
   }
 
   /**
-   * @description subscribe a callback to event(s)
-   *  alias of <Bus>.proxy when invoked with wildcard (*)
-   *  alias of <Bus>.any when invoked with an array of events
+   * Subscribe a callback to event(s).
+   * alias of [[Bus.proxy]] when invoked with [[WILDCARD]],
+   * alias of [[Bus.any]] when invoked with an array of events
    */
   public on<T extends Events.Listenable<StringKeys<TEventMap>>>(event: T, handler: EventHandlers.EventHandler<TEventMap, T>): Events.Subscription {
     if(Array.isArray(event)) {
@@ -96,8 +109,8 @@ export class Bus<TEventMap extends object = object> {
   }
 
   /**
-   * @description Handle multiple events with the same handler.
-   * Handler receives raised event as first argument, payload as second argument
+   * Handle multiple events with the same handler.
+   * [[EventHandlers.MultiEventHandler]] receives raised event as first argument, payload as second argument
    */
   public any<TEvents extends StringKeys<TEventMap>[]>(events: TEvents, handler: EventHandlers.MultiEventHandler<TEventMap, TEvents>): Events.Subscription {
     return over(
@@ -110,8 +123,8 @@ export class Bus<TEventMap extends object = object> {
   }
 
   /**
-   * Create a proxy for all events raised. Like `any`, handlers receive the raised event as first
-   * argument and payload as second argument. Think of this as a combination of `any` and `every`
+   * Create a proxy for all events raised. Like [[Bus.any]], handlers receive the raised event as first
+   * argument and payload as second argument.
    */
   public proxy(handler: EventHandlers.WildcardEventHandler<TEventMap>): Events.Subscription {
     this.bus.on(Events.WILDCARD, handler);
@@ -119,12 +132,15 @@ export class Bus<TEventMap extends object = object> {
   }
 
   /**
-   * @alias proxy
+   * @alias [[Bus.proxy]]
    */
   public every(handler: EventHandlers.WildcardEventHandler<TEventMap>): Events.Subscription {
     return this.proxy(handler);
   }
 
+  /**
+   * Pipe one bus's events into another bus's subscribers
+   */
   public pipe<TDelegate extends Bus<TEventMap>>(delegate: TDelegate): TDelegate {
     if(delegate !== this as any) {
       if(!this._delegates.has(delegate)) {
@@ -144,11 +160,19 @@ export class Bus<TEventMap extends object = object> {
     this._delegates.delete(delegate);
   }
 
+  /**
+   * Subscribe to meta changes to the [[Bus]] with [[Lifecycle]] events
+   */
   public hook(event: Lifecycle, handler: (targetEvent: StringKeys<TEventMap>) => void): Events.Subscription {
     this.lifecycle.on(event, handler);
     return () => this.lifecycle.removeListener(event, handler);
   }
 
+  /**
+   * Subscribe to meta states of the [[Bus]], `idle` and `active`.
+   * Bus becomes idle when it goes from 1 to 0 subscribers, and active when it goes from 0 to 1.
+   * The handler receives a `boolean` indicating if the bus is active (`true`) or idle (`false`)
+   */
   public monitor(handler: (activeState: boolean) => void): Events.Subscription {
     return over([
       this.hook(Lifecycle.active, () => handler(true)),
@@ -156,29 +180,48 @@ export class Bus<TEventMap extends object = object> {
     ]);
   }
 
+  /**
+   * The active state of the bus, i.e. does it have any subscribers.
+   * @getter `boolean`
+   */
   public get active(): boolean {
     return this._active;
   }
 
+  /**
+   * @getter `string`
+   */
   public get name(): string {
     return `${this.options.name} ${this.constructor.name}`;
   }
 
+  /**
+   * @getter `boolean`
+   */
   public get hasListeners(): boolean {
     return this.hasOwnListeners || this.hasDelegateListeners;
   }
 
+  /**
+   * @getter `boolean`
+   */
   public get hasOwnListeners(): boolean {
     return Boolean(this.bus.eventNames().reduce((acc, event) => {
       return (acc || this.hasListenersFor(event.toString() as StringKeys<TEventMap>));
     }, false));
   }
 
+  /**
+   * @getter `boolean`
+   */
   public get hasDelegateListeners(): boolean {
     return Array.from(this._delegates.keys())
       .reduce((acc, d) => (acc || d.hasListeners), false);
   }
 
+  /**
+   * @getter `{[eventName]: EventEmitter.ListenerFn[]}`
+   */
   public get listeners(): {[event: string]: EventEmitter.ListenerFn[]} {
     const ownListeners = this.ownListeners;
     const delegates = Array.from(this._delegates.keys());
@@ -210,18 +253,6 @@ export class Bus<TEventMap extends object = object> {
     }, {});
   }
 
-  private cacheListener(event: string, handler: EventEmitter.ListenerFn): Events.Subscription {
-    const token = randomId();
-    const sub = () => {
-      if(this.subscriptionCache.has(token)) {
-        this.bus.removeListener(event, handler);
-        this.subscriptionCache.delete(token);
-      }
-    };
-    this.subscriptionCache.set(token, sub);
-    return sub;
-  }
-
   private get ownListeners(): {[event: string]: EventEmitter.ListenerFn[]} {
     return this.bus.eventNames().reduce((acc, event) => {
       return {
@@ -235,7 +266,7 @@ export class Bus<TEventMap extends object = object> {
     return this.hasOwnListenersFor(event) || this.hasDelegateListenersFor(event);
   }
 
-  public hasOwnListenersFor<TEvents extends StringKeys<TEventMap>>(event: TEvents): boolean {
+  public  hasOwnListenersFor<TEvents extends StringKeys<TEventMap>>(event: TEvents): boolean {
     return this.bus.listenerCount(event) > 0;
   }
 
@@ -244,13 +275,17 @@ export class Bus<TEventMap extends object = object> {
       .reduce((acc, d) => (d.hasListenersFor(event) || acc), false);
   }
 
+  /**
+   * Remove all event subscribers, lifecycle subscribers, and delegates
+   * triggers lifecycle meta events for all subscribed events before removing lifecycle subscribers
+   */
   public destroy() {
-    this.releaseListeners();
+    this.releaseSubscribers();
     this.lifecycle.removeAllListeners();
     this.releaseDelegates();
   }
 
-  private releaseListeners(): void {
+  private releaseSubscribers(): void {
     // any un-invoked unsubscribes will be invoked,
     // their lifecycle hooks will be triggerd
     // and they will be cleaned removed from the cache
@@ -262,6 +297,18 @@ export class Bus<TEventMap extends object = object> {
     const delegateSubs: Events.Subscription[] = flatten(Array.from(this._delegates.values()));
     over(delegateSubs)();
     this._delegates.clear();
+  }
+
+  private cacheListener(event: string, handler: EventEmitter.ListenerFn): Events.Subscription {
+    const token = randomId();
+    const sub = () => {
+      if(this.subscriptionCache.has(token)) {
+        this.bus.removeListener(event, handler);
+        this.subscriptionCache.delete(token);
+      }
+    };
+    this.subscriptionCache.set(token, sub);
+    return sub;
   }
 
   private decorateOnMethod() {

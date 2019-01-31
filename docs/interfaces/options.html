@@ -895,6 +895,8 @@ img { max-width: 100%; }
 							</div>
 							<input type="checkbox" id="tsd-filter-inherited" checked />
 							<label class="tsd-widget" for="tsd-filter-inherited">Inherited</label>
+							<input type="checkbox" id="tsd-filter-externals" checked />
+							<label class="tsd-widget" for="tsd-filter-externals">Externals</label>
 							<input type="checkbox" id="tsd-filter-only-exported" />
 							<label class="tsd-widget" for="tsd-filter-only-exported">Only exported</label>
 						</div>
@@ -907,48 +909,57 @@ img { max-width: 100%; }
 </header>
 <nav class="tsd-navigation secondary">
 	<ul>
-		<li class=" tsd-kind-class tsd-has-type-parameter">
+		<li class=" tsd-kind-class tsd-has-type-parameter tsd-is-external">
 			<a href="../classes/bus.html" class="tsd-kind-icon">Bus</a>
 		</li>
-		<li class="current tsd-kind-interface">
+		<li class=" tsd-kind-interface tsd-is-external">
+			<a href="listenerthresholds.html" class="tsd-kind-icon">Listener<wbr>Thresholds</a>
+		</li>
+		<li class=" tsd-kind-interface tsd-is-external">
+			<a href="logger.html" class="tsd-kind-icon">Logger</a>
+		</li>
+		<li class="current tsd-kind-interface tsd-is-external">
 			<a href="options.html" class="tsd-kind-icon">Options</a>
 			<ul>
-				<li class=" tsd-kind-property tsd-parent-kind-interface">
+				<li class=" tsd-kind-property tsd-parent-kind-interface tsd-is-external">
 					<a href="options.html#allowunhandledevents" class="tsd-kind-icon">allow<wbr>Unhandled<wbr>Events</a>
 				</li>
-				<li class=" tsd-kind-property tsd-parent-kind-interface">
-					<a href="options.html#maxlisteners" class="tsd-kind-icon">max<wbr>Listeners</a>
+				<li class=" tsd-kind-property tsd-parent-kind-interface tsd-is-external">
+					<a href="options.html#logger" class="tsd-kind-icon">logger</a>
 				</li>
-				<li class=" tsd-kind-property tsd-parent-kind-interface">
+				<li class=" tsd-kind-property tsd-parent-kind-interface tsd-is-external">
 					<a href="options.html#name" class="tsd-kind-icon">name</a>
 				</li>
-				<li class=" tsd-kind-property tsd-parent-kind-interface">
-					<a href="options.html#potentialmemoryleakwarningthreshold" class="tsd-kind-icon">potential<wbr>Memory<wbr>Leak<wbr>Warning<wbr>Threshold</a>
+				<li class=" tsd-kind-property tsd-parent-kind-interface tsd-is-external">
+					<a href="options.html#thresholds" class="tsd-kind-icon">thresholds</a>
 				</li>
 			</ul>
 		</li>
-		<li class=" tsd-kind-type-alias tsd-is-not-exported">
-			<a href="../globals.html#ambiguouseventhandler" class="tsd-kind-icon">Ambiguous<wbr>Event<wbr>Handler</a>
-		</li>
-		<li class=" tsd-kind-type-alias">
+		<li class=" tsd-kind-type-alias tsd-is-external">
 			<a href="../globals.html#event" class="tsd-kind-icon">Event</a>
 		</li>
-		<li class=" tsd-kind-type-alias">
-			<a href="../globals.html#eventsubscription" class="tsd-kind-icon">Event<wbr>Subscription</a>
+		<li class=" tsd-kind-type-alias tsd-has-type-parameter tsd-is-external">
+			<a href="../globals.html#eventhandler" class="tsd-kind-icon">Event<wbr>Handler</a>
 		</li>
-		<li class=" tsd-kind-type-alias tsd-has-type-parameter">
+		<li class=" tsd-kind-type-alias tsd-has-type-parameter tsd-is-external">
 			<a href="../globals.html#listenable" class="tsd-kind-icon">Listenable</a>
 		</li>
-		<li class=" tsd-kind-type-alias tsd-has-type-parameter">
-			<a href="../globals.html#onhandler" class="tsd-kind-icon">On<wbr>Handler</a>
+		<li class=" tsd-kind-type-alias tsd-has-type-parameter tsd-is-external">
+			<a href="../globals.html#multieventhandler" class="tsd-kind-icon">Multi<wbr>Event<wbr>Handler</a>
 		</li>
-		<li class=" tsd-kind-type-alias tsd-has-type-parameter">
-			<a href="../globals.html#proxyhandler" class="tsd-kind-icon">Proxy<wbr>Handler</a>
-		</li>
-		<li class=" tsd-kind-type-alias tsd-has-type-parameter tsd-is-not-exported">
+		<li class=" tsd-kind-type-alias tsd-has-type-parameter tsd-is-external">
 			<a href="../globals.html#singleeventhandler" class="tsd-kind-icon">Single<wbr>Event<wbr>Handler</a>
 		</li>
-		<li class=" tsd-kind-variable">
+		<li class=" tsd-kind-type-alias tsd-is-external">
+			<a href="../globals.html#subscription" class="tsd-kind-icon">Subscription</a>
+		</li>
+		<li class=" tsd-kind-type-alias tsd-is-external">
+			<a href="../globals.html#wildcard" class="tsd-kind-icon">WILDCARD</a>
+		</li>
+		<li class=" tsd-kind-type-alias tsd-has-type-parameter tsd-is-external">
+			<a href="../globals.html#wildcardeventhandler" class="tsd-kind-icon">Wildcard<wbr>Event<wbr>Handler</a>
+		</li>
+		<li class=" tsd-kind-variable tsd-is-external">
 			<a href="../globals.html#lifecycle" class="tsd-kind-icon">Lifecycle</a>
 		</li>
 	</ul>
@@ -959,17 +970,16 @@ img { max-width: 100%; }
 			<div class="tsd-comment tsd-typography">
 				<dl class="tsd-comment-tags">
 					<dt>prop</dt>
-					<dd><p>allowUnhandledEvents [true] - should the Bus throw an error when an event is emitted and there are no listeners</p>
+					<dd><p>allowUnhandledEvents <code>true</code> - should the Bus throw an error when an event is emitted and there are no listeners</p>
 					</dd>
 					<dt>prop</dt>
-					<dd><p>maxListeners [50] - number of max listeners expected for events. Will raise a benign info message when exceeded.
-						Bus will still accept listeners after the this threshold is exceeded.</p>
+					<dd><p>name <code>&quot;Anonymous&quot;</code> - a name for the bus. included in warn/info messages and errors thrown</p>
 					</dd>
 					<dt>prop</dt>
-					<dd><p>name [Anonymous] - a name for the bus. included in warn/info messages and errors thrown</p>
+					<dd><p>thresholds <a href="listenerthresholds.html">ListenerThresholds</a></p>
 					</dd>
 					<dt>prop</dt>
-					<dd><p>potentialMemoryLeakWarningThreshold [500] - when to raise a more serious warning about high listener counts.</p>
+					<dd><p>logger <a href="logger.html">Logger</a> [console] - how to log potential memory leaks, if thresholds are &lt; Infinity</p>
 					</dd>
 				</dl>
 			</div>
@@ -986,57 +996,57 @@ img { max-width: 100%; }
 			<h2>Index</h2>
 			<section class="tsd-panel tsd-index-panel">
 				<div class="tsd-index-content">
-					<section class="tsd-index-section ">
+					<section class="tsd-index-section tsd-is-external">
 						<h3>Properties</h3>
 						<ul class="tsd-index-list">
-							<li class="tsd-kind-property tsd-parent-kind-interface"><a href="options.html#allowunhandledevents" class="tsd-kind-icon">allow<wbr>Unhandled<wbr>Events</a></li>
-							<li class="tsd-kind-property tsd-parent-kind-interface"><a href="options.html#maxlisteners" class="tsd-kind-icon">max<wbr>Listeners</a></li>
-							<li class="tsd-kind-property tsd-parent-kind-interface"><a href="options.html#name" class="tsd-kind-icon">name</a></li>
-							<li class="tsd-kind-property tsd-parent-kind-interface"><a href="options.html#potentialmemoryleakwarningthreshold" class="tsd-kind-icon">potential<wbr>Memory<wbr>Leak<wbr>Warning<wbr>Threshold</a></li>
+							<li class="tsd-kind-property tsd-parent-kind-interface tsd-is-external"><a href="options.html#allowunhandledevents" class="tsd-kind-icon">allow<wbr>Unhandled<wbr>Events</a></li>
+							<li class="tsd-kind-property tsd-parent-kind-interface tsd-is-external"><a href="options.html#logger" class="tsd-kind-icon">logger</a></li>
+							<li class="tsd-kind-property tsd-parent-kind-interface tsd-is-external"><a href="options.html#name" class="tsd-kind-icon">name</a></li>
+							<li class="tsd-kind-property tsd-parent-kind-interface tsd-is-external"><a href="options.html#thresholds" class="tsd-kind-icon">thresholds</a></li>
 						</ul>
 					</section>
 				</div>
 			</section>
 		</section>
-		<section class="tsd-panel-group tsd-member-group ">
+		<section class="tsd-panel-group tsd-member-group tsd-is-external">
 			<h2>Properties</h2>
-			<section class="tsd-panel tsd-member tsd-kind-property tsd-parent-kind-interface">
+			<section class="tsd-panel tsd-member tsd-kind-property tsd-parent-kind-interface tsd-is-external">
 				<a name="allowunhandledevents" class="tsd-anchor"></a>
 				<h3><span class="tsd-flag ts-flagOptional">Optional</span> allow<wbr>Unhandled<wbr>Events</h3>
 				<div class="tsd-signature tsd-kind-icon">allow<wbr>Unhandled<wbr>Events<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">boolean</span></div>
 				<aside class="tsd-sources">
 					<ul>
-						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/b02e25d/src/strongbus.ts#L43">strongbus.ts:43</a></li>
+						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/835c55c/src/types/options.ts#L23">types/options.ts:23</a></li>
 					</ul>
 				</aside>
 			</section>
-			<section class="tsd-panel tsd-member tsd-kind-property tsd-parent-kind-interface">
-				<a name="maxlisteners" class="tsd-anchor"></a>
-				<h3><span class="tsd-flag ts-flagOptional">Optional</span> max<wbr>Listeners</h3>
-				<div class="tsd-signature tsd-kind-icon">max<wbr>Listeners<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span></div>
+			<section class="tsd-panel tsd-member tsd-kind-property tsd-parent-kind-interface tsd-is-external">
+				<a name="logger" class="tsd-anchor"></a>
+				<h3><span class="tsd-flag ts-flagOptional">Optional</span> logger</h3>
+				<div class="tsd-signature tsd-kind-icon">logger<span class="tsd-signature-symbol">:</span> <a href="logger.html" class="tsd-signature-type">Logger</a></div>
 				<aside class="tsd-sources">
 					<ul>
-						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/b02e25d/src/strongbus.ts#L44">strongbus.ts:44</a></li>
+						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/835c55c/src/types/options.ts#L26">types/options.ts:26</a></li>
 					</ul>
 				</aside>
 			</section>
-			<section class="tsd-panel tsd-member tsd-kind-property tsd-parent-kind-interface">
+			<section class="tsd-panel tsd-member tsd-kind-property tsd-parent-kind-interface tsd-is-external">
 				<a name="name" class="tsd-anchor"></a>
 				<h3><span class="tsd-flag ts-flagOptional">Optional</span> name</h3>
 				<div class="tsd-signature tsd-kind-icon">name<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
 				<aside class="tsd-sources">
 					<ul>
-						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/b02e25d/src/strongbus.ts#L45">strongbus.ts:45</a></li>
+						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/835c55c/src/types/options.ts#L24">types/options.ts:24</a></li>
 					</ul>
 				</aside>
 			</section>
-			<section class="tsd-panel tsd-member tsd-kind-property tsd-parent-kind-interface">
-				<a name="potentialmemoryleakwarningthreshold" class="tsd-anchor"></a>
-				<h3><span class="tsd-flag ts-flagOptional">Optional</span> potential<wbr>Memory<wbr>Leak<wbr>Warning<wbr>Threshold</h3>
-				<div class="tsd-signature tsd-kind-icon">potential<wbr>Memory<wbr>Leak<wbr>Warning<wbr>Threshold<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span></div>
+			<section class="tsd-panel tsd-member tsd-kind-property tsd-parent-kind-interface tsd-is-external">
+				<a name="thresholds" class="tsd-anchor"></a>
+				<h3><span class="tsd-flag ts-flagOptional">Optional</span> thresholds</h3>
+				<div class="tsd-signature tsd-kind-icon">thresholds<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">Partial</span><span class="tsd-signature-symbol">&lt;</span><a href="listenerthresholds.html" class="tsd-signature-type">ListenerThresholds</a><span class="tsd-signature-symbol">&gt;</span></div>
 				<aside class="tsd-sources">
 					<ul>
-						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/b02e25d/src/strongbus.ts#L46">strongbus.ts:46</a></li>
+						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/835c55c/src/types/options.ts#L25">types/options.ts:25</a></li>
 					</ul>
 				</aside>
 			</section>

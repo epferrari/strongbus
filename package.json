@@ -22,7 +22,7 @@
     "test": "npm run build && ./node_modules/.bin/jasmine lib/**/*_spec.js",
     "validate": "npm run test && npm run lint",
     "install": "([ -d ./src ] && [ ! -d ./lib ] && mkdir lib && npm install . &&  npm run build) || echo ''",
-    "docs": "./node_modules/.bin/typedoc --out ./docs --theme minimal --mode file --excludePrivate --excludeProtected --excludeExternals ./src/strongbus.ts",
+    "docs": "./node_modules/.bin/typedoc --out ./docs --theme minimal --mode file --excludePrivate --exclude **/*/utils/*,**/*/utility.ts,**/*spec.ts ./src/index.ts",
     "prepare": "npm run build",
     "version": "git add -A src",
     "postversion": "git push && git push --tags"
