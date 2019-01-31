@@ -14,8 +14,8 @@
     "emitter",
     "event-emitter"
   ],
-  "main": "lib/strongbus.js",
-  "types": "lib/strongbus.d.js",
+  "main": "lib/index.js",
+  "types": "lib/index.d.js",
   "scripts": {
     "build": "./node_modules/.bin/tsc",
     "lint": "./node_modules/.bin/tslint -c tslint.json -p tsconfig.json",
