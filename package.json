@@ -35,7 +35,7 @@
   "dependencies": {
     "core-decorators": "^0.20.0",
     "eventemitter3": "^3.1.0",
-    "lodash": "^4.17.11"
+    "lodash": "^4.17.15"
   },
   "devDependencies": {
     "@types/jasmine": "^3.3.0",
@@ -43,7 +43,7 @@
     "@types/node": "^10.12.10",
     "jasmine": "^3.3.0",
     "tslint": "^5.11.0",
-    "typedoc": "^0.14.2",
+    "typedoc": "^0.15.0",
     "typescript": "^3.1.6"
   }
 }
