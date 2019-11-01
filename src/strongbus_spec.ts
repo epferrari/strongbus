@@ -75,12 +75,22 @@ describe('Strongbus.Bus', () => {
       expect(handleFoo).toHaveBeenCalledWith('elephant');
     });
 
-    it('returns an unsubscribe function', () => {
-      const unsub = bus.on('foo', () => { return; });
-      expect(bus.hasListeners).toBeTruthy();
+    describe('returns a Subscription', () => {
+      it('which can be disposed by direct invocation', () => {
+        const unsub = bus.on('foo', () => { return; });
+        expect(bus.hasListeners).toBeTruthy();
 
-      unsub();
-      expect(bus.hasListeners).toBeFalsy();
+        unsub();
+        expect(bus.hasListeners).toBeFalsy();
+      });
+
+      it('which can be disposed by calling .unsubscribe on the Subscription reference', () => {
+        const unsub2 = bus.on('foo', () => { return; });
+        expect(bus.hasListeners).toBeTruthy();
+
+        unsub2.unsubscribe();
+        expect(bus.hasListeners).toBeFalsy();
+      });
     });
 
     describe('given the wildcard operator to listen on', () => {
