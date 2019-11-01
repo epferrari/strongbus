@@ -287,8 +287,8 @@ export class Bus<TEventMap extends object = object> {
 
   private releaseSubscribers(): void {
     // any un-invoked unsubscribes will be invoked,
-    // their lifecycle hooks will be triggerd
-    // and they will be cleaned removed from the cache
+    // their lifecycle hooks will be triggered,
+    // and they will be removed from the cache
     over(Array.from(this.subscriptionCache.values()))();
     this.bus.removeAllListeners();
   }
