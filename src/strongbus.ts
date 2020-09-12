@@ -9,6 +9,7 @@ import * as Events from './types/events';
 import * as EventHandlers from './types/eventHandlers';
 import {compact} from './utils/compact';
 import {over} from './utils/over';
+import {generateSubscription} from './utils/generateSubscription';
 import {randomId} from './utils/randomId';
 
 
@@ -114,13 +115,13 @@ export class Bus<TEventMap extends object = object> {
    * [[EventHandlers.MultiEventHandler]] receives raised event as first argument, payload as second argument
    */
   public any<TEvents extends StringKeys<TEventMap>[]>(events: TEvents, handler: EventHandlers.MultiEventHandler<TEventMap, TEvents>): Events.Subscription {
-    return over(
+    return generateSubscription(over(
       (events as any).map(<TEvent extends ElementType<TEvents>>(e: TEvent) => {
         const anyHandler = (payload: TEventMap[TEvent]) => handler(e, payload);
         this.bus.on(e, anyHandler);
         return this.cacheListener(e, anyHandler);
       })
-    );
+    ));
   }
 
   /**
@@ -166,7 +167,7 @@ export class Bus<TEventMap extends object = object> {
    */
   public hook(event: Lifecycle, handler: (targetEvent: StringKeys<TEventMap>) => void): Events.Subscription {
     this.lifecycle.on(event, handler);
-    return () => this.lifecycle.removeListener(event, handler);
+    return generateSubscription(() => this.lifecycle.removeListener(event, handler));
   }
 
   /**
@@ -175,10 +176,10 @@ export class Bus<TEventMap extends object = object> {
    * The handler receives a `boolean` indicating if the bus is active (`true`) or idle (`false`)
    */
   public monitor(handler: (activeState: boolean) => void): Events.Subscription {
-    return over([
+    return generateSubscription(over([
       this.hook(Lifecycle.active, () => handler(true)),
       this.hook(Lifecycle.idle, () => handler(false))
-    ]);
+    ]));
   }
 
   /**
@@ -301,8 +302,8 @@ export class Bus<TEventMap extends object = object> {
 
   private releaseSubscribers(): void {
     // any un-invoked unsubscribes will be invoked,
-    // their lifecycle hooks will be triggerd
-    // and they will be cleaned removed from the cache
+    // their lifecycle hooks will be triggered,
+    // and they will be removed from the cache
     over(Array.from(this.subscriptionCache.values()))();
     this.bus.removeAllListeners();
   }
@@ -314,12 +315,12 @@ export class Bus<TEventMap extends object = object> {
 
   private cacheListener(event: string, handler: EventEmitter.ListenerFn): Events.Subscription {
     const token = randomId();
-    const sub = () => {
+    const sub = generateSubscription(() => {
       if(this.subscriptionCache.has(token)) {
-        this.bus.removeListener(event, handler);
         this.subscriptionCache.delete(token);
+        this.bus.removeListener(event, handler);
       }
-    };
+    });
     this.subscriptionCache.set(token, sub);
     return sub;
   }
