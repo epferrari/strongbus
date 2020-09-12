@@ -1,6 +1,5 @@
 import * as EventEmitter from 'eventemitter3';
 import {autobind} from 'core-decorators';
-import {forEach, uniq, compact, size, over, flatten} from 'lodash';
 
 import {Logger} from './types/logger';
 import {Lifecycle} from './types/lifecycle';
@@ -8,6 +7,8 @@ import {Options, ListenerThresholds} from './types/options';
 import {StringKeys, ElementType} from './types/utility';
 import * as Events from './types/events';
 import * as EventHandlers from './types/eventHandlers';
+import {compact} from './utils/compact';
+import {over} from './utils/over';
 import {randomId} from './utils/randomId';
 
 
@@ -206,60 +207,69 @@ export class Bus<TEventMap extends object = object> {
    * @getter `boolean`
    */
   public get hasOwnListeners(): boolean {
-    return Boolean(this.bus.eventNames().reduce((acc, event) => {
-      return (acc || this.hasListenersFor(event.toString() as StringKeys<TEventMap>));
-    }, false));
+    for(const event of this.bus.eventNames()) {
+      if(this.hasListenersFor(String(event) as StringKeys<TEventMap>)) {
+        return true;
+      }
+    }
   }
 
   /**
    * @getter `boolean`
    */
   public get hasDelegateListeners(): boolean {
-    return Array.from(this._delegates.keys())
-      .reduce((acc, d) => (acc || d.hasListeners), false);
+    for(const delegate of this._delegates.keys()) {
+      if(delegate.hasListeners) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
    * @getter `{[eventName]: EventEmitter.ListenerFn[]}`
    */
   public get listeners(): {[event: string]: EventEmitter.ListenerFn[]} {
-    const ownListeners = this.ownListeners;
-    const delegates = Array.from(this._delegates.keys());
-    const delegateListenersByEvent: {[event: string]: EventEmitter.ListenerFn[]} = delegates.reduce((acc, delegate) => {
-      forEach(delegate.listeners, (listeners: EventEmitter.ListenerFn[], event: Events.Event) => {
-        event = event.toString();
-        if(acc[event]) {
-          acc[event] = [
-            ...acc[event],
-            ...listeners
-          ];
-        } else {
-          acc[event] = listeners;
-        }
-      });
-      return acc;
-    }, {} as {[event: string]: EventEmitter.ListenerFn[]});
-
-    const allEvents = uniq([...Object.keys(ownListeners), ...Object.keys(delegateListenersByEvent)]);
-    return allEvents.reduce((acc: {[event: string]: EventEmitter.ListenerFn[]}, event: string) => {
-      const eventListeners = compact([
-        ...(ownListeners[event] || []),
-        ...(delegateListenersByEvent[event] || [])
-      ]);
-      if(eventListeners && eventListeners.length) {
-        acc[event] = eventListeners;
-      }
-      return acc;
-    }, {});
+    const obj: {[event: string]: EventEmitter.ListenerFn[]} = {};
+    const map = this.listenersAsMap;
+    map.forEach((listeners, event) => {
+      obj[event] = listeners;
+    });
+    return obj;
   }
 
-  private get ownListeners(): {[event: string]: EventEmitter.ListenerFn[]} {
-    return this.bus.eventNames().reduce((acc, event) => {
-      return {
-        ...acc,
-        [event]: this.bus.listeners(event)
-      };
-    }, {});
+  private get listenersAsMap(): Map<string, EventEmitter.ListenerFn[]> {
+    const map = this.ownListeners;
+    this._delegates.forEach((_, delegate) => {
+      const delegateMap = delegate.listenersAsMap;
+      delegateMap.forEach((delegateListeners, event) => {
+        let listeners = map.get(event);
+        if(!listeners) {
+          listeners = [];
+          map.set(event, listeners);
+        }
+        listeners.push(...delegateListeners);
+      });
+    });
+    return map;
+  }
+
+  private get ownListeners(): Map<string, EventEmitter.ListenerFn[]> {
+    const empty = new Set<string>();
+    const map = new Map<string, EventEmitter.ListenerFn[]>(
+      this.bus.eventNames().map(event => {
+        const listeners = compact(this.bus.listeners(event));
+        event = String(event);
+        if(!listeners.length) {
+          empty.add(event);
+        }
+        return [String(event), listeners];
+      })
+    );
+    if(empty.size) {
+      empty.forEach(event => map.delete(event));
+    }
+    return map;
   }
 
   public hasListenersFor<TEvents extends StringKeys<TEventMap>>(event: TEvents): boolean {
@@ -271,8 +281,12 @@ export class Bus<TEventMap extends object = object> {
   }
 
   public hasDelegateListenersFor<TEvents extends StringKeys<TEventMap>>(event: TEvents): boolean {
-    return Array.from(this._delegates.keys())
-      .reduce((acc, d) => (d.hasListenersFor(event) || acc), false);
+    for(const delegate of this._delegates.keys()) {
+      if(delegate.hasListenersFor(event)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -294,8 +308,7 @@ export class Bus<TEventMap extends object = object> {
   }
 
   private releaseDelegates(): void {
-    const delegateSubs: Events.Subscription[] = flatten(Array.from(this._delegates.values()));
-    over(delegateSubs)();
+    this._delegates.forEach(subs => over(subs)());
     this._delegates.clear();
   }
 
@@ -391,7 +404,7 @@ export class Bus<TEventMap extends object = object> {
 
   private willRemoveListener(event: StringKeys<TEventMap>) {
     this.lifecycle.emit(Lifecycle.willRemoveListener, event);
-    if(this.active && size(this.listeners) === 1) {
+    if(this.active && this.listenersAsMap.size === 1) {
       this.lifecycle.emit(Lifecycle.willIdle);
     }
   }
