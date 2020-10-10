@@ -1,5 +1,5 @@
 import * as Strongbus from './';
-import {StringKeys} from './types/utility';
+import {EventKeys} from './types/utility';
 
 type TestEventMap = {
   foo: string;
@@ -14,7 +14,7 @@ class DelegateTestBus<T extends object = TestEventMap> extends Strongbus.Bus<T> 
     this.emulateListenerCount = options.emulateListenerCount;
   }
 
-  public emit<E extends StringKeys<T>>(event: E, payload: T[E]): boolean {
+  public emit<E extends EventKeys<T>>(event: E, payload: T[E]): boolean {
     super.emit(event, payload);
     return this.emulateListenerCount;
   }
@@ -508,21 +508,21 @@ describe('Strongbus.Bus', () => {
 
       describe('and there are no delegate listeners', () => {
         it('lists the listeners on the instance', () => {
-          expect(bus.listeners).toEqual({
-            foo: [onTestEvent]
-          });
+          expect(bus.listeners).toEqual(new Map([[
+            'foo', new Set([onTestEvent])
+          ]]));
           bus.on('*', onAnyEvent);
-          expect(bus.listeners.foo).toEqual([onTestEvent]);
-          expect(bus.listeners['*'].length).toEqual(1); // will be an anonymous wrapper around onEveryEvent
+          expect(bus.listeners.get('foo')).toEqual(new Set([onTestEvent]));
+          expect(bus.listeners.get('*').size).toEqual(1); // will be an anonymous wrapper around onEveryEvent
         });
       });
 
       describe('and the instance has delegates with no listeners', () => {
         it("lists the instance's listeners", () => {
           bus.pipe(bus2);
-          expect(bus.listeners).toEqual({
-            foo: [onTestEvent]
-          });
+          expect(bus.listeners).toEqual(new Map([[
+            'foo', new Set([onTestEvent])
+          ]]));
         });
       });
 
@@ -530,9 +530,9 @@ describe('Strongbus.Bus', () => {
         it("lists the instance's listeners and the delegate listeners", () => {
           bus.pipe(bus2);
           bus2.on('foo', onAnyEvent);
-          expect(bus.listeners).toEqual({
-            foo: [onTestEvent, onAnyEvent]
-          });
+          expect(bus.listeners).toEqual(new Map([[
+            'foo', new Set([onTestEvent, onAnyEvent])
+          ]]));
         });
       });
     });
@@ -542,22 +542,22 @@ describe('Strongbus.Bus', () => {
         it('lists the delegate listeners', () => {
           bus.pipe(bus2);
           bus2.on('foo', onAnyEvent);
-          expect(bus.listeners).toEqual({
-            foo: [onAnyEvent]
-          });
+          expect(bus.listeners).toEqual(new Map([[
+            'foo', new Set([onAnyEvent])
+          ]]));
         });
       });
 
       describe('and the instance has delegates with no listeners', () => {
         it('returns an empty object', () => {
           bus.pipe(bus2);
-          expect(bus.listeners).toEqual({});
+          expect(bus.listeners.size).toEqual(0);
         });
       });
 
       describe('and the instance has no delegates', () => {
         it('returns an empty object', () => {
-          expect(bus.listeners).toEqual({});
+          expect(bus.listeners.size).toEqual(0);
         });
       });
     });
@@ -654,7 +654,7 @@ describe('Strongbus.Bus', () => {
 
   describe('Reserved events', () => {
     describe('given the wildcard (*) event is manually raised', () => {
-      it('throws an error', () => {
+      it('raises an error', () => {
         bus.on('*', onAnyEvent);
         const shouldThrow = () => bus.emit('*' as any, 'eagle');
 

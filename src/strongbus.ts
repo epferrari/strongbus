@@ -1,13 +1,11 @@
-import * as EventEmitter from 'eventemitter3';
 import {autobind} from 'core-decorators';
 
 import {Logger} from './types/logger';
 import {Lifecycle} from './types/lifecycle';
 import {Options, ListenerThresholds} from './types/options';
-import {StringKeys, ElementType} from './types/utility';
+import {EventKeys, ElementType} from './types/utility';
 import * as Events from './types/events';
 import * as EventHandlers from './types/eventHandlers';
-import {compact} from './utils/compact';
 import {over} from './utils/over';
 import {generateSubscription} from './utils/generateSubscription';
 import {randomId} from './utils/randomId';
@@ -56,10 +54,13 @@ export class Bus<TEventMap extends object = object> {
 
   private _active = false;
   private _delegates = new Map<Bus<TEventMap>, Events.Subscription[]>();
-  private readonly lifecycle: EventEmitter<Lifecycle> = new EventEmitter<Lifecycle>();
-  private readonly bus: EventEmitter = new EventEmitter();
+  // private readonly lifecycle: EventEmitter<Lifecycle> = new EventEmitter<Lifecycle>();
+  // private readonly bus: EventEmitter = new EventEmitter();
   private readonly subscriptionCache = new Map<string, Events.Subscription>();
   private readonly options: Required<Options>;
+
+  private readonly bus = new Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.GenericHandler>>();
+  private readonly lifecycle = new Map<Lifecycle, Set<EventHandlers.GenericHandler>>();
 
   constructor(options?: Options) {
     this.options = {
@@ -70,9 +71,6 @@ export class Bus<TEventMap extends object = object> {
         ...Bus.defaultOptions.thresholds
       }
     };
-    this.decorateOnMethod();
-    this.decorateEmitMethod();
-    this.decorateRemoveListenerMethod();
   }
 
   /**
@@ -81,9 +79,9 @@ export class Bus<TEventMap extends object = object> {
    * The default implementation is to throw an error.
    * Will be invoked when an instance's `options.allowUnhandledEvents = false` (default is true).
    */
-  protected handleUnexpectedEvent<T extends StringKeys<TEventMap>>(event: T, payload: TEventMap[T]) {
+  protected handleUnexpectedEvent<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T]) {
     const errorMessage = [
-      `TypedMsgBus received unexpected message type '${event}' with contents:`,
+      `Strongbus.Bus received unexpected message type '${event}' with contents:`,
       JSON.stringify(payload, null, 2)
     ].join('\n');
 
@@ -95,31 +93,42 @@ export class Bus<TEventMap extends object = object> {
    * alias of [[Bus.proxy]] when invoked with [[WILDCARD]],
    * alias of [[Bus.any]] when invoked with an array of events
    */
-  public on<T extends Events.Listenable<StringKeys<TEventMap>>>(event: T, handler: EventHandlers.EventHandler<TEventMap, T>): Events.Subscription {
+  public on<T extends Events.Listenable<EventKeys<TEventMap>>>(event: T, handler: EventHandlers.EventHandler<TEventMap, T>): Events.Subscription {
     if(Array.isArray(event)) {
       return this.any(event, handler as EventHandlers.MultiEventHandler<TEventMap>);
     } else if(event === Events.WILDCARD) {
       return this.proxy(handler as EventHandlers.WildcardEventHandler<TEventMap>);
     } else {
-      this.bus.on(event as StringKeys<TEventMap>, handler);
-      return this.cacheListener(event as string, handler);
+      return this.addListener(event as EventKeys<TEventMap>, handler);
     }
   }
 
-  public emit<T extends StringKeys<TEventMap>>(event: T, payload: TEventMap[T]): boolean {
-    return this.bus.emit(event, payload);
+  public emit<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T]): boolean {
+    if(event === Events.WILDCARD) {
+      throw new Error(`Do not emit "${event}" manually. Reserved for internal use.`);
+    }
+
+    let handled = false
+
+    handled = this.emitEvent(event, payload) || handled;
+    handled = this.emitEvent(Events.WILDCARD, event, payload) || handled;
+    handled = this.forward(event, payload) || handled;
+
+    if(!handled && !this.options.allowUnhandledEvents) {
+      this.handleUnexpectedEvent(event, payload);
+    }
+    return handled;
   }
 
   /**
    * Handle multiple events with the same handler.
    * [[EventHandlers.MultiEventHandler]] receives raised event as first argument, payload as second argument
    */
-  public any<TEvents extends StringKeys<TEventMap>[]>(events: TEvents, handler: EventHandlers.MultiEventHandler<TEventMap, TEvents>): Events.Subscription {
+  public any<TEvents extends EventKeys<TEventMap>[]>(events: TEvents, handler: EventHandlers.MultiEventHandler<TEventMap, TEvents>): Events.Subscription {
     return generateSubscription(over(
       (events as any).map(<TEvent extends ElementType<TEvents>>(e: TEvent) => {
         const anyHandler = (payload: TEventMap[TEvent]) => handler(e, payload);
-        this.bus.on(e, anyHandler);
-        return this.cacheListener(e, anyHandler);
+        return this.addListener(e, anyHandler);
       })
     ));
   }
@@ -129,8 +138,7 @@ export class Bus<TEventMap extends object = object> {
    * argument and payload as second argument.
    */
   public proxy(handler: EventHandlers.WildcardEventHandler<TEventMap>): Events.Subscription {
-    this.bus.on(Events.WILDCARD, handler);
-    return this.cacheListener(Events.WILDCARD, handler);
+    return this.addListener(Events.WILDCARD, handler);
   }
 
   /**
@@ -165,9 +173,9 @@ export class Bus<TEventMap extends object = object> {
   /**
    * Subscribe to meta changes to the [[Bus]] with [[Lifecycle]] events
    */
-  public hook(event: Lifecycle, handler: (targetEvent: StringKeys<TEventMap>) => void): Events.Subscription {
-    this.lifecycle.on(event, handler);
-    return generateSubscription(() => this.lifecycle.removeListener(event, handler));
+  public hook(event: Lifecycle, handler: (targetEvent: EventKeys<TEventMap>) => void): Events.Subscription {
+    addListener(this.lifecycle, event, handler);
+    return generateSubscription(() => removeListener(this.lifecycle, event, handler));
   }
 
   /**
@@ -208,11 +216,7 @@ export class Bus<TEventMap extends object = object> {
    * @getter `boolean`
    */
   public get hasOwnListeners(): boolean {
-    for(const event of this.bus.eventNames()) {
-      if(this.hasListenersFor(String(event) as StringKeys<TEventMap>)) {
-        return true;
-      }
-    }
+    return this.bus.size > 0;
   }
 
   /**
@@ -227,61 +231,44 @@ export class Bus<TEventMap extends object = object> {
     return false;
   }
 
-  /**
-   * @getter `{[eventName]: EventEmitter.ListenerFn[]}`
-   */
-  public get listeners(): {[event: string]: EventEmitter.ListenerFn[]} {
-    const obj: {[event: string]: EventEmitter.ListenerFn[]} = {};
-    const map = this.listenersAsMap;
-    map.forEach((listeners, event) => {
-      obj[event] = listeners;
-    });
-    return obj;
-  }
-
-  private get listenersAsMap(): Map<string, EventEmitter.ListenerFn[]> {
+  public get listeners(): Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.GenericHandler>> {
     const map = this.ownListeners;
     this._delegates.forEach((_, delegate) => {
-      const delegateMap = delegate.listenersAsMap;
-      delegateMap.forEach((delegateListeners, event) => {
+      delegate.listeners.forEach((delegateListeners, event) => {
+        if(!delegateListeners.size) {
+          return;
+        }
         let listeners = map.get(event);
         if(!listeners) {
-          listeners = [];
+          listeners = new Set<EventHandlers.GenericHandler>();
           map.set(event, listeners);
         }
-        listeners.push(...delegateListeners);
+        delegateListeners.forEach(d => listeners.add(d));
       });
     });
     return map;
   }
 
-  private get ownListeners(): Map<string, EventEmitter.ListenerFn[]> {
-    const empty = new Set<string>();
-    const map = new Map<string, EventEmitter.ListenerFn[]>(
-      this.bus.eventNames().map(event => {
-        const listeners = compact(this.bus.listeners(event));
-        event = String(event);
-        if(!listeners.length) {
-          empty.add(event);
-        }
-        return [String(event), listeners];
-      })
-    );
-    if(empty.size) {
-      empty.forEach(event => map.delete(event));
-    }
+  private get ownListeners(): Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>> {
+    const map = new Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>>();
+    this.bus.forEach((listeners, event) => {
+      if(listeners.size) {
+        map.set(event, new Set(listeners));
+      }
+    });
     return map;
   }
 
-  public hasListenersFor<TEvents extends StringKeys<TEventMap>>(event: TEvents): boolean {
+  public hasListenersFor(event: EventKeys<TEventMap>|Events.WILDCARD): boolean {
     return this.hasOwnListenersFor(event) || this.hasDelegateListenersFor(event);
   }
 
-  public  hasOwnListenersFor<TEvents extends StringKeys<TEventMap>>(event: TEvents): boolean {
-    return this.bus.listenerCount(event) > 0;
+  public  hasOwnListenersFor(event: EventKeys<TEventMap>|Events.WILDCARD): boolean {
+    const handlers = this.bus.get(event);
+    return handlers?.size > 0;
   }
 
-  public hasDelegateListenersFor<TEvents extends StringKeys<TEventMap>>(event: TEvents): boolean {
+  public hasDelegateListenersFor(event: EventKeys<TEventMap>|Events.WILDCARD): boolean {
     for(const delegate of this._delegates.keys()) {
       if(delegate.hasListenersFor(event)) {
         return true;
@@ -296,7 +283,7 @@ export class Bus<TEventMap extends object = object> {
    */
   public destroy() {
     this.releaseSubscribers();
-    this.lifecycle.removeAllListeners();
+    this.lifecycle.clear();
     this.releaseDelegates();
   }
 
@@ -305,7 +292,7 @@ export class Bus<TEventMap extends object = object> {
     // their lifecycle hooks will be triggered,
     // and they will be removed from the cache
     over(Array.from(this.subscriptionCache.values()))();
-    this.bus.removeAllListeners();
+    this.bus.clear();
   }
 
   private releaseDelegates(): void {
@@ -313,72 +300,75 @@ export class Bus<TEventMap extends object = object> {
     this._delegates.clear();
   }
 
-  private cacheListener(event: string, handler: EventEmitter.ListenerFn): Events.Subscription {
+  private addListener(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): Events.Subscription {
+    const {thresholds, logger} = this.options;
+    const handlers = this.bus.get(event);
+    const n: number = handlers?.size || 0;
+    if(n > thresholds.info) {
+      logger.info(`${this.name} has ${n} listeners for "${event}", ${thresholds.info} max listeners expected.`);
+    } else if(n > thresholds.warn) {
+      logger.warn(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds threshold set to ${thresholds.warn}`);
+    } else if(n > thresholds.error) {
+      logger.error(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds threshold set to ${thresholds.error}`);
+    }
+    this.willAddListener(event as EventKeys<TEventMap>);
+    addListener(this.bus, event, handler);
+    this.didAddListener(event as EventKeys<TEventMap>);
+    return this.cacheListener(event as EventKeys<TEventMap>, handler);
+  }
+
+  private cacheListener(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): Events.Subscription {
     const token = randomId();
     const sub = generateSubscription(() => {
       if(this.subscriptionCache.has(token)) {
         this.subscriptionCache.delete(token);
-        this.bus.removeListener(event, handler);
+        this.removeListener(event, handler);
       }
     });
     this.subscriptionCache.set(token, sub);
     return sub;
   }
 
-  private decorateOnMethod() {
-    const on: EventEmitter['on'] = (...args) => EventEmitter.prototype.on.call(this.bus, ...args);
-
-    this.bus.on = (event: StringKeys<TEventMap>, handler: EventEmitter.ListenerFn, context?: any): EventEmitter => {
-      const {thresholds, logger} = this.options;
-      const n: number = this.bus.listeners(event).length;
-      if(n > thresholds.info) {
-        logger.info(`${this.name} has ${n} listeners for "${event}", ${thresholds.info} max listeners expected.`);
-      } else if(n > thresholds.warn) {
-        logger.warn(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds threshold set to ${thresholds.warn}`);
-      } else if(n > thresholds.error) {
-        logger.error(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds threshold set to ${thresholds.error}`);
-      }
-      this.willAddListener(event);
-      const emitter = on(event, handler, context);
-      this.didAddListener(event);
-      return emitter;
-    };
+  private removeListener(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): void {
+    this.willRemoveListener(event as EventKeys<TEventMap>);
+    removeListener(this.bus, event, handler);
+    this.didRemoveListener(event as EventKeys<TEventMap>);
   }
 
-  private decorateEmitMethod() {
-
-    const raise: EventEmitter['emit'] = (...args): boolean => EventEmitter.prototype.emit.call(this.bus, ...args);
-
-    this.bus.emit = <T extends StringKeys<TEventMap>>(event: T, payload: TEventMap[T], ...args: any[]): boolean => {
-      let handled = false;
-
-      if(event === Events.WILDCARD) {
-        throw new Error(`Do not emit "${event}" manually. Reserved for internal use.`);
+  private emitEvent(event: EventKeys<TEventMap>|Events.WILDCARD, ...args: any[]): boolean {
+    const handlers = this.bus.get(event);
+      if(handlers && handlers.size) {
+        handlers.forEach(async fn => {
+          try {
+            await fn(...args);
+          } catch(e) {
+            this.emitLifecycleEvent(Lifecycle.error, e);
+          }
+        });
+        return true;
       }
-
-      handled = raise(event, payload) || handled;
-      handled = raise(Events.WILDCARD, event, payload) || handled;
-      handled = this.forward(event, payload) || handled;
-
-      if(!handled && !this.options.allowUnhandledEvents) {
-        this.handleUnexpectedEvent(event, payload);
-      }
-      return handled;
-    };
+      return false;
   }
 
-  private decorateRemoveListenerMethod() {
-    const removeListener: EventEmitter['removeListener'] = (...args): EventEmitter => EventEmitter.prototype.removeListener.call(this.bus, ...args);
-
-    this.bus.removeListener = (event: StringKeys<TEventMap>, handler: EventEmitter.ListenerFn, context?: any, once?: boolean): EventEmitter => {
-      this.willRemoveListener(event);
-      const emitter = removeListener(event, handler, context, once);
-      this.didRemoveListener(event);
-      return emitter;
-    };
+  private emitLifecycleEvent(event: Lifecycle, payload?: any): void {
+    const handlers = this.lifecycle.get(event);
+    if(handlers && handlers.size) {
+      handlers.forEach(async fn => {
+        try {
+          await fn(payload);
+        } catch(e) {
+          if(event === Lifecycle.error) {
+            this.options.logger.error('Error thrown in error handler', e);
+          } else {
+            this.emitLifecycleEvent(Lifecycle.error, e);
+          }
+        }
+      });
+    }
   }
 
-  private forward<T extends StringKeys<TEventMap>>(event: T, payload: TEventMap[T], ...args: any[]): boolean {
+
+  private forward<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T], ...args: any[]): boolean {
     const {_delegates} = this;
     if(_delegates.size) {
       return Array.from(_delegates.keys())
@@ -388,33 +378,58 @@ export class Bus<TEventMap extends object = object> {
     }
   }
 
-  private willAddListener(event: StringKeys<TEventMap>) {
-    this.lifecycle.emit(Lifecycle.willAddListener, event);
+  private willAddListener(event: EventKeys<TEventMap>) {
+    this.emitLifecycleEvent(Lifecycle.willAddListener, event);
     if(!this.active) {
-      this.lifecycle.emit(Lifecycle.willActivate);
+      this.emitLifecycleEvent(Lifecycle.willActivate);
     }
   }
 
-  private didAddListener(event: StringKeys<TEventMap>) {
-    this.lifecycle.emit(Lifecycle.didAddListener, event);
+  private didAddListener(event: EventKeys<TEventMap>) {
+    this.emitLifecycleEvent(Lifecycle.didAddListener, event);
     if(!this.active && this.hasListeners) {
       this._active = true;
-      this.lifecycle.emit(Lifecycle.active);
+      this.emitLifecycleEvent(Lifecycle.active);
     }
   }
 
-  private willRemoveListener(event: StringKeys<TEventMap>) {
-    this.lifecycle.emit(Lifecycle.willRemoveListener, event);
-    if(this.active && this.listenersAsMap.size === 1) {
-      this.lifecycle.emit(Lifecycle.willIdle);
+  private willRemoveListener(event: EventKeys<TEventMap>) {
+    this.emitLifecycleEvent(Lifecycle.willRemoveListener, event);
+    if(this.active && this.listeners.size === 1) {
+      this.emitLifecycleEvent(Lifecycle.willIdle);
     }
   }
 
-  private didRemoveListener(event: StringKeys<TEventMap>) {
-    this.lifecycle.emit(Lifecycle.didRemoveListener, event);
+  private didRemoveListener(event: EventKeys<TEventMap>) {
+    this.emitLifecycleEvent(Lifecycle.didRemoveListener, event);
     if(this.active && !this.hasListeners) {
       this._active = false;
-      this.lifecycle.emit(Lifecycle.idle);
+      this.emitLifecycleEvent(Lifecycle.idle);
     }
+  }
+}
+
+
+
+function addListener<TKey>(bus: Map<TKey, Set<EventHandlers.GenericHandler>>, event: TKey, handler: EventHandlers.GenericHandler): void {
+  if(!handler) {
+    return;
+  }
+  let set = bus.get(event);
+  if(!set) {
+    set = new Set<EventHandlers.GenericHandler>();
+    bus.set(event, set);
+  }
+  set.add(handler);
+}
+
+function removeListener<TKey>(bus: Map<TKey, Set<EventHandlers.GenericHandler>>, event: TKey, handler: EventHandlers.GenericHandler): void {
+  const set = bus.get(event);
+  if(!set) {
+    return;
+  }
+  set.delete(handler);
+  if(set.size === 0) {
+    bus.delete(event);
   }
 }

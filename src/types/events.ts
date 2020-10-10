@@ -1,5 +1,5 @@
 
-export type Event = string;
+export type Event = string|number;
 
 /**
  * Subscription can be released by invoking it directly,

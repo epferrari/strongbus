@@ -8,6 +8,8 @@ export const Lifecycle = strEnum([
   'willAddListener',
   'didAddListener',
   'willRemoveListener',
-  'didRemoveListener'
+  'didRemoveListener',
+  'willDestroy',
+  'error'
 ]);
 export type Lifecycle = keyof typeof Lifecycle;
