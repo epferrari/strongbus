@@ -108,7 +108,7 @@ export class Bus<TEventMap extends object = object> {
       throw new Error(`Do not emit "${event}" manually. Reserved for internal use.`);
     }
 
-    let handled = false
+    let handled = false;
 
     handled = this.emitEvent(event, payload) || handled;
     handled = this.emitEvent(Events.WILDCARD, event, payload) || handled;
