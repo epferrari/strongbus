@@ -94,7 +94,7 @@ export class Scanner<T> implements CancelablePromise<T> {
   public scan<M extends object>(
     scannable: Scannable<M>,
     trigger: Events.Listenable<EventKeys<M>>
-  ): void {
+  ): this {
     if(this.settled) {
       return;
     }
@@ -111,5 +111,6 @@ export class Scanner<T> implements CancelablePromise<T> {
     });
     this.triggerListeners.add(triggerListener);
     this.willDestroyListeners.add(willDestroyListener);
+    return this;
   }
 }

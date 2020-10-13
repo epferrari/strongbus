@@ -591,9 +591,9 @@ isobject@^3.0.0, isobject@^3.0.1:
   integrity sha1-TkMekrEalzFjaqH5yNHMvP2reN8=
 
 jaasync@^0.9.2:
-  version "0.9.2"
-  resolved "https://registry.yarnpkg.com/jaasync/-/jaasync-0.9.2.tgz#f9f025d5b9328f527fc61bbf2f71d0a3c4012e6c"
-  integrity sha512-j3SeSxo4dkEO2TBcSywnk+k8zhlk3mBSH+XDQanCuYOAmPvXtBM3UHHMCEOPWkd0kndDeae/sRZKmZKbmVpU6A==
+  version "0.9.3"
+  resolved "https://registry.yarnpkg.com/jaasync/-/jaasync-0.9.3.tgz#bf28bee3ebb34976c487c57aeff6d3700fd6b37c"
+  integrity sha512-s+MSHRvMR7EHRl4UJ4VmrjXVmxMoL0mf7osFDviD5NWYA7/TGQvshoEm9c8/wJFbusRFVbAqfKYaJV4MfhGqEA==
   dependencies:
     core-decorators "^0.20.0"
 

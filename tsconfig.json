@@ -1,0 +1,15 @@
+{
+  "version": "4.0.2",
+  "compilerOptions": {
+    "sourceMap": false,
+    "noImplicitAny": true,
+    "moduleResolution": "node",
+    "module": "commonjs",
+    "target": "es6",
+    "experimentalDecorators": true,
+    "baseUrl": ".",
+    "outDir": "./lib",
+    "declaration": true
+  },
+  "compileOnSave": false
+}
