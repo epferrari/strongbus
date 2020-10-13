@@ -1,6 +1,7 @@
 import {autobind} from 'core-decorators';
 import {CancelablePromise} from 'jaasync/lib/cancelable';
 
+import {Scanner} from './scanner';
 import * as Events from './types/events';
 import * as EventHandlers from './types/eventHandlers';
 import {Lifecycle} from './types/lifecycle';
@@ -11,7 +12,7 @@ import {EventKeys, ElementType} from './types/utility';
 import {over} from './utils/over';
 import {generateSubscription} from './utils/generateSubscription';
 import {randomId} from './utils/randomId';
-import {Scanner} from './scanner';
+
 
 
 @autobind
@@ -57,8 +58,6 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
 
   private _active = false;
   private _delegates = new Map<Bus<TEventMap>, Events.Subscription[]>();
-  // private readonly lifecycle: EventEmitter<Lifecycle> = new EventEmitter<Lifecycle>();
-  // private readonly bus: EventEmitter = new EventEmitter();
   private readonly subscriptionCache = new Map<string, Events.Subscription>();
   private readonly options: Required<Options>;
 
