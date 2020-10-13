@@ -17,13 +17,14 @@
   "main": "lib/index.js",
   "types": "lib/index.d.js",
   "scripts": {
-    "build": "./node_modules/.bin/tsc",
-    "lint": "./node_modules/.bin/tslint -c tslint.json -p tsconfig.json",
-    "test": "npm run build && ./node_modules/.bin/jasmine lib/**/*_spec.js",
+    "dev": "./node_modules/.bin/tsc -p tsconfig.dev.json",
+    "dist": "./node_modules/.bin/tsc -p tsconfig.dist.json",
+    "lint": "./node_modules/.bin/tslint -c tslint.json -p tsconfig.dev.json",
+    "test": "npm run dev && ./node_modules/.bin/jasmine lib/**/*_spec.js",
     "validate": "npm run test && npm run lint",
-    "install": "([ -d ./src ] && [ ! -d ./lib ] && mkdir lib && npm install . &&  npm run build) || echo ''",
-    "docs": "./node_modules/.bin/typedoc --out ./docs --theme minimal --mode file --excludePrivate --exclude **/*/utils/*,**/*/utility.ts,**/*spec.ts ./src/index.ts",
-    "prepare": "npm run build",
+    "install": "([ -d ./src ] && [ ! -d ./lib ] && mkdir lib && npm install . &&  npm run dist) || echo ''",
+    "docs": "./node_modules/.bin/typedoc --tsconfig tsconfig.dist.json --out ./docs --theme minimal --mode file --excludePrivate --exclude **/*/utils/*,**/*/utility.ts,**/*spec.ts ./src/index.ts",
+    "prepare": "rm -rf ./lib && npm run dist",
     "version": "git add -A src",
     "postversion": "git push && git push --tags"
   },
@@ -35,7 +36,7 @@
   "license": "MIT",
   "dependencies": {
     "core-decorators": "^0.20.0",
-    "jaasync": "^0.9.1"
+    "jaasync": "^0.9.2"
   },
   "devDependencies": {
     "@types/jasmine": "^3.3.0",

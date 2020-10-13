@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.dev.json",
+  "exclude": [
+    "./src/**/*_spec.ts",
+    "./src/*_spec.ts"
+  ]
+}

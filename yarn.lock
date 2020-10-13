@@ -590,10 +590,10 @@ isobject@^3.0.0, isobject@^3.0.1:
   resolved "https://registry.yarnpkg.com/isobject/-/isobject-3.0.1.tgz#4e431e92b11a9731636aa1f9c8d1ccbcfdab78df"
   integrity sha1-TkMekrEalzFjaqH5yNHMvP2reN8=
 
-jaasync@^0.9.1:
-  version "0.9.1"
-  resolved "https://registry.yarnpkg.com/jaasync/-/jaasync-0.9.1.tgz#41416718181d0d2a131ab913e9cba4a47285f72a"
-  integrity sha512-9HOadPMz85lagCUSS0JJ64p7WnXDpg/vFOcDuRR8LJcSIxO+ehsbamfIN+Qu3x6PeC2aBBV//ZWHney/2SVZFA==
+jaasync@^0.9.2:
+  version "0.9.2"
+  resolved "https://registry.yarnpkg.com/jaasync/-/jaasync-0.9.2.tgz#f9f025d5b9328f527fc61bbf2f71d0a3c4012e6c"
+  integrity sha512-j3SeSxo4dkEO2TBcSywnk+k8zhlk3mBSH+XDQanCuYOAmPvXtBM3UHHMCEOPWkd0kndDeae/sRZKmZKbmVpU6A==
   dependencies:
     core-decorators "^0.20.0"
 
