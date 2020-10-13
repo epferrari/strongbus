@@ -380,7 +380,7 @@ describe('Strongbus.Bus', () => {
     });
 
     describe('given bus has delegates', () => {
-      let bus2: DelegateTestBus;
+      let delegate: DelegateTestBus;
       let onDelegateWillAddListener: jasmine.Spy;
       let onDelegateDidAddListener: jasmine.Spy;
       let onDelegateWillRemoveListener: jasmine.Spy;
@@ -391,21 +391,21 @@ describe('Strongbus.Bus', () => {
       let onDelegateIdle: jasmine.Spy;
 
       beforeEach(() => {
-        bus2 = new DelegateTestBus({});
-        bus.pipe(bus2);
+        delegate = new DelegateTestBus({});
+        bus.pipe(delegate);
 
-        bus2.hook('willAddListener', onDelegateWillAddListener = jasmine.createSpy('onDelegateWillAddListener'));
-        bus2.hook('didAddListener', onDelegateDidAddListener = jasmine.createSpy('onDelegateDidAddListener'));
-        bus2.hook('willRemoveListener', onDelegateWillRemoveListener = jasmine.createSpy('onDelegateWillRemoveListener'));
-        bus2.hook('didRemoveListener', onDelegateDidRemoveListener = jasmine.createSpy('onDelegateDidRemoveListener'));
-        bus2.hook('willActivate', onDelegateWillActivate = jasmine.createSpy('onDelegateWillActivate'));
-        bus2.hook('active', onDelegateActive = jasmine.createSpy('onDelegateActive'));
-        bus2.hook('willIdle', onDelegateWillIdle = jasmine.createSpy('onDelegateWillIdle'));
-        bus2.hook('idle', onDelegateIdle = jasmine.createSpy('onDelegateIdle'));
+        delegate.hook('willAddListener', onDelegateWillAddListener = jasmine.createSpy('onDelegateWillAddListener'));
+        delegate.hook('didAddListener', onDelegateDidAddListener = jasmine.createSpy('onDelegateDidAddListener'));
+        delegate.hook('willRemoveListener', onDelegateWillRemoveListener = jasmine.createSpy('onDelegateWillRemoveListener'));
+        delegate.hook('didRemoveListener', onDelegateDidRemoveListener = jasmine.createSpy('onDelegateDidRemoveListener'));
+        delegate.hook('willActivate', onDelegateWillActivate = jasmine.createSpy('onDelegateWillActivate'));
+        delegate.hook('active', onDelegateActive = jasmine.createSpy('onDelegateActive'));
+        delegate.hook('willIdle', onDelegateWillIdle = jasmine.createSpy('onDelegateWillIdle'));
+        delegate.hook('idle', onDelegateIdle = jasmine.createSpy('onDelegateIdle'));
       });
 
       it('bubbles events from delegates', () => {
-        (bus2 as any).bus.on('foo', onTestEvent);
+        const sub = delegate.on('foo', onTestEvent);
         expect(onDelegateWillAddListener).toHaveBeenCalledWith('foo');
         expect(onWillAddListener).toHaveBeenCalledWith('foo');
 
@@ -419,7 +419,7 @@ describe('Strongbus.Bus', () => {
         expect(onActive).toHaveBeenCalled();
 
 
-        (bus2 as any).bus.removeListener('foo', onTestEvent);
+        sub.unsubscribe();
         expect(onDelegateWillRemoveListener).toHaveBeenCalledWith('foo');
         expect(onRemoveListener).toHaveBeenCalledWith('foo');
 
@@ -435,23 +435,26 @@ describe('Strongbus.Bus', () => {
 
 
       it('raises "active" events independently of delegates', () => {
+        expect(onActive).toHaveBeenCalledTimes(0);
+        expect(onDelegateActive).toHaveBeenCalledTimes(0);
         bus.on('foo', onTestEvent);
         expect(onActive).toHaveBeenCalledTimes(1);
-        (bus2 as any).bus.on('foo', onTestEvent);
+        expect(onDelegateActive).toHaveBeenCalledTimes(0);
+        delegate.on('foo', onTestEvent);
         expect(onDelegateActive).toHaveBeenCalledTimes(1);
         expect(onActive).toHaveBeenCalledTimes(1);
       });
 
       it('raises "idle" events independently of delegates', () => {
         const foosub = bus.on('foo', onTestEvent);
-        (bus2 as any).bus.on('foo', onTestEvent);
+        const fooSub2 = delegate.on('foo', onTestEvent);
 
-        (bus2 as any).bus.removeListener('foo', onTestEvent);
+        fooSub2.unsubscribe();
         expect(onDelegateIdle).toHaveBeenCalledTimes(1);
         onDelegateIdle.calls.reset();
         expect(onIdle).toHaveBeenCalledTimes(0);
 
-        foosub();
+        foosub.unsubscribe();
         expect(onDelegateIdle).toHaveBeenCalledTimes(0);
         expect(onIdle).toHaveBeenCalledTimes(1);
       });
