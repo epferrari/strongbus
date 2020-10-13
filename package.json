@@ -31,6 +31,7 @@
   "contributors": [
     "Josh Heyse <josh.heyse@gmail.com>"
   ],
+  "repository": "https://github.com/epferrari/strongbus",
   "license": "MIT",
   "dependencies": {
     "core-decorators": "^0.20.0",
