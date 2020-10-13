@@ -1,4 +1,8 @@
 export {Bus} from './strongbus';
-export {Options} from './types/options';
+export {Scanner} from './scanner';
+
 export * from './types/events';
 export * from './types/eventHandlers';
+export * from './types/lifecycle';
+export * from './types/options';
+export * from './types/scannable';

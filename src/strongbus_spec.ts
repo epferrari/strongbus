@@ -1,5 +1,8 @@
+import {sleep} from 'jaasync/lib/cancelable';
+
 import * as Strongbus from './';
-import {StringKeys} from './types/utility';
+import {Scanner} from './scanner';
+import {EventKeys} from './types/utility';
 
 type TestEventMap = {
   foo: string;
@@ -14,7 +17,7 @@ class DelegateTestBus<T extends object = TestEventMap> extends Strongbus.Bus<T> 
     this.emulateListenerCount = options.emulateListenerCount;
   }
 
-  public emit<E extends StringKeys<T>>(event: E, payload: T[E]): boolean {
+  public emit<E extends EventKeys<T>>(event: E, payload: T[E]): boolean {
     super.emit(event, payload);
     return this.emulateListenerCount;
   }
@@ -377,7 +380,7 @@ describe('Strongbus.Bus', () => {
     });
 
     describe('given bus has delegates', () => {
-      let bus2: DelegateTestBus;
+      let delegate: DelegateTestBus;
       let onDelegateWillAddListener: jasmine.Spy;
       let onDelegateDidAddListener: jasmine.Spy;
       let onDelegateWillRemoveListener: jasmine.Spy;
@@ -388,21 +391,21 @@ describe('Strongbus.Bus', () => {
       let onDelegateIdle: jasmine.Spy;
 
       beforeEach(() => {
-        bus2 = new DelegateTestBus({});
-        bus.pipe(bus2);
+        delegate = new DelegateTestBus({});
+        bus.pipe(delegate);
 
-        bus2.hook('willAddListener', onDelegateWillAddListener = jasmine.createSpy('onDelegateWillAddListener'));
-        bus2.hook('didAddListener', onDelegateDidAddListener = jasmine.createSpy('onDelegateDidAddListener'));
-        bus2.hook('willRemoveListener', onDelegateWillRemoveListener = jasmine.createSpy('onDelegateWillRemoveListener'));
-        bus2.hook('didRemoveListener', onDelegateDidRemoveListener = jasmine.createSpy('onDelegateDidRemoveListener'));
-        bus2.hook('willActivate', onDelegateWillActivate = jasmine.createSpy('onDelegateWillActivate'));
-        bus2.hook('active', onDelegateActive = jasmine.createSpy('onDelegateActive'));
-        bus2.hook('willIdle', onDelegateWillIdle = jasmine.createSpy('onDelegateWillIdle'));
-        bus2.hook('idle', onDelegateIdle = jasmine.createSpy('onDelegateIdle'));
+        delegate.hook('willAddListener', onDelegateWillAddListener = jasmine.createSpy('onDelegateWillAddListener'));
+        delegate.hook('didAddListener', onDelegateDidAddListener = jasmine.createSpy('onDelegateDidAddListener'));
+        delegate.hook('willRemoveListener', onDelegateWillRemoveListener = jasmine.createSpy('onDelegateWillRemoveListener'));
+        delegate.hook('didRemoveListener', onDelegateDidRemoveListener = jasmine.createSpy('onDelegateDidRemoveListener'));
+        delegate.hook('willActivate', onDelegateWillActivate = jasmine.createSpy('onDelegateWillActivate'));
+        delegate.hook('active', onDelegateActive = jasmine.createSpy('onDelegateActive'));
+        delegate.hook('willIdle', onDelegateWillIdle = jasmine.createSpy('onDelegateWillIdle'));
+        delegate.hook('idle', onDelegateIdle = jasmine.createSpy('onDelegateIdle'));
       });
 
       it('bubbles events from delegates', () => {
-        (bus2 as any).bus.on('foo', onTestEvent);
+        const sub = delegate.on('foo', onTestEvent);
         expect(onDelegateWillAddListener).toHaveBeenCalledWith('foo');
         expect(onWillAddListener).toHaveBeenCalledWith('foo');
 
@@ -416,7 +419,7 @@ describe('Strongbus.Bus', () => {
         expect(onActive).toHaveBeenCalled();
 
 
-        (bus2 as any).bus.removeListener('foo', onTestEvent);
+        sub.unsubscribe();
         expect(onDelegateWillRemoveListener).toHaveBeenCalledWith('foo');
         expect(onRemoveListener).toHaveBeenCalledWith('foo');
 
@@ -432,23 +435,26 @@ describe('Strongbus.Bus', () => {
 
 
       it('raises "active" events independently of delegates', () => {
+        expect(onActive).toHaveBeenCalledTimes(0);
+        expect(onDelegateActive).toHaveBeenCalledTimes(0);
         bus.on('foo', onTestEvent);
         expect(onActive).toHaveBeenCalledTimes(1);
-        (bus2 as any).bus.on('foo', onTestEvent);
+        expect(onDelegateActive).toHaveBeenCalledTimes(0);
+        delegate.on('foo', onTestEvent);
         expect(onDelegateActive).toHaveBeenCalledTimes(1);
         expect(onActive).toHaveBeenCalledTimes(1);
       });
 
       it('raises "idle" events independently of delegates', () => {
         const foosub = bus.on('foo', onTestEvent);
-        (bus2 as any).bus.on('foo', onTestEvent);
+        const fooSub2 = delegate.on('foo', onTestEvent);
 
-        (bus2 as any).bus.removeListener('foo', onTestEvent);
+        fooSub2.unsubscribe();
         expect(onDelegateIdle).toHaveBeenCalledTimes(1);
         onDelegateIdle.calls.reset();
         expect(onIdle).toHaveBeenCalledTimes(0);
 
-        foosub();
+        foosub.unsubscribe();
         expect(onDelegateIdle).toHaveBeenCalledTimes(0);
         expect(onIdle).toHaveBeenCalledTimes(1);
       });
@@ -508,21 +514,21 @@ describe('Strongbus.Bus', () => {
 
       describe('and there are no delegate listeners', () => {
         it('lists the listeners on the instance', () => {
-          expect(bus.listeners).toEqual({
-            foo: [onTestEvent]
-          });
+          expect(bus.listeners).toEqual(new Map([[
+            'foo', new Set([onTestEvent])
+          ]]));
           bus.on('*', onAnyEvent);
-          expect(bus.listeners.foo).toEqual([onTestEvent]);
-          expect(bus.listeners['*'].length).toEqual(1); // will be an anonymous wrapper around onEveryEvent
+          expect(bus.listeners.get('foo')).toEqual(new Set([onTestEvent]));
+          expect(bus.listeners.get('*').size).toEqual(1); // will be an anonymous wrapper around onEveryEvent
         });
       });
 
       describe('and the instance has delegates with no listeners', () => {
         it("lists the instance's listeners", () => {
           bus.pipe(bus2);
-          expect(bus.listeners).toEqual({
-            foo: [onTestEvent]
-          });
+          expect(bus.listeners).toEqual(new Map([[
+            'foo', new Set([onTestEvent])
+          ]]));
         });
       });
 
@@ -530,9 +536,9 @@ describe('Strongbus.Bus', () => {
         it("lists the instance's listeners and the delegate listeners", () => {
           bus.pipe(bus2);
           bus2.on('foo', onAnyEvent);
-          expect(bus.listeners).toEqual({
-            foo: [onTestEvent, onAnyEvent]
-          });
+          expect(bus.listeners).toEqual(new Map([[
+            'foo', new Set([onTestEvent, onAnyEvent])
+          ]]));
         });
       });
     });
@@ -542,22 +548,22 @@ describe('Strongbus.Bus', () => {
         it('lists the delegate listeners', () => {
           bus.pipe(bus2);
           bus2.on('foo', onAnyEvent);
-          expect(bus.listeners).toEqual({
-            foo: [onAnyEvent]
-          });
+          expect(bus.listeners).toEqual(new Map([[
+            'foo', new Set([onAnyEvent])
+          ]]));
         });
       });
 
       describe('and the instance has delegates with no listeners', () => {
         it('returns an empty object', () => {
           bus.pipe(bus2);
-          expect(bus.listeners).toEqual({});
+          expect(bus.listeners.size).toEqual(0);
         });
       });
 
       describe('and the instance has no delegates', () => {
         it('returns an empty object', () => {
-          expect(bus.listeners).toEqual({});
+          expect(bus.listeners.size).toEqual(0);
         });
       });
     });
@@ -654,7 +660,7 @@ describe('Strongbus.Bus', () => {
 
   describe('Reserved events', () => {
     describe('given the wildcard (*) event is manually raised', () => {
-      it('throws an error', () => {
+      it('raises an error', () => {
         bus.on('*', onAnyEvent);
         const shouldThrow = () => bus.emit('*' as any, 'eagle');
 
@@ -695,6 +701,375 @@ describe('Strongbus.Bus', () => {
         expect(onDidRemoveListener).not.toHaveBeenCalled();
         expect(onWillIdle).not.toHaveBeenCalled();
         expect(onIdle).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('#next', () => {
+    let onResolve: jasmine.Spy;
+    let onReject: jasmine.Spy;
+
+    beforeEach(() => {
+      onResolve = jasmine.createSpy('onResolve');
+      onReject = jasmine.createSpy('onReject');
+
+      // uncomment the following and note the type error
+      // because the sets of resolving and rejecting events aren't disjoint
+
+      // bus.next('foo', 'foo');
+      // bus.next('foo', ['foo']);
+      // bus.next(['foo'], 'foo');
+      // bus.next('*', 'foo');
+      // bus.next('*', ['foo']);
+    });
+
+    describe('given both resolving and rejecting events', () => {
+      beforeEach(() => {
+        const p = bus.next('foo', 'bar');
+        p.then(onResolve).catch(onReject);
+        expect(onResolve).not.toHaveBeenCalled();
+        expect(onReject).not.toHaveBeenCalled();
+      });
+
+      describe('when the resolving event is raised', () => {
+        it('resolves the promise', async () => {
+          bus.emit('foo', 'FOO!');
+          await sleep(1);
+          expect(onReject).not.toHaveBeenCalled();
+          expect(onResolve).toHaveBeenCalledWith('FOO!');
+          onResolve.calls.reset();
+          bus.emit('foo', 'BAR!');
+          expect(onResolve).not.toHaveBeenCalled();
+          expect(onReject).not.toHaveBeenCalled();
+        });
+
+        it('unsubscribes from the event source', () => {
+          expect([...bus.listeners.keys()]).toEqual(['foo', 'bar']);
+          bus.emit('foo', 'FOO!');
+          expect([...bus.listeners.keys()]).toEqual([]);
+        });
+      });
+
+      describe('when the rejecting event is raised', () => {
+        beforeEach(() => {
+          const p = bus.next('foo', 'bar');
+          p.then(onResolve).catch(onReject);
+          expect(onResolve).not.toHaveBeenCalled();
+          expect(onReject).not.toHaveBeenCalled();
+        });
+
+        it('rejects the promise', async () => {
+          bus.emit('bar', true);
+          await sleep(1);
+          expect(onResolve).not.toHaveBeenCalled();
+          expect(onReject).toHaveBeenCalled();
+          onReject.calls.reset();
+          bus.emit('bar', false);
+          expect(onResolve).not.toHaveBeenCalled();
+          expect(onReject).not.toHaveBeenCalled();
+        });
+
+        it('unsubscribes from the event source', () => {
+          expect([...bus.listeners.keys()]).toEqual(['foo', 'bar']);
+          bus.emit('bar', true);
+          expect([...bus.listeners.keys()]).toEqual([]);
+        });
+      });
+    });
+
+    describe('given only the resolving event', () => {
+      beforeEach(() => {
+        const p = bus.next('foo');
+        p.then(onResolve).catch(onReject);
+        expect(onResolve).not.toHaveBeenCalled();
+        expect(onReject).not.toHaveBeenCalled();
+      });
+
+      describe('when the resolving event is raised', () => {
+        it('resolves the promise', async () => {
+          bus.emit('foo', 'FOO!');
+          await sleep(1);
+          expect(onReject).not.toHaveBeenCalled();
+          expect(onResolve).toHaveBeenCalledWith('FOO!');
+          onResolve.calls.reset();
+          bus.emit('foo', 'BAR!');
+          expect(onResolve).not.toHaveBeenCalled();
+          expect(onReject).not.toHaveBeenCalled();
+        });
+
+        it('unsubscribes from the event source', () => {
+          expect([...bus.listeners.keys()]).toEqual(['foo']);
+          bus.emit('foo', 'FOO!');
+          expect([...bus.listeners.keys()]).toEqual([]);
+        });
+      });
+    });
+
+    describe('given the promise is canceled', () => {
+      it('unsubscribes from the event source', async () => {
+        const p = bus.next('foo');
+        p.then(onResolve).catch(onReject);
+        expect([...bus.listeners.keys()]).toEqual(['foo']);
+        p.cancel();
+        await sleep(1);
+        expect(onReject).toHaveBeenCalled();
+        expect([...bus.listeners.keys()]).toEqual([]);
+      });
+    });
+
+    describe('given the resolving event is the wildcard "*"', () => {
+      it('resolves on any event with an undefined value', async () => {
+        const p1 = bus.next('*');
+        p1.then(onResolve);
+        bus.emit('baz', 3);
+        await sleep(1);
+        expect(onResolve).toHaveBeenCalledWith(undefined);
+        onResolve.calls.reset();
+        const p2 = bus.next('*');
+        p2.then(onResolve);
+        bus.emit('foo', 'FOO!');
+        await sleep(1);
+        expect(onResolve).toHaveBeenCalledWith(undefined);
+      });
+    });
+
+    describe('given an array of resolving events', () => {
+      it('resolves on any of the events in the array with an undefined value', async () => {
+        const p1 = bus.next(['bar', 'baz']);
+        p1.then(onResolve);
+        bus.emit('baz', 5);
+        await sleep(1);
+        expect(onResolve).toHaveBeenCalledWith(undefined);
+        onResolve.calls.reset();
+        const p2 = bus.next(['foo', 'baz']);
+        p2.then(onResolve);
+        bus.emit('foo', 'FOO!');
+        await sleep(1);
+        expect(onResolve).toHaveBeenCalledWith(undefined);
+      });
+    });
+
+    describe('given an array of rejecting events', () => {
+      it('rejects on any of the events in the array', async () => {
+        const p1 = bus.next('foo', ['bar', 'baz']);
+        p1.catch(onReject);
+        bus.emit('baz', 2);
+        await sleep(1);
+        expect(onReject).toHaveBeenCalled();
+        onReject.calls.reset();
+        const p2 = bus.next('bar', ['foo', 'baz']);
+        p2.catch(onReject);
+        bus.emit('foo', 'FOO!');
+        await sleep(1);
+        expect(onReject).toHaveBeenCalled();
+      });
+    });
+
+    describe('given the bus is destroyed', () => {
+      it('rejects the promise', async () => {
+        const p = bus.next('foo');
+        p.then(onResolve).catch(onReject);
+        bus.destroy();
+        await sleep(1);
+        expect(onReject).toHaveBeenCalled();
+        expect([...bus.listeners.keys()]).toEqual([]);
+      });
+    });
+  });
+
+  describe('#scan', () => {
+    let onResolve: jasmine.Spy;
+    let onReject: jasmine.Spy;
+
+    beforeEach(() => {
+      onResolve = jasmine.createSpy('onResolve');
+      onReject = jasmine.createSpy('onReject');
+    });
+
+    describe('given an evaluation resolves when triggered', () => {
+      it('resolves the promise', async () => {
+        let hasFoo: boolean = false;
+        const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+          if(hasFoo) {
+            resolve(true);
+          }
+        };
+        const p = bus.scan<boolean>({
+          evaluator,
+          trigger: 'foo'
+        });
+
+        p.then(onResolve).catch(onReject);
+
+        bus.emit('foo', 'FOO!');
+
+        expect(onResolve).not.toHaveBeenCalled();
+        expect(onReject).not.toHaveBeenCalled();
+
+        hasFoo = true;
+
+        bus.emit('foo', 'FOO!');
+        await sleep(1);
+        expect(onResolve).toHaveBeenCalledWith(true);
+        onResolve.calls.reset();
+
+        bus.emit('foo', 'FOO!');
+        await sleep(1);
+        expect(onResolve).not.toHaveBeenCalled();
+
+        expect([...bus.listeners.keys()]).toEqual([]);
+      });
+    });
+
+    describe('given an evaluation rejects when triggered', () => {
+      it('rejects the promise', async () => {
+        let hasFoo: boolean = false;
+        const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+          if(hasFoo) {
+            reject(new Error('unexpected foo'));
+          }
+        };
+        const p = bus.scan<boolean>({
+          evaluator,
+          trigger: 'foo'
+        });
+
+        p.then(onResolve).catch(onReject);
+
+        bus.emit('foo', 'FOO!');
+
+        expect(onResolve).not.toHaveBeenCalled();
+        expect(onReject).not.toHaveBeenCalled();
+
+        hasFoo = true;
+
+        bus.emit('foo', 'FOO!');
+        await sleep(1);
+        expect(onReject).toHaveBeenCalled();
+        onReject.calls.reset();
+
+        bus.emit('foo', 'FOO!');
+        await sleep(1);
+        expect(onReject).not.toHaveBeenCalled();
+
+        expect([...bus.listeners.keys()]).toEqual([]);
+      });
+    });
+
+    describe('given the bus is destroyed', () => {
+      describe("and the evaluator's last invocation resolves", () => {
+        it('resolves the promise', async () => {
+          let hasFoo: boolean = false;
+          const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+            if(hasFoo) {
+              resolve(true);
+            }
+          };
+          const p = bus.scan<boolean>({
+            evaluator,
+            trigger: 'foo'
+          });
+
+          p.then(onResolve).catch(onReject);
+
+          hasFoo = true;
+          bus.destroy();
+
+          await sleep(1);
+          expect(onResolve).toHaveBeenCalledWith(true);
+        });
+      });
+
+      describe("and the evaluator's last invocation rejects", () => {
+        it("rejects the promise with the evaluator's error", async () => {
+          let hasFoo: boolean = false;
+          const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+            if(hasFoo) {
+              reject(new Error('unexpected foo'));
+            }
+          };
+          const p = bus.scan<boolean>({
+            evaluator,
+            trigger: 'foo'
+          });
+
+          p.then(onResolve).catch(onReject);
+
+          hasFoo = true;
+          bus.destroy();
+
+          await sleep(1);
+          const rejection = onReject.calls.mostRecent().args[0];
+          expect(rejection.message).toEqual('unexpected foo');
+        });
+      });
+
+      describe("and the evaluator's last invocation neither resolves or rejects", () => {
+        it('rejects the promise with a cancelation error', async () => {
+          const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+            // doing nothing in the evaluator
+            return;
+          };
+          const p = bus.scan<boolean>({
+            evaluator,
+            trigger: 'foo'
+          });
+
+          p.then(onResolve).catch(onReject);
+
+          bus.destroy();
+
+          await sleep(1);
+          const rejection = onReject.calls.mostRecent().args[0];
+          expect(rejection).toEqual('All Scannables have been destroyed');
+        });
+      });
+    });
+
+    describe('given the evaluation condition is already in the resolution state (eager evaluation)', () => {
+      it('resolves the promise without waiting for an event', async () => {
+        const hasFoo: boolean = true;
+        const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+          if(hasFoo) {
+            resolve(true);
+          }
+        };
+        const p = bus.scan<boolean>({
+          evaluator,
+          trigger: 'foo'
+        });
+
+        p.then(onResolve);
+        await sleep(1);
+
+        expect(onResolve).toHaveBeenCalledWith(true);
+
+      });
+
+      describe('and options.eager=false', () => {
+        it('does not resolve the promise until it receives an event triggering evaluation', async () => {
+          const hasFoo: boolean = true;
+          const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+            if(hasFoo) {
+              resolve(true);
+            }
+          };
+          const p = bus.scan<boolean>({
+            evaluator,
+            trigger: 'foo',
+            eager: false
+          });
+
+          p.then(onResolve);
+          await sleep(1);
+
+          expect(onResolve).not.toHaveBeenCalled();
+
+          bus.emit('foo', 'FOO!');
+          await sleep(1);
+
+          expect(onResolve).toHaveBeenCalledWith(true);
+        });
       });
     });
   });

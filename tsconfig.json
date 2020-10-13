@@ -1,5 +1,5 @@
 {
-  "version": "3.1.6",
+  "version": "4.0.2",
   "compilerOptions": {
     "sourceMap": false,
     "noImplicitAny": true,
@@ -11,8 +11,5 @@
     "outDir": "./lib",
     "declaration": true
   },
-  "compileOnSave": false,
-  "include": [
-    "./src/**/*"
-  ]
+  "compileOnSave": false
 }

@@ -14,7 +14,7 @@
     "comment-format": [
       true,
       "check-space",
-      "lowercase"
+      "check-lowercase"
     ],
     "curly": true,
     "eofline": false,
@@ -42,6 +42,7 @@
     "no-duplicate-switch-case": true,
     "no-eval": true,
     "no-invalid-this": true,
+    "no-namespace": false,
     "no-non-null-assertion": true,
     "no-parameter-properties": true,
     "no-shadowed-variable": true,
