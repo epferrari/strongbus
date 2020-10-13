@@ -1,5 +1,8 @@
-export function over(fns: (() => any)[]): () => void {
+
+export function over(iterable: {values: () => IterableIterator<() => void>}): () => void {
   return () => {
-    fns.forEach(fn => fn());
+    for(const f of iterable.values()) {
+      f();
+    }
   };
 }

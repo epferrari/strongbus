@@ -1,18 +1,21 @@
 import {autobind} from 'core-decorators';
+import {CancelablePromise} from 'jaasync/lib/cancelable';
 
-import {Logger} from './types/logger';
-import {Lifecycle} from './types/lifecycle';
-import {Options, ListenerThresholds} from './types/options';
-import {EventKeys, ElementType} from './types/utility';
 import * as Events from './types/events';
 import * as EventHandlers from './types/eventHandlers';
+import {Lifecycle} from './types/lifecycle';
+import {Logger} from './types/logger';
+import {Options, ListenerThresholds} from './types/options';
+import {Scannable} from './types/scannable';
+import {EventKeys, ElementType} from './types/utility';
 import {over} from './utils/over';
 import {generateSubscription} from './utils/generateSubscription';
 import {randomId} from './utils/randomId';
+import {Scanner} from './scanner';
 
 
 @autobind
-export class Bus<TEventMap extends object = object> {
+export class Bus<TEventMap extends object = object> implements Scannable<TEventMap> {
 
   private static defaultOptions: Required<Options> = {
     name: 'Anonymous',
@@ -146,6 +149,101 @@ export class Bus<TEventMap extends object = object> {
    */
   public every(handler: EventHandlers.WildcardEventHandler<TEventMap>): Events.Subscription {
     return this.proxy(handler);
+  }
+
+  /**
+   * for resolving/rejecting a promise based on the reception of an event
+   * Promise will resolve with event payload, if a single event
+   * or undefined if listening to multiple events
+   */
+  public next<T extends Events.Listenable<EventKeys<TEventMap>>>(
+    resolvingEvent: T,
+    // this ensures the resolving and rejecting events are disjoint sets
+    rejectingEvent?: T extends Events.WILDCARD
+      ? never
+      : T extends EventKeys<TEventMap>[]
+        ? EventKeys<Omit<TEventMap, T[number]>>|EventKeys<Omit<TEventMap, T[number]>>[]
+        : T extends EventKeys<TEventMap>
+          ? EventKeys<Omit<TEventMap, T>>|EventKeys<Omit<TEventMap, T>>[]
+          : never
+  ): CancelablePromise<T extends EventKeys<TEventMap> ? TEventMap[T] : void> {
+    let settled: boolean = false;
+    let resolveInternalPromise: (value: T extends EventKeys<TEventMap> ? TEventMap[T] : void) => void;
+    let rejectInternalPromise: (err?: Error) => void;
+    let willDestroyListener: Events.Subscription;
+
+    const resolvingEventSub = this.on(resolvingEvent, ((...args: any[]) => {
+      if(resolvingEvent === Events.WILDCARD || Array.isArray(resolvingEvent)) {
+        resolve(undefined);
+      } else {
+        resolve(args[0]);
+      }
+    }) as any);
+    const rejectingEventSub = rejectingEvent
+      ? this.on(rejectingEvent, ((...args: any[]) => {
+          let e: EventKeys<TEventMap>;
+          if(rejectingEvent === Events.WILDCARD || Array.isArray(rejectingEvent)) {
+            e = args[0];
+          } else {
+            e = rejectingEvent as EventKeys<TEventMap>;
+          }
+          reject(new Error(`Rejected with event (${e})`));
+        }) as any)
+      : null;
+
+    function resolve(payload: T extends EventKeys<TEventMap> ? TEventMap[T] : void): void {
+      if(settle()) {
+        resolveInternalPromise?.(payload);
+      }
+    }
+
+    function reject(err?: Error): void {
+      if(settle()) {
+        rejectInternalPromise?.(err);
+      }
+    }
+
+    function settle(): boolean {
+      if(settled) {
+        return false;
+      }
+      resolvingEventSub();
+      rejectingEventSub?.();
+      willDestroyListener?.();
+      settled = true;
+      return true;
+    }
+
+    const p = new CancelablePromise<T extends EventKeys<TEventMap> ? TEventMap[T] : void>(() => {
+      return new Promise<T extends EventKeys<TEventMap> ? TEventMap[T] : void>(($resolve, $reject) => {
+        resolveInternalPromise = $resolve;
+        rejectInternalPromise = $reject;
+      });
+    });
+
+    // handle cancelation
+    p.catch(e => null).finally(settle);
+
+    willDestroyListener = this.hook('willDestroy', () => p.cancel(`${this.name} destroyed`));
+
+    return p;
+  }
+
+  /**
+   *  for resolving/rejecting a promise based on an evaluation done when an event is triggered
+   * if params.eager, evaluates condition immedately and unsubscribes from events if it resolves/rejects
+   */
+  public scan<R>(
+    params: {
+      evaluator: Scanner.Evaluator<R>,
+      trigger: Events.Listenable<EventKeys<TEventMap>>,
+      eager?: boolean
+    }
+  ): CancelablePromise<R> {
+    const {trigger, ...rest} = params;
+    const scanner = new Scanner(rest);
+    scanner.scan(this, trigger);
+    return scanner;
   }
 
   /**
@@ -283,6 +381,7 @@ export class Bus<TEventMap extends object = object> {
    */
   public destroy() {
     this.releaseSubscribers();
+    this.emitLifecycleEvent(Lifecycle.willDestroy);
     this.lifecycle.clear();
     this.releaseDelegates();
   }
@@ -291,7 +390,7 @@ export class Bus<TEventMap extends object = object> {
     // any un-invoked unsubscribes will be invoked,
     // their lifecycle hooks will be triggered,
     // and they will be removed from the cache
-    over(Array.from(this.subscriptionCache.values()))();
+    over(this.subscriptionCache)();
     this.bus.clear();
   }
 
