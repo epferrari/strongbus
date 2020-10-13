@@ -51,6 +51,9 @@
 				<li class=" tsd-kind-constructor tsd-parent-kind-class tsd-is-external">
 					<a href="bus.html#constructor" class="tsd-kind-icon">constructor</a>
 				</li>
+				<li class=" tsd-kind-event tsd-parent-kind-class tsd-is-external">
+					<a href="bus.html#destroy" class="tsd-kind-icon">destroy</a>
+				</li>
 				<li class=" tsd-kind-get-signature tsd-parent-kind-class tsd-is-external">
 					<a href="bus.html#active" class="tsd-kind-icon">active</a>
 				</li>
@@ -80,9 +83,6 @@
 				</li>
 				<li class=" tsd-kind-method tsd-parent-kind-class tsd-has-type-parameter tsd-is-external">
 					<a href="bus.html#any" class="tsd-kind-icon">any</a>
-				</li>
-				<li class=" tsd-kind-method tsd-parent-kind-class tsd-is-external">
-					<a href="bus.html#destroy" class="tsd-kind-icon">destroy</a>
 				</li>
 				<li class=" tsd-kind-method tsd-parent-kind-class tsd-has-type-parameter tsd-is-external">
 					<a href="bus.html#emit" class="tsd-kind-icon">emit</a>
@@ -179,21 +179,24 @@
 		<li class=" tsd-kind-variable tsd-is-external">
 			<a href="../globals.html#wildcard" class="tsd-kind-icon">WILDCARD</a>
 		</li>
-		<li class=" tsd-kind-function tsd-has-type-parameter tsd-is-external">
-			<a href="../globals.html#addlistener" class="tsd-kind-icon">add<wbr>Listener</a>
-		</li>
-		<li class=" tsd-kind-function tsd-has-type-parameter tsd-is-external">
-			<a href="../globals.html#removelistener" class="tsd-kind-icon">remove<wbr>Listener</a>
-		</li>
 	</ul>
 </nav>
 <div class="container container-main">
 	<div class="content-wrap">
+		<section class="tsd-panel tsd-comment">
+			<div class="tsd-comment tsd-typography">
+			</div>
+		</section>
 		<section class="tsd-panel tsd-type-parameters">
 			<h3>Type parameters</h3>
 			<ul class="tsd-type-parameters">
 				<li>
 					<h4>TEventMap<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">object</span> = <span class="tsd-signature-type">object</span></h4>
+					<div class="tsd-comment tsd-typography">
+						<div class="lead">
+							<p><code>{[Event]: Payload}</code></p>
+						</div>
+					</div>
 				</li>
 			</ul>
 		</section>
@@ -222,6 +225,12 @@
 						</ul>
 					</section>
 					<section class="tsd-index-section tsd-is-external">
+						<h3>Events</h3>
+						<ul class="tsd-index-list">
+							<li class="tsd-kind-event tsd-parent-kind-class tsd-is-external"><a href="bus.html#destroy" class="tsd-kind-icon">destroy</a></li>
+						</ul>
+					</section>
+					<section class="tsd-index-section tsd-is-external">
 						<h3>Accessors</h3>
 						<ul class="tsd-index-list">
 							<li class="tsd-kind-get-signature tsd-parent-kind-class tsd-is-external"><a href="bus.html#active" class="tsd-kind-icon">active</a></li>
@@ -239,7 +248,6 @@
 						<h3>Methods</h3>
 						<ul class="tsd-index-list">
 							<li class="tsd-kind-method tsd-parent-kind-class tsd-has-type-parameter tsd-is-external"><a href="bus.html#any" class="tsd-kind-icon">any</a></li>
-							<li class="tsd-kind-method tsd-parent-kind-class tsd-is-external"><a href="bus.html#destroy" class="tsd-kind-icon">destroy</a></li>
 							<li class="tsd-kind-method tsd-parent-kind-class tsd-has-type-parameter tsd-is-external"><a href="bus.html#emit" class="tsd-kind-icon">emit</a></li>
 							<li class="tsd-kind-method tsd-parent-kind-class tsd-is-external"><a href="bus.html#every" class="tsd-kind-icon">every</a></li>
 							<li class="tsd-kind-method tsd-parent-kind-class tsd-has-type-parameter tsd-is-protected tsd-is-external"><a href="bus.html#handleunexpectedevent" class="tsd-kind-icon">handle<wbr>Unexpected<wbr>Event</a></li>
@@ -271,7 +279,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L65">src/strongbus.ts:65</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L67">src/strongbus.ts:67</a></li>
 							</ul>
 						</aside>
 						<h4 class="tsd-parameters-title">Parameters</h4>
@@ -281,6 +289,37 @@
 							</li>
 						</ul>
 						<h4 class="tsd-returns-title">Returns <a href="bus.html" class="tsd-signature-type">Bus</a></h4>
+					</li>
+				</ul>
+			</section>
+		</section>
+		<section class="tsd-panel-group tsd-member-group tsd-is-external">
+			<h2>Events</h2>
+			<section class="tsd-panel tsd-member tsd-kind-event tsd-parent-kind-class tsd-is-external">
+				<a name="destroy" class="tsd-anchor"></a>
+				<h3>destroy</h3>
+				<ul class="tsd-signatures tsd-kind-event tsd-parent-kind-class tsd-is-external">
+					<li class="tsd-signature tsd-kind-icon">destroy<span class="tsd-signature-symbol">(</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">void</span></li>
+				</ul>
+				<ul class="tsd-descriptions">
+					<li class="tsd-description">
+						<aside class="tsd-sources">
+							<ul>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L388">src/strongbus.ts:388</a></li>
+							</ul>
+						</aside>
+						<div class="tsd-comment tsd-typography">
+							<div class="lead">
+								<p>Remove all event subscribers, lifecycle subscribers, and delegates
+								triggers lifecycle meta events for all subscribed events before removing lifecycle subscribers</p>
+							</div>
+							<dl class="tsd-comment-tags">
+								<dt>emits</dt>
+								<dd><p>[[Lifecycle.willDestroy]]</p>
+								</dd>
+							</dl>
+						</div>
+						<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4>
 					</li>
 				</ul>
 			</section>
@@ -297,12 +336,12 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L294">src/strongbus.ts:294</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L299">src/strongbus.ts:299</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
 							<div class="lead">
-								<p>The active state of the bus, i.e. does it have any subscribers.</p>
+								<p>The active state of the bus, i.e. does it have any subscribers. Subscribers include delegates and scanners</p>
 							</div>
 							<dl class="tsd-comment-tags">
 								<dt>getter</dt>
@@ -324,7 +363,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L322">src/strongbus.ts:322</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L327">src/strongbus.ts:327</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
@@ -348,7 +387,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L308">src/strongbus.ts:308</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L313">src/strongbus.ts:313</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
@@ -372,7 +411,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L315">src/strongbus.ts:315</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L320">src/strongbus.ts:320</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
@@ -396,7 +435,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L331">src/strongbus.ts:331</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L336">src/strongbus.ts:336</a></li>
 							</ul>
 						</aside>
 						<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Map</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">EventKeys</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TEventMap</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol"> | </span><span class="tsd-signature-type">Events.WILDCARD</span><span class="tsd-signature-symbol">, </span><span class="tsd-signature-type">Set</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">EventHandlers.GenericHandler</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span></h4>
@@ -413,7 +452,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L301">src/strongbus.ts:301</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L306">src/strongbus.ts:306</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
@@ -437,7 +476,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L36">src/strongbus.ts:36</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L38">src/strongbus.ts:38</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
@@ -470,7 +509,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L55">src/strongbus.ts:55</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L57">src/strongbus.ts:57</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
@@ -503,7 +542,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L44">src/strongbus.ts:44</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L46">src/strongbus.ts:46</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
@@ -539,7 +578,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L129">src/strongbus.ts:129</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L131">src/strongbus.ts:131</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
@@ -567,29 +606,6 @@
 					</li>
 				</ul>
 			</section>
-			<section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class tsd-is-external">
-				<a name="destroy" class="tsd-anchor"></a>
-				<h3>destroy</h3>
-				<ul class="tsd-signatures tsd-kind-method tsd-parent-kind-class tsd-is-external">
-					<li class="tsd-signature tsd-kind-icon">destroy<span class="tsd-signature-symbol">(</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">void</span></li>
-				</ul>
-				<ul class="tsd-descriptions">
-					<li class="tsd-description">
-						<aside class="tsd-sources">
-							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L381">src/strongbus.ts:381</a></li>
-							</ul>
-						</aside>
-						<div class="tsd-comment tsd-typography">
-							<div class="lead">
-								<p>Remove all event subscribers, lifecycle subscribers, and delegates
-								triggers lifecycle meta events for all subscribed events before removing lifecycle subscribers</p>
-							</div>
-						</div>
-						<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4>
-					</li>
-				</ul>
-			</section>
 			<section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class tsd-has-type-parameter tsd-is-external">
 				<a name="emit" class="tsd-anchor"></a>
 				<h3>emit</h3>
@@ -600,7 +616,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L108">src/strongbus.ts:108</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L110">src/strongbus.ts:110</a></li>
 							</ul>
 						</aside>
 						<h4 class="tsd-type-parameters-title">Type parameters</h4>
@@ -632,7 +648,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L149">src/strongbus.ts:149</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L151">src/strongbus.ts:151</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
@@ -662,7 +678,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L84">src/strongbus.ts:84</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L86">src/strongbus.ts:86</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
@@ -703,7 +719,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L368">src/strongbus.ts:368</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L373">src/strongbus.ts:373</a></li>
 							</ul>
 						</aside>
 						<h4 class="tsd-parameters-title">Parameters</h4>
@@ -726,7 +742,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L359">src/strongbus.ts:359</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L364">src/strongbus.ts:364</a></li>
 							</ul>
 						</aside>
 						<h4 class="tsd-parameters-title">Parameters</h4>
@@ -749,7 +765,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L363">src/strongbus.ts:363</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L368">src/strongbus.ts:368</a></li>
 							</ul>
 						</aside>
 						<h4 class="tsd-parameters-title">Parameters</h4>
@@ -772,7 +788,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L273">src/strongbus.ts:273</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L278">src/strongbus.ts:278</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
@@ -821,7 +837,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L283">src/strongbus.ts:283</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L288">src/strongbus.ts:288</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
@@ -869,12 +885,12 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L158">src/strongbus.ts:158</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L162">src/strongbus.ts:162</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
 							<div class="lead">
-								<p>for resolving/rejecting a promise based on the reception of an event
+								<p>Utility for resolving/rejecting a promise based on the reception of an event
 									Promise will resolve with event payload, if a single event
 								or undefined if listening to multiple events</p>
 							</div>
@@ -889,9 +905,15 @@
 						<ul class="tsd-parameters">
 							<li>
 								<h5>resolvingEvent: <span class="tsd-signature-type">T</span></h5>
+								<div class="tsd-comment tsd-typography">
+									<p>what event/events should resolve the promise</p>
+								</div>
 							</li>
 							<li>
 								<h5><span class="tsd-flag ts-flagOptional">Optional</span> rejectingEvent: <span class="tsd-signature-type">T</span><span class="tsd-signature-symbol"> extends </span><span class="tsd-signature-type">Events.WILDCARD</span><span class="tsd-signature-symbol"> ? </span><span class="tsd-signature-type">never</span><span class="tsd-signature-symbol"> : </span><span class="tsd-signature-type">T</span><span class="tsd-signature-symbol"> extends </span><span class="tsd-signature-type">EventKeys</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TEventMap</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol"> ? </span><span class="tsd-signature-type">EventKeys</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">Omit</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TEventMap</span><span class="tsd-signature-symbol">, </span><span class="tsd-signature-type">T</span><span class="tsd-signature-symbol">[</span><span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">]</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol"> | </span><span class="tsd-signature-type">EventKeys</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">Omit</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TEventMap</span><span class="tsd-signature-symbol">, </span><span class="tsd-signature-type">T</span><span class="tsd-signature-symbol">[</span><span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">]</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol"> : </span><span class="tsd-signature-type">T</span><span class="tsd-signature-symbol"> extends </span><span class="tsd-signature-type">EventKeys</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TEventMap</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol"> ? </span><span class="tsd-signature-type">EventKeys</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">Omit</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TEventMap</span><span class="tsd-signature-symbol">, </span><span class="tsd-signature-type">T</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol"> | </span><span class="tsd-signature-type">EventKeys</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">Omit</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TEventMap</span><span class="tsd-signature-symbol">, </span><span class="tsd-signature-type">T</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol"> : </span><span class="tsd-signature-type">never</span></h5>
+								<div class="tsd-comment tsd-typography">
+									<p>what event/events should reject the promise. Must be mutually disjoint with <code>resolvingEvent</code></p>
+								</div>
 							</li>
 						</ul>
 						<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">CancelablePromise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">T</span><span class="tsd-signature-symbol"> extends </span><span class="tsd-signature-type">EventKeys</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TEventMap</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol"> ? </span><span class="tsd-signature-type">TEventMap</span><span class="tsd-signature-symbol">[</span><span class="tsd-signature-type">T</span><span class="tsd-signature-symbol">]</span><span class="tsd-signature-symbol"> : </span><span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">&gt;</span></h4>
@@ -909,7 +931,7 @@
 						<aside class="tsd-sources">
 							<p>Implementation of <a href="../interfaces/scannable.html">Scannable</a>.<a href="../interfaces/scannable.html#on">on</a></p>
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L98">src/strongbus.ts:98</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L100">src/strongbus.ts:100</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
@@ -948,7 +970,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L251">src/strongbus.ts:251</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L256">src/strongbus.ts:256</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
@@ -982,7 +1004,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L142">src/strongbus.ts:142</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L144">src/strongbus.ts:144</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
@@ -1011,19 +1033,22 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L235">src/strongbus.ts:235</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L240">src/strongbus.ts:240</a></li>
 							</ul>
 						</aside>
 						<div class="tsd-comment tsd-typography">
 							<div class="lead">
-								<p> for resolving/rejecting a promise based on an evaluation done when an event is triggered
-								if params.eager, evaluates condition immedately and unsubscribes from events if it resolves/rejects</p>
+								<p>Utility for resolving/rejecting a promise based on an evaluation done when an event is triggered.
+								If params.eager=true (default), evaluates condition immedately and does not subscribe to any events</p>
 							</div>
 						</div>
 						<h4 class="tsd-type-parameters-title">Type parameters</h4>
 						<ul class="tsd-type-parameters">
 							<li>
 								<h4>R</h4>
+								<div class="tsd-comment tsd-typography">
+									<p>scan promise is resolved with this type</p>
+								</div>
 							</li>
 						</ul>
 						<h4 class="tsd-parameters-title">Parameters</h4>
@@ -1057,7 +1082,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/191fdc9/src/strongbus.ts#L265">src/strongbus.ts:265</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/16d8d14/src/strongbus.ts#L270">src/strongbus.ts:270</a></li>
 							</ul>
 						</aside>
 						<h4 class="tsd-type-parameters-title">Type parameters</h4>

@@ -3,9 +3,9 @@ import {Logger} from './logger';
 
 /**
  * @description notify of possible memory leaks
- * @prop info `100` - log info when listener count for an event exceeds this threshold
- * @prop warn `500` - log warn when listener count for an event exeeds this.threshold
- * @prop error `Infinity` - log error total listener count for an event exceeds this threshold
+ * @prop info [default=`100`] - log info when listener count for an event exceeds this threshold
+ * @prop warn [default=`500`] - log warn when listener count for an event exeeds this.threshold
+ * @prop error [default=`Infinity`] - log error total listener count for an event exceeds this threshold
  */
 export interface ListenerThresholds {
   info: number;

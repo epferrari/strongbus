@@ -21,6 +21,10 @@ export namespace Scanner {
   }
 }
 
+/**
+ * @typeParam T - Scanner is resolved with value of this type
+ * @implements CancelablePromise<T>
+ */
 @autobind
 export class Scanner<T> implements CancelablePromise<T> {
   private settled: boolean = false;
@@ -91,6 +95,9 @@ export class Scanner<T> implements CancelablePromise<T> {
     }
   }
 
+  /**
+   * add a scannable/event pair to trigger evaluation on
+   */
   public scan<M extends object>(
     scannable: Scannable<M>,
     trigger: Events.Listenable<EventKeys<M>>

@@ -14,7 +14,9 @@ import {generateSubscription} from './utils/generateSubscription';
 import {randomId} from './utils/randomId';
 
 
-
+/**
+ * @typeParam TEventMap - `{[Event]: Payload}`
+ */
 @autobind
 export class Bus<TEventMap extends object = object> implements Scannable<TEventMap> {
 
@@ -151,9 +153,11 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   }
 
   /**
-   * for resolving/rejecting a promise based on the reception of an event
+   * Utility for resolving/rejecting a promise based on the reception of an event
    * Promise will resolve with event payload, if a single event
    * or undefined if listening to multiple events
+   * @param resolvingEvent - what event/events should resolve the promise
+   * @param rejectingEvent - what event/events should reject the promise. Must be mutually disjoint with `resolvingEvent`
    */
   public next<T extends Events.Listenable<EventKeys<TEventMap>>>(
     resolvingEvent: T,
@@ -229,8 +233,9 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   }
 
   /**
-   *  for resolving/rejecting a promise based on an evaluation done when an event is triggered
-   * if params.eager, evaluates condition immedately and unsubscribes from events if it resolves/rejects
+   * Utility for resolving/rejecting a promise based on an evaluation done when an event is triggered.
+   * If params.eager=true (default), evaluates condition immedately and does not subscribe to any events
+   * @typeParam R - scan promise is resolved with this type
    */
   public scan<R>(
     params: {
@@ -288,7 +293,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   }
 
   /**
-   * The active state of the bus, i.e. does it have any subscribers.
+   * The active state of the bus, i.e. does it have any subscribers. Subscribers include delegates and scanners
    * @getter `boolean`
    */
   public get active(): boolean {
@@ -377,6 +382,8 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   /**
    * Remove all event subscribers, lifecycle subscribers, and delegates
    * triggers lifecycle meta events for all subscribed events before removing lifecycle subscribers
+   * @emits [[Lifecycle.willDestroy]]
+   * @event [[Lifecycle.willDestroy]]
    */
   public destroy() {
     this.releaseSubscribers();
@@ -465,7 +472,6 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     }
   }
 
-
   private forward<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T], ...args: any[]): boolean {
     const {_delegates} = this;
     if(_delegates.size) {
@@ -508,7 +514,9 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
 }
 
 
-
+/**
+ * @ignore
+ */
 function addListener<TKey>(bus: Map<TKey, Set<EventHandlers.GenericHandler>>, event: TKey, handler: EventHandlers.GenericHandler): void {
   if(!handler) {
     return;
@@ -521,6 +529,9 @@ function addListener<TKey>(bus: Map<TKey, Set<EventHandlers.GenericHandler>>, ev
   set.add(handler);
 }
 
+/**
+ * @ignore
+ */
 function removeListener<TKey>(bus: Map<TKey, Set<EventHandlers.GenericHandler>>, event: TKey, handler: EventHandlers.GenericHandler): void {
   const set = bus.get(event);
   if(!set) {
