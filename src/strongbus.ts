@@ -387,7 +387,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
    */
   public destroy() {
     this.releaseSubscribers();
-    this.emitLifecycleEvent(Lifecycle.willDestroy);
+    this.emitLifecycleEvent(Lifecycle.willDestroy, null);
     this.lifecycle.clear();
     this.releaseDelegates();
   }
@@ -416,9 +416,9 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     } else if(n > thresholds.error) {
       logger.error(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds threshold set to ${thresholds.error}`);
     }
-    this.willAddListener(event as EventKeys<TEventMap>);
+    this.willAddListener(event);
     addListener(this.bus, event, handler);
-    this.didAddListener(event as EventKeys<TEventMap>);
+    this.didAddListener(event);
     return this.cacheListener(event as EventKeys<TEventMap>, handler);
   }
 
@@ -435,9 +435,9 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   }
 
   private removeListener(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): void {
-    this.willRemoveListener(event as EventKeys<TEventMap>);
+    this.willRemoveListener(event);
     removeListener(this.bus, event, handler);
-    this.didRemoveListener(event as EventKeys<TEventMap>);
+    this.didRemoveListener(event);
   }
 
   private emitEvent(event: EventKeys<TEventMap>|Events.WILDCARD, ...args: any[]): boolean {
@@ -447,7 +447,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
           try {
             await fn(...args);
           } catch(e) {
-            this.emitLifecycleEvent(Lifecycle.error, e);
+            this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
           }
         });
         return true;
@@ -455,7 +455,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
       return false;
   }
 
-  private emitLifecycleEvent(event: Lifecycle, payload?: any): void {
+  private emitLifecycleEvent<L extends Lifecycle>(event: L, payload: Lifecycle.EventMap<TEventMap>[L]): void {
     const handlers = this.lifecycle.get(event);
     if(handlers && handlers.size) {
       handlers.forEach(async fn => {
@@ -463,9 +463,15 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
           await fn(payload);
         } catch(e) {
           if(event === Lifecycle.error) {
-            this.options.logger.error('Error thrown in error handler', e);
+            const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
+            this.options.logger.error('Error thrown in error handler', {
+                errorHandler: fn.name,
+                errorHandlerError: e,
+                originalEvent: errorPayload.event,
+                eventHandlerError: errorPayload.error
+            });
           } else {
-            this.emitLifecycleEvent(Lifecycle.error, e);
+            this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
           }
         }
       });
@@ -482,33 +488,33 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     }
   }
 
-  private willAddListener(event: EventKeys<TEventMap>) {
+  private willAddListener(event: EventKeys<TEventMap>|Events.WILDCARD) {
     this.emitLifecycleEvent(Lifecycle.willAddListener, event);
     if(!this.active) {
-      this.emitLifecycleEvent(Lifecycle.willActivate);
+      this.emitLifecycleEvent(Lifecycle.willActivate, null);
     }
   }
 
-  private didAddListener(event: EventKeys<TEventMap>) {
+  private didAddListener(event: EventKeys<TEventMap>|Events.WILDCARD) {
     this.emitLifecycleEvent(Lifecycle.didAddListener, event);
     if(!this.active && this.hasListeners) {
       this._active = true;
-      this.emitLifecycleEvent(Lifecycle.active);
+      this.emitLifecycleEvent(Lifecycle.active, null);
     }
   }
 
-  private willRemoveListener(event: EventKeys<TEventMap>) {
+  private willRemoveListener(event: EventKeys<TEventMap>|Events.WILDCARD) {
     this.emitLifecycleEvent(Lifecycle.willRemoveListener, event);
     if(this.active && this.listeners.size === 1) {
-      this.emitLifecycleEvent(Lifecycle.willIdle);
+      this.emitLifecycleEvent(Lifecycle.willIdle, null);
     }
   }
 
-  private didRemoveListener(event: EventKeys<TEventMap>) {
+  private didRemoveListener(event: EventKeys<TEventMap>|Events.WILDCARD) {
     this.emitLifecycleEvent(Lifecycle.didRemoveListener, event);
     if(this.active && !this.hasListeners) {
       this._active = false;
-      this.emitLifecycleEvent(Lifecycle.idle);
+      this.emitLifecycleEvent(Lifecycle.idle, null);
     }
   }
 }
