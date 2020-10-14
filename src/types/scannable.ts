@@ -9,8 +9,8 @@ export interface Scannable<TMap extends object> {
     event: T,
     handler: EventHandlers.EventHandler<TMap, T>
   ): Events.Subscription;
-  hook(
-    event: Lifecycle,
-    handler: (targetEvent: EventKeys<TMap>) => void
-  ): Events.Subscription;
+  hook<L extends Lifecycle>(
+    event: L,
+    handler: (payload: Lifecycle.EventMap<TMap>[L]
+  ) => void): Events.Subscription;
 }

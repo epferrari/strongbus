@@ -66,7 +66,7 @@
 				<li class=" tsd-kind-property tsd-parent-kind-interface tsd-is-external">
 					<a href="scannable.html#name" class="tsd-kind-icon">name</a>
 				</li>
-				<li class=" tsd-kind-method tsd-parent-kind-interface tsd-is-external">
+				<li class=" tsd-kind-method tsd-parent-kind-interface tsd-has-type-parameter tsd-is-external">
 					<a href="scannable.html#hook" class="tsd-kind-icon">hook</a>
 				</li>
 				<li class=" tsd-kind-method tsd-parent-kind-interface tsd-has-type-parameter tsd-is-external">
@@ -146,7 +146,7 @@
 					<section class="tsd-index-section tsd-is-external">
 						<h3>Methods</h3>
 						<ul class="tsd-index-list">
-							<li class="tsd-kind-method tsd-parent-kind-interface tsd-is-external"><a href="scannable.html#hook" class="tsd-kind-icon">hook</a></li>
+							<li class="tsd-kind-method tsd-parent-kind-interface tsd-has-type-parameter tsd-is-external"><a href="scannable.html#hook" class="tsd-kind-icon">hook</a></li>
 							<li class="tsd-kind-method tsd-parent-kind-interface tsd-has-type-parameter tsd-is-external"><a href="scannable.html#on" class="tsd-kind-icon">on</a></li>
 						</ul>
 					</section>
@@ -161,44 +161,50 @@
 				<div class="tsd-signature tsd-kind-icon">name<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
 				<aside class="tsd-sources">
 					<ul>
-						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/1cd11cc/src/types/scannable.ts#L7">src/types/scannable.ts:7</a></li>
+						<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/d368669/src/types/scannable.ts#L7">src/types/scannable.ts:7</a></li>
 					</ul>
 				</aside>
 			</section>
 		</section>
 		<section class="tsd-panel-group tsd-member-group tsd-is-external">
 			<h2>Methods</h2>
-			<section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-interface tsd-is-external">
+			<section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-interface tsd-has-type-parameter tsd-is-external">
 				<a name="hook" class="tsd-anchor"></a>
 				<h3>hook</h3>
-				<ul class="tsd-signatures tsd-kind-method tsd-parent-kind-interface tsd-is-external">
-					<li class="tsd-signature tsd-kind-icon">hook<span class="tsd-signature-symbol">(</span>event<span class="tsd-signature-symbol">: </span><a href="../globals.html#lifecycle" class="tsd-signature-type">Lifecycle</a>, handler<span class="tsd-signature-symbol">: </span><span class="tsd-signature-symbol">(</span>targetEvent<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">EventKeys</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TMap</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol"> =&gt; </span><span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">: </span><a href="subscription.html" class="tsd-signature-type">Subscription</a></li>
+				<ul class="tsd-signatures tsd-kind-method tsd-parent-kind-interface tsd-has-type-parameter tsd-is-external">
+					<li class="tsd-signature tsd-kind-icon">hook&lt;L&gt;<span class="tsd-signature-symbol">(</span>event<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">L</span>, handler<span class="tsd-signature-symbol">: </span><span class="tsd-signature-symbol">(</span>payload<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">EventMap</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TMap</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">[</span><span class="tsd-signature-type">L</span><span class="tsd-signature-symbol">]</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol"> =&gt; </span><span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">: </span><a href="subscription.html" class="tsd-signature-type">Subscription</a></li>
 				</ul>
 				<ul class="tsd-descriptions">
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/1cd11cc/src/types/scannable.ts#L12">src/types/scannable.ts:12</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/d368669/src/types/scannable.ts#L12">src/types/scannable.ts:12</a></li>
 							</ul>
 						</aside>
+						<h4 class="tsd-type-parameters-title">Type parameters</h4>
+						<ul class="tsd-type-parameters">
+							<li>
+								<h4>L<span class="tsd-signature-symbol">: </span><a href="../globals.html#lifecycle" class="tsd-signature-type">Lifecycle</a></h4>
+							</li>
+						</ul>
 						<h4 class="tsd-parameters-title">Parameters</h4>
 						<ul class="tsd-parameters">
 							<li>
-								<h5>event: <a href="../globals.html#lifecycle" class="tsd-signature-type">Lifecycle</a></h5>
+								<h5>event: <span class="tsd-signature-type">L</span></h5>
 							</li>
 							<li>
-								<h5>handler: <span class="tsd-signature-symbol">(</span>targetEvent<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">EventKeys</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TMap</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol"> =&gt; </span><span class="tsd-signature-type">void</span></h5>
+								<h5>handler: <span class="tsd-signature-symbol">(</span>payload<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">EventMap</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TMap</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">[</span><span class="tsd-signature-type">L</span><span class="tsd-signature-symbol">]</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol"> =&gt; </span><span class="tsd-signature-type">void</span></h5>
 								<ul class="tsd-parameters">
 									<li class="tsd-parameter-signature">
 										<ul class="tsd-signatures tsd-kind-type-literal">
-											<li class="tsd-signature tsd-kind-icon"><span class="tsd-signature-symbol">(</span>targetEvent<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">EventKeys</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TMap</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">void</span></li>
+											<li class="tsd-signature tsd-kind-icon"><span class="tsd-signature-symbol">(</span>payload<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">EventMap</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TMap</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">[</span><span class="tsd-signature-type">L</span><span class="tsd-signature-symbol">]</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">void</span></li>
 										</ul>
 										<ul class="tsd-descriptions">
 											<li class="tsd-description">
 												<h4 class="tsd-parameters-title">Parameters</h4>
 												<ul class="tsd-parameters">
 													<li>
-														<h5>targetEvent: <span class="tsd-signature-type">EventKeys</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TMap</span><span class="tsd-signature-symbol">&gt;</span></h5>
+														<h5>payload: <span class="tsd-signature-type">EventMap</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TMap</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">[</span><span class="tsd-signature-type">L</span><span class="tsd-signature-symbol">]</span></h5>
 													</li>
 												</ul>
 												<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4>
@@ -222,7 +228,7 @@
 					<li class="tsd-description">
 						<aside class="tsd-sources">
 							<ul>
-								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/1cd11cc/src/types/scannable.ts#L8">src/types/scannable.ts:8</a></li>
+								<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/d368669/src/types/scannable.ts#L8">src/types/scannable.ts:8</a></li>
 							</ul>
 						</aside>
 						<h4 class="tsd-type-parameters-title">Type parameters</h4>

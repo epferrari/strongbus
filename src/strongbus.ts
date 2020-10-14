@@ -275,7 +275,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   /**
    * Subscribe to meta changes to the [[Bus]] with [[Lifecycle]] events
    */
-  public hook(event: Lifecycle, handler: (targetEvent: EventKeys<TEventMap>) => void): Events.Subscription {
+  public hook<L extends Lifecycle>(event: L, handler: (payload: Lifecycle.EventMap<TEventMap>[L]) => void): Events.Subscription {
     addListener(this.lifecycle, event, handler);
     return generateSubscription(() => removeListener(this.lifecycle, event, handler));
   }
