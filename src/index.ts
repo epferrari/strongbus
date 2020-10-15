@@ -1,5 +1,6 @@
 export {Bus} from './strongbus';
 export {Scanner} from './scanner';
+export {generateSubscription} from './utils/generateSubscription';
 
 export * from './types/events';
 export * from './types/eventHandlers';
