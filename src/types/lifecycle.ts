@@ -1,6 +1,5 @@
 import {strEnum} from '../utils/strEnum';
 import * as Events from './events';
-import {EventKeys} from './utility';
 
 export const Lifecycle = strEnum([
   'willActivate',
@@ -22,11 +21,11 @@ export namespace Lifecycle {
     [Lifecycle.active]: void;
     [Lifecycle.willIdle]: void;
     [Lifecycle.idle]: void;
-    [Lifecycle.willAddListener]: EventKeys<TEventMap>|Events.WILDCARD;
-    [Lifecycle.didAddListener]: EventKeys<TEventMap>|Events.WILDCARD;
-    [Lifecycle.willRemoveListener]: EventKeys<TEventMap>|Events.WILDCARD;
-    [Lifecycle.didRemoveListener]: EventKeys<TEventMap>|Events.WILDCARD;
+    [Lifecycle.willAddListener]: (keyof TEventMap)|Events.WILDCARD;
+    [Lifecycle.didAddListener]: (keyof TEventMap)|Events.WILDCARD;
+    [Lifecycle.willRemoveListener]: (keyof TEventMap)|Events.WILDCARD;
+    [Lifecycle.didRemoveListener]: (keyof TEventMap)|Events.WILDCARD;
     [Lifecycle.willDestroy]: void;
-    [Lifecycle.error]: {error: Error, event: EventKeys<TEventMap>|Events.WILDCARD|Lifecycle};
+    [Lifecycle.error]: {error: Error, event: (keyof TEventMap)|Events.WILDCARD|Lifecycle};
   }
 }

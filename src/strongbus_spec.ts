@@ -2,7 +2,6 @@ import {sleep} from 'jaasync/lib/cancelable';
 
 import * as Strongbus from './';
 import {Scanner} from './scanner';
-import {EventKeys} from './types/utility';
 
 type TestEventMap = {
   foo: string;
@@ -17,7 +16,7 @@ class DelegateTestBus<T extends object = TestEventMap> extends Strongbus.Bus<T> 
     this.emulateListenerCount = options.emulateListenerCount;
   }
 
-  public emit<E extends EventKeys<T>>(event: E, payload: T[E]): boolean {
+  public emit<E extends keyof T>(event: E, payload: T[E]): boolean {
     super.emit(event, payload);
     return this.emulateListenerCount;
   }

@@ -8,7 +8,7 @@ import {Lifecycle} from './types/lifecycle';
 import {Logger} from './types/logger';
 import {Options, ListenerThresholds} from './types/options';
 import {Scannable} from './types/scannable';
-import {EventKeys, ElementType} from './types/utility';
+import {ElementType} from './types/utility';
 import {over} from './utils/over';
 import {generateSubscription} from './utils/generateSubscription';
 import {randomId} from './utils/randomId';
@@ -63,7 +63,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   private readonly subscriptionCache = new Map<string, Events.Subscription>();
   private readonly options: Required<Options>;
 
-  private readonly bus = new Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.GenericHandler>>();
+  private readonly bus = new Map<keyof TEventMap|Events.WILDCARD, Set<EventHandlers.GenericHandler>>();
   private readonly lifecycle = new Map<Lifecycle, Set<EventHandlers.GenericHandler>>();
 
   constructor(options?: Options) {
@@ -83,7 +83,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
    * The default implementation is to throw an error.
    * Will be invoked when an instance's `options.allowUnhandledEvents = false` (default is true).
    */
-  protected handleUnexpectedEvent<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T]) {
+  protected handleUnexpectedEvent<T extends keyof TEventMap>(event: T, payload: TEventMap[T]) {
     const errorMessage = [
       `Strongbus.Bus received unexpected message type '${event}' with contents:`,
       JSON.stringify(payload, null, 2)
@@ -97,17 +97,17 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
    * alias of [[Bus.proxy]] when invoked with [[WILDCARD]],
    * alias of [[Bus.any]] when invoked with an array of events
    */
-  public on<T extends Events.Listenable<EventKeys<TEventMap>>>(event: T, handler: EventHandlers.EventHandler<TEventMap, T>): Events.Subscription {
+  public on<T extends Events.Listenable<keyof TEventMap>>(event: T, handler: EventHandlers.EventHandler<TEventMap, T>): Events.Subscription {
     if(Array.isArray(event)) {
       return this.any(event, handler as EventHandlers.MultiEventHandler<TEventMap>);
     } else if(event === Events.WILDCARD) {
       return this.proxy(handler as EventHandlers.WildcardEventHandler<TEventMap>);
     } else {
-      return this.addListener(event as EventKeys<TEventMap>, handler);
+      return this.addListener(event as keyof TEventMap, handler);
     }
   }
 
-  public emit<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T]): boolean {
+  public emit<T extends keyof TEventMap>(event: T, payload: TEventMap[T]): boolean {
     if(event === Events.WILDCARD) {
       throw new Error(`Do not emit "${event}" manually. Reserved for internal use.`);
     }
@@ -128,9 +128,9 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
    * Handle multiple events with the same handler.
    * [[EventHandlers.MultiEventHandler]] receives raised event as first argument, payload as second argument
    */
-  public any<TEvents extends EventKeys<TEventMap>[]>(events: TEvents, handler: EventHandlers.MultiEventHandler<TEventMap, TEvents>): Events.Subscription {
+  public any<TEvents extends (keyof TEventMap)[]>(events: TEvents, handler: EventHandlers.MultiEventHandler<TEventMap, TEvents>): Events.Subscription {
     return generateSubscription(over(
-      (events as any).map(<TEvent extends ElementType<TEvents>>(e: TEvent) => {
+      events.map(<TEvent extends ElementType<TEvents>>(e: TEvent) => {
         const anyHandler = (payload: TEventMap[TEvent]) => handler(e, payload);
         return this.addListener(e, anyHandler);
       })
@@ -159,19 +159,19 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
    * @param resolvingEvent - what event/events should resolve the promise
    * @param rejectingEvent - what event/events should reject the promise. Must be mutually disjoint with `resolvingEvent`
    */
-  public next<T extends Events.Listenable<EventKeys<TEventMap>>>(
+  public next<T extends Events.Listenable<keyof TEventMap>>(
     resolvingEvent: T,
     // this ensures the resolving and rejecting events are disjoint sets
     rejectingEvent?: T extends Events.WILDCARD
       ? never
-      : T extends EventKeys<TEventMap>[]
-        ? EventKeys<Omit<TEventMap, T[number]>>|EventKeys<Omit<TEventMap, T[number]>>[]
-        : T extends EventKeys<TEventMap>
-          ? EventKeys<Omit<TEventMap, T>>|EventKeys<Omit<TEventMap, T>>[]
+      : T extends (keyof TEventMap)[]
+        ? keyof Omit<TEventMap, T[number]>|(keyof Omit<TEventMap, T[number]>)[]
+        : T extends keyof TEventMap
+          ? keyof Omit<TEventMap, T>|(keyof Omit<TEventMap, T>)[]
           : never
-  ): CancelablePromise<T extends EventKeys<TEventMap> ? TEventMap[T] : void> {
+  ): CancelablePromise<T extends keyof TEventMap ? TEventMap[T] : void> {
     let settled: boolean = false;
-    let resolveInternalPromise: (value: T extends EventKeys<TEventMap> ? TEventMap[T] : void) => void;
+    let resolveInternalPromise: (value: T extends keyof TEventMap ? TEventMap[T] : void) => void;
     let rejectInternalPromise: (err?: Error) => void;
     let willDestroyListener: Events.Subscription;
 
@@ -184,17 +184,17 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     }) as any);
     const rejectingEventSub = rejectingEvent
       ? this.on(rejectingEvent, ((...args: any[]) => {
-          let e: EventKeys<TEventMap>;
+          let e: keyof TEventMap;
           if(rejectingEvent === Events.WILDCARD || Array.isArray(rejectingEvent)) {
             e = args[0];
           } else {
-            e = rejectingEvent as EventKeys<TEventMap>;
+            e = rejectingEvent as keyof TEventMap;
           }
           reject(new Error(`Rejected with event (${e})`));
         }) as any)
       : null;
 
-    function resolve(payload: T extends EventKeys<TEventMap> ? TEventMap[T] : void): void {
+    function resolve(payload: T extends keyof TEventMap ? TEventMap[T] : void): void {
       if(settle()) {
         resolveInternalPromise?.(payload);
       }
@@ -217,8 +217,8 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
       return true;
     }
 
-    const p = new CancelablePromise<T extends EventKeys<TEventMap> ? TEventMap[T] : void>(() => {
-      return new Promise<T extends EventKeys<TEventMap> ? TEventMap[T] : void>(($resolve, $reject) => {
+    const p = new CancelablePromise<T extends keyof TEventMap ? TEventMap[T] : void>(() => {
+      return new Promise<T extends keyof TEventMap ? TEventMap[T] : void>(($resolve, $reject) => {
         resolveInternalPromise = $resolve;
         rejectInternalPromise = $reject;
       });
@@ -240,7 +240,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   public scan<R>(
     params: {
       evaluator: Scanner.Evaluator<R>,
-      trigger: Events.Listenable<EventKeys<TEventMap>>,
+      trigger: Events.Listenable<keyof TEventMap>,
       eager?: boolean
     }
   ): CancelablePromise<R> {
@@ -333,7 +333,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     return false;
   }
 
-  public get listeners(): Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.GenericHandler>> {
+  public get listeners(): Map<keyof TEventMap|Events.WILDCARD, Set<EventHandlers.GenericHandler>> {
     const map = this.ownListeners;
     this._delegates.forEach((_, delegate) => {
       delegate.listeners.forEach((delegateListeners, event) => {
@@ -351,8 +351,8 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     return map;
   }
 
-  private get ownListeners(): Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>> {
-    const map = new Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>>();
+  private get ownListeners(): Map<keyof TEventMap|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>> {
+    const map = new Map<keyof TEventMap|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>>();
     this.bus.forEach((listeners, event) => {
       if(listeners.size) {
         map.set(event, new Set(listeners));
@@ -361,16 +361,16 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     return map;
   }
 
-  public hasListenersFor(event: EventKeys<TEventMap>|Events.WILDCARD): boolean {
+  public hasListenersFor(event: keyof TEventMap|Events.WILDCARD): boolean {
     return this.hasOwnListenersFor(event) || this.hasDelegateListenersFor(event);
   }
 
-  public  hasOwnListenersFor(event: EventKeys<TEventMap>|Events.WILDCARD): boolean {
+  public  hasOwnListenersFor(event: keyof TEventMap|Events.WILDCARD): boolean {
     const handlers = this.bus.get(event);
     return handlers?.size > 0;
   }
 
-  public hasDelegateListenersFor(event: EventKeys<TEventMap>|Events.WILDCARD): boolean {
+  public hasDelegateListenersFor(event: keyof TEventMap|Events.WILDCARD): boolean {
     for(const delegate of this._delegates.keys()) {
       if(delegate.hasListenersFor(event)) {
         return true;
@@ -405,7 +405,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     this._delegates.clear();
   }
 
-  private addListener(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): Events.Subscription {
+  private addListener(event: keyof TEventMap|Events.WILDCARD, handler: EventHandlers.GenericHandler): Events.Subscription {
     const {thresholds, logger} = this.options;
     const handlers = this.bus.get(event);
     const n: number = handlers?.size || 0;
@@ -419,10 +419,10 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     this.willAddListener(event);
     addListener(this.bus, event, handler);
     this.didAddListener(event);
-    return this.cacheListener(event as EventKeys<TEventMap>, handler);
+    return this.cacheListener(event as keyof TEventMap, handler);
   }
 
-  private cacheListener(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): Events.Subscription {
+  private cacheListener(event: keyof TEventMap|Events.WILDCARD, handler: EventHandlers.GenericHandler): Events.Subscription {
     const token = randomId();
     const sub = generateSubscription(() => {
       if(this.subscriptionCache.has(token)) {
@@ -434,13 +434,13 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     return sub;
   }
 
-  private removeListener(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): void {
+  private removeListener(event: keyof TEventMap|Events.WILDCARD, handler: EventHandlers.GenericHandler): void {
     this.willRemoveListener(event);
     removeListener(this.bus, event, handler);
     this.didRemoveListener(event);
   }
 
-  private emitEvent(event: EventKeys<TEventMap>|Events.WILDCARD, ...args: any[]): boolean {
+  private emitEvent(event: keyof TEventMap|Events.WILDCARD, ...args: any[]): boolean {
     const handlers = this.bus.get(event);
       if(handlers && handlers.size) {
         handlers.forEach(async fn => {
@@ -478,7 +478,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     }
   }
 
-  private forward<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T], ...args: any[]): boolean {
+  private forward<T extends keyof TEventMap>(event: T, payload: TEventMap[T], ...args: any[]): boolean {
     const {_delegates} = this;
     if(_delegates.size) {
       return Array.from(_delegates.keys())
@@ -488,14 +488,14 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     }
   }
 
-  private willAddListener(event: EventKeys<TEventMap>|Events.WILDCARD) {
+  private willAddListener(event: keyof TEventMap|Events.WILDCARD) {
     this.emitLifecycleEvent(Lifecycle.willAddListener, event);
     if(!this.active) {
       this.emitLifecycleEvent(Lifecycle.willActivate, null);
     }
   }
 
-  private didAddListener(event: EventKeys<TEventMap>|Events.WILDCARD) {
+  private didAddListener(event: keyof TEventMap|Events.WILDCARD) {
     this.emitLifecycleEvent(Lifecycle.didAddListener, event);
     if(!this.active && this.hasListeners) {
       this._active = true;
@@ -503,14 +503,14 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     }
   }
 
-  private willRemoveListener(event: EventKeys<TEventMap>|Events.WILDCARD) {
+  private willRemoveListener(event: keyof TEventMap|Events.WILDCARD) {
     this.emitLifecycleEvent(Lifecycle.willRemoveListener, event);
     if(this.active && this.listeners.size === 1) {
       this.emitLifecycleEvent(Lifecycle.willIdle, null);
     }
   }
 
-  private didRemoveListener(event: EventKeys<TEventMap>|Events.WILDCARD) {
+  private didRemoveListener(event: keyof TEventMap|Events.WILDCARD) {
     this.emitLifecycleEvent(Lifecycle.didRemoveListener, event);
     if(this.active && !this.hasListeners) {
       this._active = false;

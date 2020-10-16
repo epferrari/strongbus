@@ -5,7 +5,6 @@ import {Deferred} from 'jaasync/lib/deferred';
 import * as Events from './types/events';
 import {Lifecycle} from './types/lifecycle';
 import {Scannable} from './types/scannable';
-import {EventKeys} from './types/utility';
 import {over} from './utils/over';
 
 
@@ -100,7 +99,7 @@ export class Scanner<T> implements CancelablePromise<T> {
    */
   public scan<M extends object>(
     scannable: Scannable<M>,
-    trigger: Events.Listenable<EventKeys<M>>
+    trigger: Events.Listenable<keyof M>
   ): this {
     if(this.settled) {
       return;
