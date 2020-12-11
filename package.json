@@ -30,7 +30,8 @@
   },
   "author": "Ethan Ferrari <github@ethanferrari.io>",
   "contributors": [
-    "Josh Heyse <josh.heyse@gmail.com>"
+    "Josh Heyse <josh.heyse@gmail.com>",
+    "Kurt Preston <github@kurtpreston.com>"
   ],
   "repository": "https://github.com/epferrari/strongbus",
   "license": "MIT",
