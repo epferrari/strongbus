@@ -384,14 +384,49 @@ describe('Strongbus.Bus', () => {
       expect(onWillIdle).toHaveBeenCalledTimes(0);
       expect(onIdle).toHaveBeenCalledTimes(0);
 
+      // unsubscribe from bar
       barsub();
       expect(onWillIdle).toHaveBeenCalledTimes(0);
       expect(onIdle).toHaveBeenCalledTimes(0);
+
+      // second bar unsubscription does not trigger onIdle
+      barsub();
+      expect(onWillIdle).toHaveBeenCalledTimes(0);
+      expect(onIdle).toHaveBeenCalledTimes(0);
+
+      // unsubscribing to foo now triggers the onIdle
       foosub();
       expect(onWillIdle).toHaveBeenCalledTimes(1);
       expect(onIdle).toHaveBeenCalledTimes(1);
 
       foosub();
+      expect(onWillIdle).toHaveBeenCalledTimes(1);
+      expect(onIdle).toHaveBeenCalledTimes(1);
+    });
+
+    it('can distinguish between diffierent subscriptions to the same event', () => {
+      expect(bus.hasListeners).toBeFalsy();
+      const foosub1 = bus.on('foo', onTestEvent);
+      const foosub2 = bus.on('foo', () => true);
+      expect(onWillIdle).toHaveBeenCalledTimes(0);
+      expect(onIdle).toHaveBeenCalledTimes(0);
+
+      // unsubscribe from bar
+      foosub1();
+      expect(onWillIdle).toHaveBeenCalledTimes(0);
+      expect(onIdle).toHaveBeenCalledTimes(0);
+
+      // second bar unsubscription does not trigger onIdle
+      foosub1();
+      expect(onWillIdle).toHaveBeenCalledTimes(0);
+      expect(onIdle).toHaveBeenCalledTimes(0);
+
+      // unsubscribing to foo now triggers the onIdle
+      foosub2();
+      expect(onWillIdle).toHaveBeenCalledTimes(1);
+      expect(onIdle).toHaveBeenCalledTimes(1);
+
+      foosub2();
       expect(onWillIdle).toHaveBeenCalledTimes(1);
       expect(onIdle).toHaveBeenCalledTimes(1);
     });
