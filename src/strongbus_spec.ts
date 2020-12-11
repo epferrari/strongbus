@@ -345,7 +345,24 @@ describe('Strongbus.Bus', () => {
       foosub();
       expect(onWillRemoveListener).toHaveBeenCalledWith('foo');
       expect(onRemoveListener).toHaveBeenCalledWith('foo');
+      expect(onWillIdle).toHaveBeenCalled();
       expect(onIdle).toHaveBeenCalled();
+    });
+
+    it('does not emit events if the subscription is invoked a second time', () => {
+      const foosub = bus.on('foo', onTestEvent);
+      foosub();
+
+      onWillRemoveListener.calls.reset();
+      onRemoveListener.calls.reset();
+      onWillIdle.calls.reset();
+      onIdle.calls.reset();
+
+      foosub();
+      expect(onWillRemoveListener).not.toHaveBeenCalled();
+      expect(onRemoveListener).not.toHaveBeenCalled();
+      expect(onWillIdle).not.toHaveBeenCalled();
+      expect(onIdle).not.toHaveBeenCalled();
     });
 
     it('only raises "willActivate" and "active" events when the bus goes from 0 to 1 listeners', () => {
@@ -377,6 +394,23 @@ describe('Strongbus.Bus', () => {
       foosub();
       expect(onWillIdle).toHaveBeenCalledTimes(1);
       expect(onIdle).toHaveBeenCalledTimes(1);
+    });
+
+    // if subscriptions are the same, then they are grouped
+    it('allows duplicate subscriptions', () => {
+      expect(bus.hasListeners).toBeFalse();
+      const sub1 = bus.on('foo', onTestEvent);
+      const sub2 = bus.on('foo', onTestEvent);
+
+      sub1();
+      expect(bus.hasListeners).toBeFalse();
+      expect(onWillRemoveListener).toHaveBeenCalled();
+      expect(onRemoveListener).toHaveBeenCalled();
+      expect(onWillIdle).toHaveBeenCalled();
+      expect(onIdle).toHaveBeenCalled();
+
+      // second unsubscription is redundant
+      sub2();
     });
 
     describe('given bus has delegates', () => {
