@@ -417,8 +417,10 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
       logger.error(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds threshold set to ${thresholds.error}`);
     }
     this.willAddListener(event);
-    addListener(this.bus, event, handler);
-    this.didAddListener(event);
+    const {added} = addListener(this.bus, event, handler);
+    if(added) {
+      this.didAddListener(event);
+    }
     return this.cacheListener(event as EventKeys<TEventMap>, handler);
   }
 
@@ -436,8 +438,10 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
 
   private removeListener(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): void {
     this.willRemoveListener(event);
-    removeListener(this.bus, event, handler);
-    this.didRemoveListener(event);
+    const {removed} = removeListener(this.bus, event, handler);
+    if(removed) {
+      this.didRemoveListener(event);
+    }
   }
 
   private emitEvent(event: EventKeys<TEventMap>|Events.WILDCARD, ...args: any[]): boolean {
@@ -503,10 +507,13 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     }
   }
 
-  private willRemoveListener(event: EventKeys<TEventMap>|Events.WILDCARD) {
-    this.emitLifecycleEvent(Lifecycle.willRemoveListener, event);
-    if(this.active && this.listeners.size === 1) {
-      this.emitLifecycleEvent(Lifecycle.willIdle, null);
+  private willRemoveListener(event: EventKeys<TEventMap>|Events.WILDCARD): void {
+    const eventHandlerCount = this.listeners.get(event)?.size || 0;
+    if(eventHandlerCount) {
+      this.emitLifecycleEvent(Lifecycle.willRemoveListener, event);
+      if(this.active && this.listeners.size === 1 && eventHandlerCount === 1) {
+        this.emitLifecycleEvent(Lifecycle.willIdle, null);
+      }
     }
   }
 
@@ -523,28 +530,35 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
 /**
  * @ignore
  */
-function addListener<TKey>(bus: Map<TKey, Set<EventHandlers.GenericHandler>>, event: TKey, handler: EventHandlers.GenericHandler): void {
+function addListener<TKey>(bus: Map<TKey, Set<EventHandlers.GenericHandler>>, event: TKey, handler: EventHandlers.GenericHandler): {added: boolean, first: boolean} {
   if(!handler) {
-    return;
+    return {added: false, first: false};
   }
   let set = bus.get(event);
+  let first: boolean = false;
   if(!set) {
+    first = true;
     set = new Set<EventHandlers.GenericHandler>();
     bus.set(event, set);
   }
   set.add(handler);
+  return {added: true, first};
 }
 
 /**
  * @ignore
  */
-function removeListener<TKey>(bus: Map<TKey, Set<EventHandlers.GenericHandler>>, event: TKey, handler: EventHandlers.GenericHandler): void {
+function removeListener<TKey>(bus: Map<TKey, Set<EventHandlers.GenericHandler>>, event: TKey, handler: EventHandlers.GenericHandler): {removed: boolean, last: boolean} {
   const set = bus.get(event);
   if(!set) {
-    return;
+    return {removed: false, last: false};
   }
-  set.delete(handler);
+  let last: boolean = false;
+  const {size} = set;
+  const removed: boolean = set.delete(handler);
   if(set.size === 0) {
     bus.delete(event);
+    last = size > 0;
   }
+  return {removed, last};
 }
