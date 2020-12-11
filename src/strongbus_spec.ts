@@ -379,6 +379,23 @@ describe('Strongbus.Bus', () => {
       expect(onIdle).toHaveBeenCalledTimes(1);
     });
 
+    // if subscriptions are the same, then they are grouped
+    it('allows duplicate subscriptions', () => {
+      expect(bus.hasListeners).toBeFalse();
+      const sub1 = bus.on('foo', onTestEvent);
+      const sub2 = bus.on('foo', onTestEvent);
+
+      sub1();
+      expect(bus.hasListeners).toBeFalse();
+      expect(onWillRemoveListener).toHaveBeenCalled();
+      expect(onRemoveListener).toHaveBeenCalled();
+      expect(onWillIdle).toHaveBeenCalled();
+      expect(onIdle).toHaveBeenCalled();
+
+      // second unsubscription is redundant
+      sub2();
+    });
+
     describe('given bus has delegates', () => {
       let delegate: DelegateTestBus;
       let onDelegateWillAddListener: jasmine.Spy;
