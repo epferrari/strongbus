@@ -336,6 +336,11 @@ describe('Strongbus.Bus', () => {
     });
 
     it('allows subscription to meta events', () => {
+      onWillActivate.and.callFake(() => expect(bus.hasListeners).toBeFalse());
+      onActive.and.callFake(() => expect(bus.hasListeners).toBeTrue());
+      onWillIdle.and.callFake(() => expect(bus.hasListeners).toBeTrue());
+      onIdle.and.callFake(() => expect(bus.hasListeners).toBeFalse());
+
       const foosub = bus.on('foo', onTestEvent);
       expect(onWillAddListener).toHaveBeenCalledWith('foo');
       expect(onAddListener).toHaveBeenCalledWith('foo');
