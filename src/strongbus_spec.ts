@@ -48,6 +48,30 @@ describe('Strongbus.Bus', () => {
       expect(onEveryEvent).toHaveBeenCalledWith('foo', 'eagle');
     });
 
+    describe('thresholds', () => {
+      it('sets default thresholds', () => {
+        const options: Strongbus.Options = (bus as any).options;
+        expect(options.thresholds.info).toEqual(100);
+        expect(options.thresholds.warn).toEqual(500);
+        expect(options.thresholds.error).toEqual(Infinity);
+      });
+
+      it('allows setting custom thresholds', () => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          thresholds: {
+            info: 7,
+            warn: 14,
+            error: 21
+          }
+        });
+
+        const options: Strongbus.Options = (bus as any).options;
+        expect(options.thresholds.info).toEqual(7);
+        expect(options.thresholds.warn).toEqual(14);
+        expect(options.thresholds.error).toEqual(21);
+      });
+    });
+
     describe('given an unhandled event is raised', () => {
       describe('and given the `allowUnhandledEvent` option is false', () => {
         it('invokes instance\'s #handleUnexpectedEvent method', () => {

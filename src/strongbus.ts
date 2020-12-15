@@ -69,10 +69,10 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   constructor(options?: Options) {
     this.options = {
       ...Bus.defaultOptions,
-      ...options || {} as any,
+      ...options || {},
       thresholds: {
-        ...(options || {} as any).thresholds,
-        ...Bus.defaultOptions.thresholds
+        ...Bus.defaultOptions.thresholds,
+        ...options?.thresholds || {}
       }
     };
   }
