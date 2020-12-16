@@ -1,4 +1,8 @@
 /src
+/docs
 tsconfig.json
 tslint.json
 .editorconfig
+*.tgz
+.DS_Store
+.vscode
