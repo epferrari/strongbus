@@ -2,6 +2,7 @@ import {sleep} from 'jaasync/lib/cancelable';
 
 import * as Strongbus from './';
 import {Scanner} from './scanner';
+import {Logger} from './types/logger';
 import {EventKeys} from './types/utility';
 
 type TestEventMap = {
@@ -89,6 +90,70 @@ describe('Strongbus.Bus', () => {
           expect((bus as any).handleUnexpectedEvent).not.toHaveBeenCalled();
         });
       });
+    });
+  });
+
+  describe('listener logging thresholds', () => {
+    let logger: jasmine.SpyObj<Logger>;
+
+    function addListeners(numListenersToAdd: number) {
+      for(let i = 0; i < numListenersToAdd; i++) {
+        bus.on('bar', () => true);
+      }
+    }
+
+    beforeEach(() => {
+      logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error']);
+    });
+
+    it('logs if the number of listeners exceeds the thresholds', () => {
+      bus = new Strongbus.Bus<TestEventMap>({
+        logger,
+        thresholds: {
+          info: 10,
+          warn: 20,
+          error: 30
+        }
+      });
+      // no logging up to the threshold
+      addListeners(10);
+      expect(logger.info).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
+
+      // 11th listener triggers info
+      addListeners(1);
+      expect(bus.listeners.get('bar').size).toEqual(11);
+      expect(logger.info).toHaveBeenCalledTimes(1);
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
+
+      // 21st listener triggers warn
+      addListeners(10);
+      expect(logger.info).toHaveBeenCalledTimes(10);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.error).not.toHaveBeenCalled();
+
+      // 31st listener triggers error
+      addListeners(10);
+      expect(logger.info).toHaveBeenCalledTimes(10);
+      expect(logger.warn).toHaveBeenCalledTimes(10);
+      expect(logger.error).toHaveBeenCalledTimes(1);
+    });
+
+    it('logs at the highest severity that passes the threshold', () => {
+      bus = new Strongbus.Bus<TestEventMap>({
+        logger,
+        thresholds: {
+          // only warn-level specified, info is at default of 100
+          warn: 20
+        }
+      });
+
+      addListeners(21);
+      expect(logger.info).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.error).not.toHaveBeenCalled();
     });
   });
 
