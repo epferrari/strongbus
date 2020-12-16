@@ -447,13 +447,13 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   private emitEvent(event: EventKeys<TEventMap>|Events.WILDCARD, ...args: any[]): boolean {
     const handlers = this.bus.get(event);
       if(handlers && handlers.size) {
-        handlers.forEach(async fn => {
+        for(const fn of handlers) {
           try {
-            await fn(...args);
+            fn(...args);
           } catch(e) {
             this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
           }
-        });
+        }
         return true;
       }
       return false;
@@ -462,9 +462,9 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   private emitLifecycleEvent<L extends Lifecycle>(event: L, payload: Lifecycle.EventMap<TEventMap>[L]): void {
     const handlers = this.lifecycle.get(event);
     if(handlers && handlers.size) {
-      handlers.forEach(async fn => {
+      for(const fn of handlers) {
         try {
-          await fn(payload);
+          fn(payload);
         } catch(e) {
           if(event === Lifecycle.error) {
             const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
@@ -478,7 +478,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
             this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
           }
         }
-      });
+      }
     }
   }
 
