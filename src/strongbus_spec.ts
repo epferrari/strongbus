@@ -167,6 +167,25 @@ describe('Strongbus.Bus', () => {
       expect(handleFoo).toHaveBeenCalledWith('elephant');
     });
 
+    it('does not invoke subscribers added during callbacks', async () => {
+      const barSpy = jasmine.createSpy();
+      bus.on('bar', () => {
+        bus.on('bar', barSpy);
+      });
+      bus.emit('bar', true);
+
+      expect(barSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not get events once the subscription has been released', () => {
+      const barSpy = jasmine.createSpy();
+      const sub = bus.on('bar', barSpy);
+
+      sub();
+      bus.emit('bar', true);
+      expect(barSpy).not.toHaveBeenCalled();
+    });
+
     describe('returns a Subscription', () => {
       it('which can be disposed by direct invocation', () => {
         const unsub = bus.on('foo', () => { return; });

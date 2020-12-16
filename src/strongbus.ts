@@ -534,14 +534,12 @@ function addListener<TKey>(bus: Map<TKey, Set<EventHandlers.GenericHandler>>, ev
   if(!handler) {
     return {added: false, first: false};
   }
-  let set = bus.get(event);
-  let first: boolean = false;
-  if(!set) {
-    first = true;
-    set = new Set<EventHandlers.GenericHandler>();
-    bus.set(event, set);
-  }
-  set.add(handler);
+
+  const prevSet = bus.get(event);
+  const newSet = new Set<EventHandlers.GenericHandler>(prevSet);
+  const first: boolean = Boolean(prevSet);
+  newSet.add(handler);
+  bus.set(event, newSet);
   return {added: true, first};
 }
 
