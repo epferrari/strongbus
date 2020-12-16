@@ -447,7 +447,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   private emitEvent(event: EventKeys<TEventMap>|Events.WILDCARD, ...args: any[]): boolean {
     const handlers = this.bus.get(event);
       if(handlers && handlers.size) {
-        for(const fn of handlers) {
+        for(const fn of new Set(handlers)) {
           try {
             fn(...args);
           } catch(e) {
@@ -462,7 +462,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   private emitLifecycleEvent<L extends Lifecycle>(event: L, payload: Lifecycle.EventMap<TEventMap>[L]): void {
     const handlers = this.lifecycle.get(event);
     if(handlers && handlers.size) {
-      for(const fn of handlers) {
+      for(const fn of new Set(handlers)) {
         try {
           fn(payload);
         } catch(e) {
