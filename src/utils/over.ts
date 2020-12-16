@@ -1,8 +1,14 @@
-
-export function over(iterable: {values: () => IterableIterator<() => void>}): () => void {
+type Invocable = () => void;
+export function over(iterable: Invocable[]|{values: () => IterableIterator<() => void>}): () => void {
   return () => {
-    for(const f of iterable.values()) {
-      f();
+    if(Array.isArray(iterable)) {
+      for(const f of iterable) {
+        f();
+      }
+    } else {
+      for(const f of iterable.values()) {
+        f();
+      }
     }
   };
 }
