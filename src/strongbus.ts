@@ -447,7 +447,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   private emitEvent(event: EventKeys<TEventMap>|Events.WILDCARD, ...args: any[]): boolean {
     const handlers = this.bus.get(event);
       if(handlers && handlers.size) {
-        new Set(handlers).forEach(async fn => {
+        handlers.forEach(async fn => {
           try {
             await fn(...args);
           } catch(e) {
@@ -462,7 +462,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   private emitLifecycleEvent<L extends Lifecycle>(event: L, payload: Lifecycle.EventMap<TEventMap>[L]): void {
     const handlers = this.lifecycle.get(event);
     if(handlers && handlers.size) {
-      new Set(handlers).forEach(async fn => {
+      handlers.forEach(async fn => {
         try {
           await fn(payload);
         } catch(e) {
@@ -534,14 +534,12 @@ function addListener<TKey>(bus: Map<TKey, Set<EventHandlers.GenericHandler>>, ev
   if(!handler) {
     return {added: false, first: false};
   }
-  let set = bus.get(event);
-  let first: boolean = false;
-  if(!set) {
-    first = true;
-    set = new Set<EventHandlers.GenericHandler>();
-    bus.set(event, set);
-  }
-  set.add(handler);
+
+  const prevSet = bus.get(event);
+  const newSet = new Set<EventHandlers.GenericHandler>(prevSet);
+  const first: boolean = Boolean(prevSet);
+  newSet.add(handler);
+  bus.set(event, newSet);
   return {added: true, first};
 }
 
