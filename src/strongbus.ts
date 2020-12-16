@@ -408,13 +408,13 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   private addListener(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): Events.Subscription {
     const {thresholds, logger} = this.options;
     const handlers = this.bus.get(event);
-    const n: number = handlers?.size || 0;
-    if(n > thresholds.info) {
-      logger.info(`${this.name} has ${n} listeners for "${event}", ${thresholds.info} max listeners expected.`);
+    const n: number = handlers?.size + 1 || 1;
+    if(n > thresholds.error) {
+      logger.error(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds threshold set to ${thresholds.error}`);
     } else if(n > thresholds.warn) {
       logger.warn(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds threshold set to ${thresholds.warn}`);
-    } else if(n > thresholds.error) {
-      logger.error(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds threshold set to ${thresholds.error}`);
+    } else if(n > thresholds.info) {
+      logger.info(`${this.name} has ${n} listeners for "${event}", ${thresholds.info} max listeners expected.`);
     }
     this.willAddListener(event);
     const {added} = addListener(this.bus, event, handler);
