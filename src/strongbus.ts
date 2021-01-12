@@ -99,7 +99,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
    */
   public on<T extends Events.Listenable<EventKeys<TEventMap>>>(event: T, handler: EventHandlers.EventHandler<TEventMap, T>): Events.Subscription {
     if(Array.isArray(event)) {
-      return this.any(event, handler as EventHandlers.MultiEventHandler<TEventMap>);
+      return this.any(event as (EventKeys<TEventMap>)[], handler as EventHandlers.MultiEventHandler<TEventMap>);
     } else if(event === Events.WILDCARD) {
       return this.proxy(handler as EventHandlers.WildcardEventHandler<TEventMap>);
     } else {
