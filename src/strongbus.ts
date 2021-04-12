@@ -138,8 +138,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   }
 
   /**
-   * Create a proxy for all events raised. Like [[Bus.any]], handlers receive the raised event as first
-   * argument and payload as second argument.
+   * Create a proxy for all events raised. Like [[Bus.any]], handlers receive the raised event as first argument and payload as second argument.
    */
   public proxy(handler: EventHandlers.WildcardEventHandler<TEventMap>): Events.Subscription {
     return this.addListener(Events.WILDCARD, handler);
@@ -153,9 +152,8 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   }
 
   /**
-   * Utility for resolving/rejecting a promise based on the reception of an event
-   * Promise will resolve with event payload, if a single event
-   * or undefined if listening to multiple events
+   * Utility for resolving/rejecting a promise based on the reception of an event.
+   * Promise will resolve with event payload, if a single event, or undefined if listening to multiple events.
    * @param resolvingEvent - what event/events should resolve the promise
    * @param rejectingEvent - what event/events should reject the promise. Must be mutually disjoint with `resolvingEvent`
    */
@@ -234,19 +232,20 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
 
   /**
    * Utility for resolving/rejecting a promise based on an evaluation done when an event is triggered.
-   * If params.eager=true (default), evaluates condition immedately and does not subscribe to any events
-   * @typeParam R - scan promise is resolved with this type
+   * If params.eager=true (default), evaluates condition immedately.
+   * If evaluator resolves or rejects, the scanner does not subscribe to any events.
+   * @typeParam TResult - scan promise is resolved with this type
    */
-  public scan<R>(
+  public scan<TResult>(
     params: {
-      evaluator: Scanner.Evaluator<R>,
+      evaluator: Scanner.Evaluator<TResult, TEventMap>,
       trigger: Events.Listenable<EventKeys<TEventMap>>,
       eager?: boolean
     }
-  ): CancelablePromise<R> {
+  ): CancelablePromise<TResult> {
     const {trigger, ...rest} = params;
-    const scanner = new Scanner(rest);
-    scanner.scan(this, trigger);
+    const scanner = new Scanner<TResult>(rest);
+    scanner.scan<TEventMap>(this, trigger);
     return scanner;
   }
 
