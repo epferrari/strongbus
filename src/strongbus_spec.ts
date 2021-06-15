@@ -1083,37 +1083,102 @@ describe('Strongbus.Bus', () => {
     });
 
     describe('given an evaluation resolves when triggered', () => {
-      it('resolves the promise', async () => {
-        let hasFoo: boolean = false;
-        const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
-          if(hasFoo) {
-            resolve(true);
-          }
-        };
-        const p = bus.scan<boolean>({
-          evaluator,
-          trigger: 'foo'
+      describe('using multi-arity syntax for evaluator', () => {
+        it('resolves the promise', async () => {
+          let hasFoo: boolean = false;
+          const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+            if(hasFoo) {
+              resolve(true);
+            }
+          };
+          const p = bus.scan<boolean>({
+            evaluator,
+            trigger: 'foo'
+          });
+
+          p.then(onResolve).catch(onReject);
+
+          bus.emit('foo', 'FOO!');
+
+          expect(onResolve).not.toHaveBeenCalled();
+          expect(onReject).not.toHaveBeenCalled();
+
+          hasFoo = true;
+
+          bus.emit('foo', 'FOO!');
+          await sleep(1);
+          expect(onResolve).toHaveBeenCalledWith(true);
+          onResolve.calls.reset();
+
+          bus.emit('foo', 'FOO!');
+          await sleep(1);
+          expect(onResolve).not.toHaveBeenCalled();
+
+          expect([...bus.listeners.keys()]).toEqual([]);
+        });
+      });
+
+      describe('using single-arity object argument syntax for evaluator', () => {
+        let onTrigger: jasmine.Spy;
+
+        beforeEach(() => {
+          onTrigger = jasmine.createSpy('onTrigger');
         });
 
-        p.then(onResolve).catch(onReject);
+        it('resolves the promise', async () => {
+          let hasFoo: boolean = false;
+          const evaluator = ({resolve, trigger}: Scanner.Resolver<boolean>) => {
+            onTrigger(trigger);
+            if(hasFoo) {
+              resolve(true);
+            }
+          };
+          const p = bus.scan<boolean>({
+            evaluator,
+            trigger: 'foo'
+          });
 
-        bus.emit('foo', 'FOO!');
+          expect(onTrigger).toHaveBeenCalledWith({
+            type: 'eager',
+            event: null,
+            payload: null
+          });
 
-        expect(onResolve).not.toHaveBeenCalled();
-        expect(onReject).not.toHaveBeenCalled();
+          p.then(onResolve).catch(onReject);
 
-        hasFoo = true;
+          bus.emit('foo', 'FOO!');
 
-        bus.emit('foo', 'FOO!');
-        await sleep(1);
-        expect(onResolve).toHaveBeenCalledWith(true);
-        onResolve.calls.reset();
+          expect(onTrigger).toHaveBeenCalledWith({
+            type: 'event',
+            event: 'foo',
+            payload: 'FOO!'
+          });
+          onTrigger.calls.reset();
 
-        bus.emit('foo', 'FOO!');
-        await sleep(1);
-        expect(onResolve).not.toHaveBeenCalled();
+          expect(onResolve).not.toHaveBeenCalled();
+          expect(onReject).not.toHaveBeenCalled();
 
-        expect([...bus.listeners.keys()]).toEqual([]);
+          hasFoo = true;
+
+          bus.emit('foo', 'BAR!');
+          expect(onTrigger).toHaveBeenCalledWith({
+            type: 'event',
+            event: 'foo',
+            payload: 'BAR!'
+          });
+          onTrigger.calls.reset();
+
+          await sleep(1);
+          expect(onResolve).toHaveBeenCalledWith(true);
+          onResolve.calls.reset();
+
+          bus.emit('foo', 'FOO!');
+          expect(onTrigger).not.toHaveBeenCalled();
+          await sleep(1);
+          expect(onResolve).not.toHaveBeenCalled();
+
+          expect([...bus.listeners.keys()]).toEqual([]);
+        });
       });
     });
 
