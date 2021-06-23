@@ -641,7 +641,7 @@ describe('Strongbus.Bus', () => {
         expect(onActive).toHaveBeenCalledTimes(1);
       });
 
-      fit('handles unsubscribes fired from hooks', async () => {
+      it('handles unsubscribes fired from hooks', async () => {
         const sub1 = bus.on('foo', () => {});
         const sub2 = bus.on('foo', () => {});
         bus.hook('willRemoveListener', () => sub2());

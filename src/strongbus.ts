@@ -66,6 +66,14 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   private readonly bus = new Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.GenericHandler>>();
   private readonly lifecycle = new Map<Lifecycle, Set<EventHandlers.GenericHandler>>();
 
+  // Queue of unsubscription requests so that they are processed transactionally in order
+  private readonly _unsubQueue: {
+    token: string;
+    event: EventKeys<TEventMap>|Events.WILDCARD;
+    handler: EventHandlers.GenericHandler;
+  }[] = [];
+  private _purgingUnsubQueue: boolean = false;
+
   constructor(options?: Options) {
     this.options = {
       ...Bus.defaultOptions,
@@ -426,13 +434,33 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   private cacheListener(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): Events.Subscription {
     const token = randomId();
     const sub = generateSubscription(() => {
+      this._unsubQueue.push({
+        token,
+        event,
+        handler
+      });
+      this.purgeUnsubQueue();
+    });
+    this.subscriptionCache.set(token, sub);
+    return sub;
+  }
+
+  private purgeUnsubQueue() {
+    if(this._purgingUnsubQueue) {
+      return;
+    } else {
+      this._purgingUnsubQueue = true;
+    }
+
+    while(this._unsubQueue.length) {
+      const {token, event, handler} = this._unsubQueue.shift();
       if(this.subscriptionCache.has(token)) {
         this.subscriptionCache.delete(token);
         this.removeListener(event, handler);
       }
-    });
-    this.subscriptionCache.set(token, sub);
-    return sub;
+    }
+
+    this._purgingUnsubQueue = false;
   }
 
   private removeListener(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): void {
