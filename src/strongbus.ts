@@ -66,7 +66,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   private readonly bus = new Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.GenericHandler>>();
   private readonly lifecycle = new Map<Lifecycle, Set<EventHandlers.GenericHandler>>();
 
-  // Queue of unsubscription requests so that they are processed transactionally in order
+  // queue of unsubscription requests so that they are processed transactionally in order
   private readonly _unsubQueue: {
     token: string;
     event: EventKeys<TEventMap>|Events.WILDCARD;
@@ -447,7 +447,6 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
 
   private purgeUnsubQueue() {
     if(this._purgingUnsubQueue) {
-      // There is another purge loop running.
       return;
     }
 

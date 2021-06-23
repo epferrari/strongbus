@@ -567,7 +567,7 @@ describe('Strongbus.Bus', () => {
       const error = new Error('Error in callback');
       bus.on('bar', () => {
         throw error;
-      })
+      });
       bus.emit('bar', true);
       expect(onError).toHaveBeenCalledWith({
         error,
@@ -642,8 +642,8 @@ describe('Strongbus.Bus', () => {
       });
 
       it('handles unsubscribes fired from hooks', async () => {
-        const sub1 = bus.on('foo', () => {});
-        const sub2 = bus.on('foo', () => {});
+        const sub1 = bus.on('foo', () => null);
+        const sub2 = bus.on('foo', () => null);
         bus.hook('willRemoveListener', () => sub2());
 
         sub1();
