@@ -447,10 +447,11 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
 
   private purgeUnsubQueue() {
     if(this._purgingUnsubQueue) {
+      // There is another purge loop running.
       return;
-    } else {
-      this._purgingUnsubQueue = true;
     }
+
+    this._purgingUnsubQueue = true;
 
     while(this._unsubQueue.length) {
       const {token, event, handler} = this._unsubQueue.shift();
