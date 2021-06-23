@@ -431,6 +431,7 @@ describe('Strongbus.Bus', () => {
     let onActive: jasmine.Spy;
     let onWillIdle: jasmine.Spy;
     let onIdle: jasmine.Spy;
+    let onError: jasmine.Spy;
 
     beforeEach(() => {
       bus.hook('willAddListener', onWillAddListener = jasmine.createSpy('onWillAddListener'));
@@ -441,6 +442,7 @@ describe('Strongbus.Bus', () => {
       bus.hook('active', onActive = jasmine.createSpy('onActive'));
       bus.hook('willIdle', onWillIdle = jasmine.createSpy('onWillIdle'));
       bus.hook('idle', onIdle = jasmine.createSpy('onIdle'));
+      bus.hook('error', onError = jasmine.createSpy('error'));
     });
 
     it('allows subscription to meta events', () => {
@@ -561,6 +563,18 @@ describe('Strongbus.Bus', () => {
       sub2();
     });
 
+    it('raises "error" when errors are thrown in the listener', () => {
+      const error = new Error('Error in callback');
+      bus.on('bar', () => {
+        throw error;
+      })
+      bus.emit('bar', true);
+      expect(onError).toHaveBeenCalledWith({
+        error,
+        event: 'bar'
+      });
+    });
+
     describe('given bus has delegates', () => {
       let delegate: DelegateTestBus;
       let onDelegateWillAddListener: jasmine.Spy;
@@ -625,6 +639,16 @@ describe('Strongbus.Bus', () => {
         delegate.on('foo', onTestEvent);
         expect(onDelegateActive).toHaveBeenCalledTimes(1);
         expect(onActive).toHaveBeenCalledTimes(1);
+      });
+
+      it('handles unsubscribes fired from hooks', async () => {
+        const sub1 = bus.on('foo', () => {});
+        const sub2 = bus.on('foo', () => {});
+        bus.hook('willRemoveListener', () => sub2());
+
+        sub1();
+        expect(onWillIdle).toHaveBeenCalledTimes(1);
+        expect(onIdle).toHaveBeenCalledTimes(1);
       });
 
       it('raises "idle" events independently of delegates', () => {
