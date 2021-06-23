@@ -457,6 +457,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
       const {token, event, handler} = this._unsubQueue.shift();
       if(this.subscriptionCache.has(token)) {
         this.subscriptionCache.delete(token);
+        // lifecycle events may trigger additional unsubs, which will be pushed to the end of queue and handled in a subsequent iteration of this loop
         this.removeListener(event, handler);
       }
     }
