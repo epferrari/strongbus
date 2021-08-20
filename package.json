@@ -1,6 +1,6 @@
 {
   "name": "strongbus",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "description": "Strongly typed, battle-tested event bus",
   "keywords": [
     "bus",
