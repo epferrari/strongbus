@@ -4,6 +4,7 @@ import * as Strongbus from './';
 import {Scanner} from './scanner';
 import {Logger} from './types/logger';
 import {EventKeys} from './types/utility';
+import {over} from './utils/over';
 
 type TestEventMap = {
   foo: string;
@@ -96,18 +97,20 @@ describe('Strongbus.Bus', () => {
   describe('listener logging thresholds', () => {
     let logger: jasmine.SpyObj<Logger>;
 
-    function addListeners(numListenersToAdd: number) {
+    function addListeners(numListenersToAdd: number): Strongbus.Subscription[] {
+      const unsubs = new Array(numListenersToAdd);
       for(let i = 0; i < numListenersToAdd; i++) {
-        bus.on('bar', () => true);
+        unsubs[i] = bus.on('bar', () => true);
       }
+      return unsubs;
     }
 
     beforeEach(() => {
       logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error']);
     });
 
-    describe('given `options.verbose=false`', () => {
-      describe('and listener count for an event exceeds a configured threshold', () => {
+    describe('when adding a listener and listener count for an event exceeds a configured threshold', () => {
+      describe('given `options.verbose=false`', () => {
         it('logs only when a multiple of a threshold is reached', () => {
           bus = new Strongbus.Bus<TestEventMap>({
             logger,
@@ -202,10 +205,8 @@ describe('Strongbus.Bus', () => {
           expect(logger.error).toHaveBeenCalledTimes(2);
         });
       });
-    });
 
-    describe('given `options.verbose=true (default)`', () => {
-      describe('and listener count for an event exceeds a configured threshold', () => {
+      describe('given `options.verbose=true (default)`', () => {
         it('logs each time a listener is added', () => {
           bus = new Strongbus.Bus<TestEventMap>({
             logger,
@@ -254,6 +255,55 @@ describe('Strongbus.Bus', () => {
           expect(logger.info).not.toHaveBeenCalled();
           expect(logger.warn).toHaveBeenCalledTimes(1);
           expect(logger.error).not.toHaveBeenCalled();
+        });
+      });
+    });
+
+    describe('when a listener is removed', () => {
+      describe('and the listener count for an event drops below a threshold', () => {
+        it('logs an info message', () => {
+          bus = new Strongbus.Bus<TestEventMap>({
+            logger,
+            thresholds: {
+              info: 10,
+              warn: 25,
+              error: 60
+            }
+          });
+
+          const unsubs = addListeners(70);
+          logger.info.calls.reset();
+
+          over(unsubs.splice(60))();
+          expect(bus.listeners.get('bar').size).toEqual(60);
+          expect(logger.info).not.toHaveBeenCalled();
+
+          over(unsubs.splice(59))();
+          expect(bus.listeners.get('bar').size).toEqual(59);
+          // logs crossing the error threshold
+          expect(logger.info).toHaveBeenCalledTimes(1);
+
+          over(unsubs.splice(25))();
+          expect(bus.listeners.get('bar').size).toEqual(25);
+          expect(logger.info).toHaveBeenCalledTimes(1);
+
+          over(unsubs.splice(24))();
+          expect(bus.listeners.get('bar').size).toEqual(24);
+          // logs crossing the warning threshold
+          expect(logger.info).toHaveBeenCalledTimes(2);
+
+          over(unsubs.splice(10))();
+          expect(bus.listeners.get('bar').size).toEqual(10);
+          expect(logger.info).toHaveBeenCalledTimes(2);
+
+          over(unsubs.splice(9))();
+          expect(bus.listeners.get('bar').size).toEqual(9);
+          // logs crossing the info threshold
+          expect(logger.info).toHaveBeenCalledTimes(3);
+
+          over(unsubs)();
+          expect(bus.listeners.get('bar')).toBeUndefined();
+          expect(logger.info).toHaveBeenCalledTimes(3);
         });
       });
     });
