@@ -4,6 +4,7 @@ import * as Strongbus from './';
 import {Scanner} from './scanner';
 import {Logger} from './types/logger';
 import {EventKeys} from './types/utility';
+import {over} from './utils/over';
 
 type TestEventMap = {
   foo: string;
@@ -96,64 +97,215 @@ describe('Strongbus.Bus', () => {
   describe('listener logging thresholds', () => {
     let logger: jasmine.SpyObj<Logger>;
 
-    function addListeners(numListenersToAdd: number) {
+    function addListeners(numListenersToAdd: number): Strongbus.Subscription[] {
+      const unsubs = new Array(numListenersToAdd);
       for(let i = 0; i < numListenersToAdd; i++) {
-        bus.on('bar', () => true);
+        unsubs[i] = bus.on('bar', () => true);
       }
+      return unsubs;
     }
 
     beforeEach(() => {
       logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error']);
     });
 
-    it('logs if the number of listeners exceeds the thresholds', () => {
-      bus = new Strongbus.Bus<TestEventMap>({
-        logger,
-        thresholds: {
-          info: 10,
-          warn: 20,
-          error: 30
-        }
+    describe('when adding a listener and listener count for an event exceeds a configured threshold', () => {
+      describe('given `options.verbose=false`', () => {
+        it('logs only when a multiple of a threshold is reached', () => {
+          bus = new Strongbus.Bus<TestEventMap>({
+            logger,
+            thresholds: {
+              info: 10,
+              warn: 25,
+              error: 60
+            },
+            verbose: false
+          });
+
+          addListeners(10);
+          // no logging up to the threshold
+          expect(logger.info).not.toHaveBeenCalled();
+          expect(logger.warn).not.toHaveBeenCalled();
+          expect(logger.error).not.toHaveBeenCalled();
+
+          // 11th listener triggers info
+          addListeners(1);
+          expect(bus.listeners.get('bar').size).toEqual(11);
+          expect(logger.info).toHaveBeenCalledTimes(1);
+          expect(logger.warn).not.toHaveBeenCalled();
+          expect(logger.error).not.toHaveBeenCalled();
+
+          // 12th listener triggers no logging
+          addListeners(1);
+          expect(bus.listeners.get('bar').size).toEqual(12);
+          expect(logger.info).toHaveBeenCalledTimes(1);
+          expect(logger.warn).not.toHaveBeenCalled();
+          expect(logger.error).not.toHaveBeenCalled();
+
+          addListeners(7);
+          expect(bus.listeners.get('bar').size).toEqual(19);
+          expect(logger.info).toHaveBeenCalledTimes(1);
+          expect(logger.warn).not.toHaveBeenCalled();
+          expect(logger.error).not.toHaveBeenCalled();
+
+          // multiple of info threshold
+          addListeners(1);
+          expect(bus.listeners.get('bar').size).toEqual(20);
+          expect(logger.info).toHaveBeenCalledTimes(2);
+          expect(logger.warn).not.toHaveBeenCalled();
+          expect(logger.error).not.toHaveBeenCalled();
+
+          addListeners(5);
+          // no logging up to the threshold
+          expect(bus.listeners.get('bar').size).toEqual(25);
+          expect(logger.info).toHaveBeenCalledTimes(2);
+          expect(logger.warn).not.toHaveBeenCalled();
+          expect(logger.error).not.toHaveBeenCalled();
+
+          addListeners(1);
+          // 25th triggers warning
+          expect(bus.listeners.get('bar').size).toEqual(26);
+          expect(logger.info).toHaveBeenCalledTimes(2);
+          expect(logger.warn).toHaveBeenCalledTimes(1);
+          expect(logger.error).not.toHaveBeenCalled();
+
+          addListeners(4);
+          // 30th triggers warning (as multiple of info threshold, but over warning limit)
+          expect(bus.listeners.get('bar').size).toEqual(30);
+          expect(logger.info).toHaveBeenCalledTimes(2);
+          expect(logger.warn).toHaveBeenCalledTimes(2);
+          expect(logger.error).not.toHaveBeenCalled();
+
+          addListeners(20);
+          // 40th and 50th trigger warnings
+          expect(bus.listeners.get('bar').size).toEqual(50);
+          expect(logger.info).toHaveBeenCalledTimes(2);
+          expect(logger.warn).toHaveBeenCalledTimes(4);
+          expect(logger.error).not.toHaveBeenCalled();
+
+          addListeners(10);
+          // 60th does not trigger because even though it's a multiple of info, it is on a threshold
+          expect(bus.listeners.get('bar').size).toEqual(60);
+          expect(logger.info).toHaveBeenCalledTimes(2);
+          expect(logger.warn).toHaveBeenCalledTimes(4);
+          expect(logger.error).not.toHaveBeenCalled();
+
+          addListeners(1);
+          // 61st triggers an error
+          expect(bus.listeners.get('bar').size).toEqual(61);
+          expect(logger.info).toHaveBeenCalledTimes(2);
+          expect(logger.warn).toHaveBeenCalledTimes(4);
+          expect(logger.error).toHaveBeenCalledTimes(1);
+
+          addListeners(9);
+          // 70th triggers error (as a multiple of info threshold, but over error limit)
+          expect(bus.listeners.get('bar').size).toEqual(70);
+          expect(logger.info).toHaveBeenCalledTimes(2);
+          expect(logger.warn).toHaveBeenCalledTimes(4);
+          expect(logger.error).toHaveBeenCalledTimes(2);
+        });
       });
-      // no logging up to the threshold
-      addListeners(10);
-      expect(logger.info).not.toHaveBeenCalled();
-      expect(logger.warn).not.toHaveBeenCalled();
-      expect(logger.error).not.toHaveBeenCalled();
 
-      // 11th listener triggers info
-      addListeners(1);
-      expect(bus.listeners.get('bar').size).toEqual(11);
-      expect(logger.info).toHaveBeenCalledTimes(1);
-      expect(logger.warn).not.toHaveBeenCalled();
-      expect(logger.error).not.toHaveBeenCalled();
+      describe('given `options.verbose=true (default)`', () => {
+        it('logs each time a listener is added', () => {
+          bus = new Strongbus.Bus<TestEventMap>({
+            logger,
+            thresholds: {
+              info: 10,
+              warn: 20,
+              error: 30
+            }
+          });
+          // no logging up to the threshold
+          addListeners(10);
+          expect(logger.info).not.toHaveBeenCalled();
+          expect(logger.warn).not.toHaveBeenCalled();
+          expect(logger.error).not.toHaveBeenCalled();
 
-      // 21st listener triggers warn
-      addListeners(10);
-      expect(logger.info).toHaveBeenCalledTimes(10);
-      expect(logger.warn).toHaveBeenCalledTimes(1);
-      expect(logger.error).not.toHaveBeenCalled();
+          // 11th listener triggers info
+          addListeners(1);
+          expect(bus.listeners.get('bar').size).toEqual(11);
+          expect(logger.info).toHaveBeenCalledTimes(1);
+          expect(logger.warn).not.toHaveBeenCalled();
+          expect(logger.error).not.toHaveBeenCalled();
 
-      // 31st listener triggers error
-      addListeners(10);
-      expect(logger.info).toHaveBeenCalledTimes(10);
-      expect(logger.warn).toHaveBeenCalledTimes(10);
-      expect(logger.error).toHaveBeenCalledTimes(1);
+          // 21st listener triggers warn
+          addListeners(10);
+          expect(logger.info).toHaveBeenCalledTimes(10);
+          expect(logger.warn).toHaveBeenCalledTimes(1);
+          expect(logger.error).not.toHaveBeenCalled();
+
+          // 31st listener triggers error
+          addListeners(10);
+          expect(logger.info).toHaveBeenCalledTimes(10);
+          expect(logger.warn).toHaveBeenCalledTimes(10);
+          expect(logger.error).toHaveBeenCalledTimes(1);
+        });
+
+        it('logs at the highest severity that passes the threshold', () => {
+          bus = new Strongbus.Bus<TestEventMap>({
+            logger,
+            thresholds: {
+              // only warn-level specified, info is at default of 100
+              warn: 20
+            }
+          });
+
+          addListeners(21);
+          expect(logger.info).not.toHaveBeenCalled();
+          expect(logger.warn).toHaveBeenCalledTimes(1);
+          expect(logger.error).not.toHaveBeenCalled();
+        });
+      });
     });
 
-    it('logs at the highest severity that passes the threshold', () => {
-      bus = new Strongbus.Bus<TestEventMap>({
-        logger,
-        thresholds: {
-          // only warn-level specified, info is at default of 100
-          warn: 20
-        }
-      });
+    describe('when a listener is removed', () => {
+      describe('and the listener count for an event drops below a threshold', () => {
+        it('logs an info message', () => {
+          bus = new Strongbus.Bus<TestEventMap>({
+            logger,
+            thresholds: {
+              info: 10,
+              warn: 25,
+              error: 60
+            }
+          });
 
-      addListeners(21);
-      expect(logger.info).not.toHaveBeenCalled();
-      expect(logger.warn).toHaveBeenCalledTimes(1);
-      expect(logger.error).not.toHaveBeenCalled();
+          const unsubs = addListeners(70);
+          logger.info.calls.reset();
+
+          over(unsubs.splice(60))();
+          expect(bus.listeners.get('bar').size).toEqual(60);
+          expect(logger.info).not.toHaveBeenCalled();
+
+          over(unsubs.splice(59))();
+          expect(bus.listeners.get('bar').size).toEqual(59);
+          // logs crossing the error threshold
+          expect(logger.info).toHaveBeenCalledTimes(1);
+
+          over(unsubs.splice(25))();
+          expect(bus.listeners.get('bar').size).toEqual(25);
+          expect(logger.info).toHaveBeenCalledTimes(1);
+
+          over(unsubs.splice(24))();
+          expect(bus.listeners.get('bar').size).toEqual(24);
+          // logs crossing the warning threshold
+          expect(logger.info).toHaveBeenCalledTimes(2);
+
+          over(unsubs.splice(10))();
+          expect(bus.listeners.get('bar').size).toEqual(10);
+          expect(logger.info).toHaveBeenCalledTimes(2);
+
+          over(unsubs.splice(9))();
+          expect(bus.listeners.get('bar').size).toEqual(9);
+          // logs crossing the info threshold
+          expect(logger.info).toHaveBeenCalledTimes(3);
+
+          over(unsubs)();
+          expect(bus.listeners.get('bar')).toBeUndefined();
+          expect(logger.info).toHaveBeenCalledTimes(3);
+        });
+      });
     });
   });
 
