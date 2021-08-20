@@ -55,7 +55,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
    * Set the default Bus.options.verbose for all instances
    * @setter Partial<[[ListenerThresholds]]>
    */
-   public static set verbosity(verbose: boolean) {
+   public static set verbose(verbose: boolean) {
     Bus.defaultOptions.verbose = verbose;
   }
 
@@ -534,11 +534,11 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     const {logger, thresholds} = this.options;
     const size = this.bus.get(event)?.size ?? 0;
     if(size === thresholds.error - 1) {
-      logger.info(`Listener count for "${event}" has returned below error threshold`);
+      logger.info(`${this.name}'s listener count of ${size} for "${event}" has returned below error threshold`);
     } else if(size === thresholds.warn - 1) {
-      logger.info(`Listener count for "${event}" has returned below warning threshold`);
+      logger.info(`${this.name}'s listener count of ${size} for "${event}" has returned below warning threshold`);
     } else if(size === thresholds.info - 1) {
-      logger.info(`Listener count for "${event}" is now within the expected range`);
+      logger.info(`${this.name}'s listener count of ${size} for "${event}" is now within the expected range`);
     }
   }
 
