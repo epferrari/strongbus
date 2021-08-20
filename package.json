@@ -23,7 +23,7 @@
     "test": "npm run dev && ./node_modules/.bin/jasmine lib/**/*_spec.js",
     "validate": "npm run test && npm run lint",
     "install": "([ -d ./src ] && [ ! -d ./lib ] && mkdir lib && npm install . &&  npm run dist) || echo ''",
-    "docs": "./node_modules/.bin/typedoc --tsconfig tsconfig.dist.json --out ./docs --theme minimal --mode file --excludePrivate --exclude **/*/utils/*,**/*/utility.ts,**/*spec.ts ./src/index.ts",
+    "docs": "./node_modules/.bin/typedoc --tsconfig tsconfig.dist.json --out ./docs --theme minimal --mode file --excludePrivate --exclude **/*/utils/*,**/*/utility.ts,**/*spec.ts,**/strongbusLogger.ts ./src/index.ts",
     "prepare": "rm -rf ./lib && npm run dist",
     "version": "git add -A src",
     "postversion": "git push && git push --tags"

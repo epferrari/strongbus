@@ -1,3 +1,4 @@
+import {StrongbusLogger} from './strongbusLogger';
 import {autobind} from 'core-decorators';
 import {CancelablePromise} from 'jaasync/lib/cancelable';
 
@@ -20,7 +21,7 @@ import {randomId} from './utils/randomId';
 @autobind
 export class Bus<TEventMap extends object = object> implements Scannable<TEventMap> {
 
-  private static defaultOptions: Required<Options> = {
+  private static defaultOptions: Required<Options> & {thresholds: Required<ListenerThresholds>} = {
     name: 'Anonymous',
     allowUnhandledEvents: true,
     thresholds: {
@@ -70,10 +71,12 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   private _active = false;
   private _delegates = new Map<Bus<TEventMap>, Events.Subscription[]>();
   private readonly subscriptionCache = new Map<string, Events.Subscription>();
-  private readonly options: Required<Options>;
+  private readonly options: Required<Options> & {thresholds: Required<ListenerThresholds>};
 
   private readonly bus = new Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.GenericHandler>>();
   private readonly lifecycle = new Map<Lifecycle, Set<EventHandlers.GenericHandler>>();
+
+  private readonly logger: StrongbusLogger<TEventMap>;
 
   // queue of unsubscription requests so that they are processed transactionally in order
   private readonly _unsubQueue: {
@@ -92,6 +95,10 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
         ...options?.thresholds || {}
       }
     };
+    this.logger = new StrongbusLogger<TEventMap>({
+      ...this.options,
+      name: this.name
+    });
   }
 
   /**
@@ -426,7 +433,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     const addingNewHandler = !(handlers?.has(handler));
     if(addingNewHandler) {
       const n: number = handlers?.size + 1 || 1;
-      this.logPotentialMemoryLeak(n, event);
+      this.logger.onAddListener(event, n);
       this.willAddListener(event);
       const {added} = addListener(this.bus, event, handler);
       if(added) {
@@ -434,58 +441,6 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
       }
     }
     return this.cacheListener(event as EventKeys<TEventMap>, handler);
-  }
-
-  private logPotentialMemoryLeak(n: number, event: EventKeys<TEventMap>|Events.WILDCARD): void {
-    (this.options.verbose
-      ? this.logPotentialMemoryLeakVerbose
-      : this.logPotentialMemoryLeakPeriodically
-    )(n, event);
-  }
-
-  private logPotentialMemoryLeakPeriodically(n: number, event: EventKeys<TEventMap>|Events.WILDCARD): void {
-    const {thresholds, logger} = this.options;
-    if(
-      n === thresholds.info ||
-      n === thresholds.warn ||
-      n === thresholds.error
-    ) {
-      return; // never log on a threshold
-    } else if(
-      n === thresholds.error + 1 || (
-        n > thresholds.error && (
-          n % thresholds.error === 0 ||
-          n % thresholds.info === 0
-        )
-      )
-    ) {
-      logger.error(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds error threshold set to ${thresholds.error}`);
-    } else if (
-      n === thresholds.warn + 1 || (
-        n > thresholds.warn && (
-          n % thresholds.warn === 0 ||
-          n % thresholds.info === 0
-        )
-      )
-    ) {
-      logger.warn(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds warning threshold set to ${thresholds.warn}`);
-    } else if(
-      n === thresholds.info + 1 || (
-        n > thresholds.info && n % thresholds.info === 0
-    )) {
-      logger.info(`${this.name} has ${n} listeners for "${event}", ${thresholds.info} max listeners expected.`);
-    }
-  }
-
-  private logPotentialMemoryLeakVerbose(n: number, event: EventKeys<TEventMap>|Events.WILDCARD): void {
-    const {thresholds, logger} = this.options;
-    if(n > thresholds.error) {
-      logger.error(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds threshold set to ${thresholds.error}`);
-    } else if(n > thresholds.warn) {
-      logger.warn(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds threshold set to ${thresholds.warn}`);
-    } else if(n > thresholds.info) {
-      logger.info(`${this.name} has ${n} listeners for "${event}", ${thresholds.info} max listeners expected.`);
-    }
   }
 
   private cacheListener(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): Events.Subscription {
@@ -526,19 +481,8 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     const {removed} = removeListener(this.bus, event, handler);
     if(removed) {
       this.didRemoveListener(event);
-      this.logMemoryPressureReduced(event);
-    }
-  }
-
-  private logMemoryPressureReduced(event: EventKeys<TEventMap>|Events.WILDCARD): void {
-    const {logger, thresholds} = this.options;
-    const size = this.bus.get(event)?.size ?? 0;
-    if(size === thresholds.error - 1) {
-      logger.info(`${this.name}'s listener count of ${size} for "${event}" has returned below error threshold`);
-    } else if(size === thresholds.warn - 1) {
-      logger.info(`${this.name}'s listener count of ${size} for "${event}" has returned below warning threshold`);
-    } else if(size === thresholds.info - 1) {
-      logger.info(`${this.name}'s listener count of ${size} for "${event}" is now within the expected range`);
+      const count = this.bus.get(event)?.size ?? 0;
+      this.logger.onListenerRemoved(event, count);
     }
   }
 

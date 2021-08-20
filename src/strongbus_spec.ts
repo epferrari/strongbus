@@ -1,7 +1,9 @@
+
 import {sleep} from 'jaasync/lib/cancelable';
 
 import * as Strongbus from './';
 import {Scanner} from './scanner';
+import {StrongbusLogMessages} from './strongbusLogger';
 import {Logger} from './types/logger';
 import {EventKeys} from './types/utility';
 import {over} from './utils/over';
@@ -105,6 +107,12 @@ describe('Strongbus.Bus', () => {
       return unsubs;
     }
 
+    function resetLogSpies() {
+      logger.info.calls.reset();
+      logger.warn.calls.reset();
+      logger.error.calls.reset();
+    }
+
     beforeEach(() => {
       logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error']);
     });
@@ -113,6 +121,7 @@ describe('Strongbus.Bus', () => {
       describe('given `options.verbose=false`', () => {
         it('logs only when a multiple of a threshold is reached', () => {
           bus = new Strongbus.Bus<TestEventMap>({
+            name: 'Foo',
             logger,
             thresholds: {
               info: 10,
@@ -123,86 +132,113 @@ describe('Strongbus.Bus', () => {
           });
 
           addListeners(10);
-          // no logging up to the threshold
-          expect(logger.info).not.toHaveBeenCalled();
+          // 10th triggers info about reaching threshold
+          expect(logger.info).toHaveBeenCalledWith(
+            StrongbusLogMessages.infoThresholdReached('Foo Bus', 10, 'bar')
+          );
           expect(logger.warn).not.toHaveBeenCalled();
           expect(logger.error).not.toHaveBeenCalled();
+          resetLogSpies();
 
           // 11th listener triggers info
           addListeners(1);
           expect(bus.listeners.get('bar').size).toEqual(11);
-          expect(logger.info).toHaveBeenCalledTimes(1);
+          expect(logger.info).toHaveBeenCalledWith(
+            StrongbusLogMessages.infoThresholdExceeded('Foo Bus', 10, 11, 'bar')
+          );
           expect(logger.warn).not.toHaveBeenCalled();
           expect(logger.error).not.toHaveBeenCalled();
+          resetLogSpies();
 
           // 12th listener triggers no logging
           addListeners(1);
           expect(bus.listeners.get('bar').size).toEqual(12);
-          expect(logger.info).toHaveBeenCalledTimes(1);
+          expect(logger.info).not.toHaveBeenCalled();
           expect(logger.warn).not.toHaveBeenCalled();
           expect(logger.error).not.toHaveBeenCalled();
 
           addListeners(7);
           expect(bus.listeners.get('bar').size).toEqual(19);
-          expect(logger.info).toHaveBeenCalledTimes(1);
+          expect(logger.info).not.toHaveBeenCalled();
           expect(logger.warn).not.toHaveBeenCalled();
           expect(logger.error).not.toHaveBeenCalled();
 
           // multiple of info threshold
           addListeners(1);
           expect(bus.listeners.get('bar').size).toEqual(20);
-          expect(logger.info).toHaveBeenCalledTimes(2);
+          expect(logger.info).toHaveBeenCalledWith(
+            StrongbusLogMessages.infoThresholdExceeded('Foo Bus', 10, 20, 'bar')
+          );
           expect(logger.warn).not.toHaveBeenCalled();
           expect(logger.error).not.toHaveBeenCalled();
+          resetLogSpies();
 
           addListeners(5);
-          // no logging up to the threshold
+          // 25th triggers info about reaching threshold
           expect(bus.listeners.get('bar').size).toEqual(25);
-          expect(logger.info).toHaveBeenCalledTimes(2);
+          expect(logger.info).toHaveBeenCalledWith(
+            StrongbusLogMessages.warnThresholdReached('Foo Bus', 25, 'bar')
+          );
           expect(logger.warn).not.toHaveBeenCalled();
           expect(logger.error).not.toHaveBeenCalled();
+          resetLogSpies();
 
           addListeners(1);
-          // 25th triggers warning
+          // 26th triggers warning
           expect(bus.listeners.get('bar').size).toEqual(26);
-          expect(logger.info).toHaveBeenCalledTimes(2);
-          expect(logger.warn).toHaveBeenCalledTimes(1);
+          expect(logger.info).not.toHaveBeenCalled();
+          expect(logger.warn).toHaveBeenCalledWith(
+            StrongbusLogMessages.warnThresholdExceeded('Foo Bus', 25, 26, 'bar')
+          );
           expect(logger.error).not.toHaveBeenCalled();
+          resetLogSpies();
 
           addListeners(4);
           // 30th triggers warning (as multiple of info threshold, but over warning limit)
           expect(bus.listeners.get('bar').size).toEqual(30);
-          expect(logger.info).toHaveBeenCalledTimes(2);
-          expect(logger.warn).toHaveBeenCalledTimes(2);
+          expect(logger.info).not.toHaveBeenCalled();
+          expect(logger.warn).toHaveBeenCalledWith(
+            StrongbusLogMessages.warnThresholdExceeded('Foo Bus', 25, 30, 'bar')
+          );
           expect(logger.error).not.toHaveBeenCalled();
+          resetLogSpies();
 
           addListeners(20);
           // 40th and 50th trigger warnings
           expect(bus.listeners.get('bar').size).toEqual(50);
-          expect(logger.info).toHaveBeenCalledTimes(2);
-          expect(logger.warn).toHaveBeenCalledTimes(4);
+          expect(logger.info).not.toHaveBeenCalled();
+          expect(logger.warn).toHaveBeenCalledTimes(2);
           expect(logger.error).not.toHaveBeenCalled();
+          resetLogSpies();
 
           addListeners(10);
-          // 60th does not trigger because even though it's a multiple of info, it is on a threshold
+          // 60th triggers info about reaching threshold
           expect(bus.listeners.get('bar').size).toEqual(60);
-          expect(logger.info).toHaveBeenCalledTimes(2);
-          expect(logger.warn).toHaveBeenCalledTimes(4);
+          expect(logger.info).toHaveBeenCalledWith(
+            StrongbusLogMessages.errorThresholdReached('Foo Bus', 60, 'bar')
+          );
+          expect(logger.warn).not.toHaveBeenCalled();
           expect(logger.error).not.toHaveBeenCalled();
+          resetLogSpies();
 
           addListeners(1);
           // 61st triggers an error
           expect(bus.listeners.get('bar').size).toEqual(61);
-          expect(logger.info).toHaveBeenCalledTimes(2);
-          expect(logger.warn).toHaveBeenCalledTimes(4);
-          expect(logger.error).toHaveBeenCalledTimes(1);
+          expect(logger.info).not.toHaveBeenCalled();
+          expect(logger.warn).not.toHaveBeenCalled();
+          expect(logger.error).toHaveBeenCalledWith(
+            StrongbusLogMessages.errorThresholdExceeded('Foo Bus', 60, 61, 'bar')
+          );
+          resetLogSpies();
 
           addListeners(9);
           // 70th triggers error (as a multiple of info threshold, but over error limit)
           expect(bus.listeners.get('bar').size).toEqual(70);
-          expect(logger.info).toHaveBeenCalledTimes(2);
-          expect(logger.warn).toHaveBeenCalledTimes(4);
-          expect(logger.error).toHaveBeenCalledTimes(2);
+          expect(logger.info).not.toHaveBeenCalled();
+          expect(logger.warn).not.toHaveBeenCalled();
+          expect(logger.error).toHaveBeenCalledWith(
+            StrongbusLogMessages.errorThresholdExceeded('Foo Bus', 60, 70, 'bar')
+          );
         });
       });
 
