@@ -28,7 +28,8 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
       warn: 500,
       error: Infinity
     },
-    logger: console
+    logger: console,
+    verbose: true // keep legacy behavior in 2.x version
   };
 
   /**
@@ -48,6 +49,14 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
       ...Bus.defaultOptions.thresholds,
       ...thresholds
     };
+  }
+
+  /**
+   * Set the default Bus.options.verbose for all instances
+   * @setter Partial<[[ListenerThresholds]]>
+   */
+   public static set verbosity(verbose: boolean) {
+    Bus.defaultOptions.verbose = verbose;
   }
 
   /**
@@ -413,9 +422,63 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   }
 
   private addListener(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): Events.Subscription {
-    const {thresholds, logger} = this.options;
     const handlers = this.bus.get(event);
-    const n: number = handlers?.size + 1 || 1;
+    const addingNewHandler = !(handlers?.has(handler));
+    if(addingNewHandler) {
+      const n: number = handlers?.size + 1 || 1;
+      this.logPotentialMemoryLeak(n, event);
+      this.willAddListener(event);
+      const {added} = addListener(this.bus, event, handler);
+      if(added) {
+        this.didAddListener(event);
+      }
+    }
+    return this.cacheListener(event as EventKeys<TEventMap>, handler);
+  }
+
+  private logPotentialMemoryLeak(n: number, event: EventKeys<TEventMap>|Events.WILDCARD): void {
+    (this.options.verbose
+      ? this.logPotentialMemoryLeakVerbose
+      : this.logPotentialMemoryLeakPeriodically
+    )(n, event);
+  }
+
+  private logPotentialMemoryLeakPeriodically(n: number, event: EventKeys<TEventMap>|Events.WILDCARD): void {
+    const {thresholds, logger} = this.options;
+    if(
+      n === thresholds.info ||
+      n === thresholds.warn ||
+      n === thresholds.error
+    ) {
+      return; // never log on a threshold
+    } else if(
+      n === thresholds.error + 1 || (
+        n > thresholds.error && (
+          n % thresholds.error === 0 ||
+          n % thresholds.info === 0
+        )
+      )
+    ) {
+      logger.error(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds error threshold set to ${thresholds.error}`);
+    } else if (
+      n === thresholds.warn + 1 || (
+        n > thresholds.warn && (
+          n % thresholds.warn === 0 ||
+          n % thresholds.info === 0
+        )
+      )
+    ) {
+      logger.warn(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds warning threshold set to ${thresholds.warn}`);
+    } else if(
+      n === thresholds.info + 1 || (
+        n > thresholds.info && n % thresholds.info === 0
+    )) {
+      logger.info(`${this.name} has ${n} listeners for "${event}", ${thresholds.info} max listeners expected.`);
+    }
+  }
+
+  private logPotentialMemoryLeakVerbose(n: number, event: EventKeys<TEventMap>|Events.WILDCARD): void {
+    const {thresholds, logger} = this.options;
     if(n > thresholds.error) {
       logger.error(`Potential Memory Leak. ${this.name} has ${n} listeners for "${event}", exceeds threshold set to ${thresholds.error}`);
     } else if(n > thresholds.warn) {
@@ -423,12 +486,6 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     } else if(n > thresholds.info) {
       logger.info(`${this.name} has ${n} listeners for "${event}", ${thresholds.info} max listeners expected.`);
     }
-    this.willAddListener(event);
-    const {added} = addListener(this.bus, event, handler);
-    if(added) {
-      this.didAddListener(event);
-    }
-    return this.cacheListener(event as EventKeys<TEventMap>, handler);
   }
 
   private cacheListener(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): Events.Subscription {
@@ -469,6 +526,19 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     const {removed} = removeListener(this.bus, event, handler);
     if(removed) {
       this.didRemoveListener(event);
+      this.logMemoryPressureReduced(event);
+    }
+  }
+
+  private logMemoryPressureReduced(event: EventKeys<TEventMap>|Events.WILDCARD): void {
+    const {logger, thresholds} = this.options;
+    const size = this.bus.get(event)?.size ?? 0;
+    if(size === thresholds.error - 1) {
+      logger.info(`Listener count for "${event}" has returned below error threshold`);
+    } else if(size === thresholds.warn - 1) {
+      logger.info(`Listener count for "${event}" has returned below warning threshold`);
+    } else if(size === thresholds.info - 1) {
+      logger.info(`Listener count for "${event}" is now within the expected range`);
     }
   }
 

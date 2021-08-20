@@ -18,10 +18,12 @@ export interface ListenerThresholds {
  * @prop name `"Anonymous"` - A name for the bus. Included in warn/info/error potential memory leak messages and unhandled event errors thrown
  * @prop thresholds [[ListenerThresholds]]
  * @prop logger [[Logger]] [`console`] - How to log potential memory leaks, if thresholds are < Infinity
+ * @prop verbose - should memory leak warnings be output on every listener added above the thresholds, or only at intervals
  */
 export interface Options {
   allowUnhandledEvents?: boolean;
   name?: string;
   thresholds?: Partial<ListenerThresholds>;
   logger?: Logger;
+  verbose?: boolean;
 }
