@@ -125,7 +125,7 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
     listenable: Events.Listenable<EventKeys<TEventMap>>
   ): this {
     if(this.settled) {
-      return;
+      return this;
     }
     (<T extends EventKeys<TEventMap>>() => {
       const handler: EventHandler<TEventMap, T> = (Array.isArray(listenable) || listenable === Events.WILDCARD)
