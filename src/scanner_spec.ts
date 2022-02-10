@@ -77,7 +77,7 @@ describe('Scanner', () => {
             eager: true
           });
         });
-  
+
         it('adds listeners to the Scannables', () => {
           expect(storeA.listeners.size).toEqual(1);
           expect(storeB.listeners.size).toEqual(1);
@@ -101,8 +101,8 @@ describe('Scanner', () => {
           it('rejects the promise', () => {
             expect(onReject).toHaveBeenCalledWith('All Scannables have been destroyed');
           });
-  
-          it('removes all listeners on all Scannables', async () => {    
+
+          it('removes all listeners on all Scannables', async () => {
             expect(storeA.listeners.size).toEqual(0);
             expect(storeB.listeners.size).toEqual(0);
           });
@@ -115,96 +115,96 @@ describe('Scanner', () => {
             onReject.calls.reset();
             onEvaluate.calls.reset();
           });
-  
+
           describe("and the neither the evaluator's resolution nor rejection criteria are met", () => {
             beforeEach(async () => {
               storeA.value = 1;
               await sleep(1);
             });
-  
+
             it('invokes the evaluator', () => {
               expect(onEvaluate).toHaveBeenCalledTimes(1);
             });
-    
+
             it('resolve/reject handlers are not invoked', () => {
               expect(onResolve).not.toHaveBeenCalled();
               expect(onReject).not.toHaveBeenCalled();
             });
-  
-            it('does not affect listeners on Scannables', async () => {    
+
+            it('does not affect listeners on Scannables', async () => {
               expect(storeA.listeners.size).toEqual(1);
               expect(storeB.listeners.size).toEqual(1);
             });
           });
-  
+
           describe("and the evaluator's resolution criteria are met", () => {
             beforeEach(async () => {
-  
+
               storeA.value = 1;
               storeB.value = 1;
               await sleep(1);
             });
-  
+
             it('invokes the evaluator', () => {
               expect(onEvaluate).toHaveBeenCalledTimes(2);
             });
-  
+
             it("resolves the Scanner's promise", () => {
               expect(onResolve).toHaveBeenCalledWith(true);
               expect(onReject).not.toHaveBeenCalled();
             });
-  
-            it('removes listeners from all Scannables', async () => {    
+
+            it('removes listeners from all Scannables', async () => {
               expect(storeA.listeners.size).toEqual(0);
               expect(storeB.listeners.size).toEqual(0);
             });
-  
+
             describe('given one of the Scannables raises a monitored event again', () => {
               beforeEach(() => {
                 onResolve.calls.reset();
                 onReject.calls.reset();
                 onEvaluate.calls.reset();
               });
-      
+
               describe("and neither the evaluator's resolution or rejection criteria are met", () => {
                 beforeEach(async () => {
                   storeA.value = 0;
                   await sleep(1);
                 });
-      
+
                 it('does not invoke the evalutator again', () => {
                   expect(onEvaluate).not.toHaveBeenCalled();
                 });
               });
-      
+
               describe("and the evaluator's resolution criteria are met", () => {
                 beforeEach(async () => {
                   storeA.value = 1;
                   storeB.value = 1;
                   await sleep(1);
                 });
-      
+
                 it('does not invoke the evalutator again', () => {
                   expect(onEvaluate).not.toHaveBeenCalled();
                 });
-      
+
                 it('does not attempt to re-resolve the scanner', () => {
                   expect(onResolve).not.toHaveBeenCalled();
                   expect(onReject).not.toHaveBeenCalled();
                 });
               });
-      
+
               describe("and the evaluator's rejection criteria are met", () => {
                 beforeEach(async () => {
                   storeA.value = 2;
                   storeB.value = 2;
                   await sleep(1);
                 });
-      
+
                 it('does not invoke the evalutator again', () => {
                   expect(onEvaluate).not.toHaveBeenCalled();
                 });
-      
+
                 it('does not attempt to re-reject the scanner', () => {
                   expect(onResolve).not.toHaveBeenCalled();
                   expect(onReject).not.toHaveBeenCalled();
@@ -212,74 +212,74 @@ describe('Scanner', () => {
               });
             });
           });
-  
+
           describe("and the evaluator's rejection criteria are met", () => {
             beforeEach(async () => {
               storeA.value = 2;
               storeB.value = 2;
               await sleep(1);
             });
-  
+
             it('invokes the evaluator', () => {
               expect(onEvaluate).toHaveBeenCalledTimes(2);
             });
-  
+
             it("rejects the Scanner's promise", () => {
               expect(onResolve).not.toHaveBeenCalled();
               expect(onReject).toHaveBeenCalled();
             });
-  
-            it('removes listeners from all Scannables', async () => {    
+
+            it('removes listeners from all Scannables', async () => {
               expect(storeA.listeners.size).toEqual(0);
               expect(storeB.listeners.size).toEqual(0);
             });
-  
+
             describe('given one of the Scannables raises a monitored event again', () => {
               beforeEach(() => {
                 onResolve.calls.reset();
                 onReject.calls.reset();
                 onEvaluate.calls.reset();
               });
-      
+
               describe("and neither the evaluator's resolution or rejection criteria are met", () => {
                 beforeEach(async () => {
                   storeA.value = 0;
                   await sleep(1);
                 });
-      
+
                 it('does not invoke the evalutator again', () => {
                   expect(onEvaluate).not.toHaveBeenCalled();
                 });
               });
-      
+
               describe("and the evaluator's resolution criteria are met", () => {
                 beforeEach(async () => {
                   storeA.value = 1;
                   storeB.value = 1;
                   await sleep(1);
                 });
-      
+
                 it('does not invoke the evalutator again', () => {
                   expect(onEvaluate).not.toHaveBeenCalled();
                 });
-      
+
                 it('does not attempt to re-resolve the scanner', () => {
                   expect(onResolve).not.toHaveBeenCalled();
                   expect(onReject).not.toHaveBeenCalled();
                 });
               });
-      
+
               describe("and the evaluator's rejection criteria are met", () => {
                 beforeEach(async () => {
                   storeA.value = 2;
                   storeB.value = 2;
                   await sleep(1);
                 });
-      
+
                 it('does not invoke the evalutator again', () => {
                   expect(onEvaluate).not.toHaveBeenCalled();
                 });
-      
+
                 it('does not attempt to re-reject the scanner', () => {
                   expect(onResolve).not.toHaveBeenCalled();
                   expect(onReject).not.toHaveBeenCalled();
@@ -297,7 +297,7 @@ describe('Scanner', () => {
             eager: false
           });
         });
-  
+
         it('adds listeners to the Scannables', () => {
           expect(storeA.listeners.size).toEqual(1);
           expect(storeB.listeners.size).toEqual(1);
@@ -321,8 +321,8 @@ describe('Scanner', () => {
           it('rejects the promise', () => {
             expect(onReject).toHaveBeenCalledWith('All Scannables have been destroyed');
           });
-  
-          it('removes all listeners on all Scannables', async () => {    
+
+          it('removes all listeners on all Scannables', async () => {
             expect(storeA.listeners.size).toEqual(0);
             expect(storeB.listeners.size).toEqual(0);
           });
@@ -335,96 +335,96 @@ describe('Scanner', () => {
             onReject.calls.reset();
             onEvaluate.calls.reset();
           });
-  
+
           describe("and the neither the evaluator's resolution nor rejection criteria are met", () => {
             beforeEach(async () => {
               storeA.value = 1;
               await sleep(1);
             });
-  
+
             it('invokes the evaluator', () => {
               expect(onEvaluate).toHaveBeenCalledTimes(1);
             });
-    
+
             it('resolve/reject handlers are not invoked', () => {
               expect(onResolve).not.toHaveBeenCalled();
               expect(onReject).not.toHaveBeenCalled();
             });
-  
-            it('does not affect listeners on Scannables', async () => {    
+
+            it('does not affect listeners on Scannables', async () => {
               expect(storeA.listeners.size).toEqual(1);
               expect(storeB.listeners.size).toEqual(1);
             });
           });
-  
+
           describe("and the evaluator's resolution criteria are met", () => {
             beforeEach(async () => {
-  
+
               storeA.value = 1;
               storeB.value = 1;
               await sleep(1);
             });
-  
+
             it('invokes the evaluator', () => {
               expect(onEvaluate).toHaveBeenCalledTimes(2);
             });
-  
+
             it("resolves the Scanner's promise", () => {
               expect(onResolve).toHaveBeenCalledWith(true);
               expect(onReject).not.toHaveBeenCalled();
             });
-  
-            it('removes listeners from all Scannables', async () => {    
+
+            it('removes listeners from all Scannables', async () => {
               expect(storeA.listeners.size).toEqual(0);
               expect(storeB.listeners.size).toEqual(0);
             });
-  
+
             describe('given one of the Scannables raises a monitored event again', () => {
               beforeEach(() => {
                 onResolve.calls.reset();
                 onReject.calls.reset();
                 onEvaluate.calls.reset();
               });
-      
+
               describe("and neither the evaluator's resolution or rejection criteria are met", () => {
                 beforeEach(async () => {
                   storeA.value = 0;
                   await sleep(1);
                 });
-      
+
                 it('does not invoke the evalutator again', () => {
                   expect(onEvaluate).not.toHaveBeenCalled();
                 });
               });
-      
+
               describe("and the evaluator's resolution criteria are met", () => {
                 beforeEach(async () => {
                   storeA.value = 1;
                   storeB.value = 1;
                   await sleep(1);
                 });
-      
+
                 it('does not invoke the evalutator again', () => {
                   expect(onEvaluate).not.toHaveBeenCalled();
                 });
-      
+
                 it('does not attempt to re-resolve the scanner', () => {
                   expect(onResolve).not.toHaveBeenCalled();
                   expect(onReject).not.toHaveBeenCalled();
                 });
               });
-      
+
               describe("and the evaluator's rejection criteria are met", () => {
                 beforeEach(async () => {
                   storeA.value = 2;
                   storeB.value = 2;
                   await sleep(1);
                 });
-      
+
                 it('does not invoke the evalutator again', () => {
                   expect(onEvaluate).not.toHaveBeenCalled();
                 });
-      
+
                 it('does not attempt to re-reject the scanner', () => {
                   expect(onResolve).not.toHaveBeenCalled();
                   expect(onReject).not.toHaveBeenCalled();
@@ -432,74 +432,74 @@ describe('Scanner', () => {
               });
             });
           });
-  
+
           describe("and the evaluator's rejection criteria are met", () => {
             beforeEach(async () => {
               storeA.value = 2;
               storeB.value = 2;
               await sleep(1);
             });
-  
+
             it('invokes the evaluator', () => {
               expect(onEvaluate).toHaveBeenCalledTimes(2);
             });
-  
+
             it("rejects the Scanner's promise", () => {
               expect(onResolve).not.toHaveBeenCalled();
               expect(onReject).toHaveBeenCalled();
             });
-  
-            it('removes listeners from all Scannables', async () => {    
+
+            it('removes listeners from all Scannables', async () => {
               expect(storeA.listeners.size).toEqual(0);
               expect(storeB.listeners.size).toEqual(0);
             });
-  
+
             describe('given one of the Scannables raises a monitored event again', () => {
               beforeEach(() => {
                 onResolve.calls.reset();
                 onReject.calls.reset();
                 onEvaluate.calls.reset();
               });
-      
+
               describe("and neither the evaluator's resolution or rejection criteria are met", () => {
                 beforeEach(async () => {
                   storeA.value = 0;
                   await sleep(1);
                 });
-      
+
                 it('does not invoke the evalutator again', () => {
                   expect(onEvaluate).not.toHaveBeenCalled();
                 });
               });
-      
+
               describe("and the evaluator's resolution criteria are met", () => {
                 beforeEach(async () => {
                   storeA.value = 1;
                   storeB.value = 1;
                   await sleep(1);
                 });
-      
+
                 it('does not invoke the evalutator again', () => {
                   expect(onEvaluate).not.toHaveBeenCalled();
                 });
-      
+
                 it('does not attempt to re-resolve the scanner', () => {
                   expect(onResolve).not.toHaveBeenCalled();
                   expect(onReject).not.toHaveBeenCalled();
                 });
               });
-      
+
               describe("and the evaluator's rejection criteria are met", () => {
                 beforeEach(async () => {
                   storeA.value = 2;
                   storeB.value = 2;
                   await sleep(1);
                 });
-      
+
                 it('does not invoke the evalutator again', () => {
                   expect(onEvaluate).not.toHaveBeenCalled();
                 });
-      
+
                 it('does not attempt to re-reject the scanner', () => {
                   expect(onResolve).not.toHaveBeenCalled();
                   expect(onReject).not.toHaveBeenCalled();
@@ -509,8 +509,7 @@ describe('Scanner', () => {
           });
         });
       });
-   
-      
+
     });
 
     describe("and the evaluator's resolution criteria are met when the Scanner is created", () => {
@@ -547,7 +546,7 @@ describe('Scanner', () => {
             storeA.destroy();
             storeB.destroy();
             await sleep(1);
-    
+
             expect(onReject).not.toHaveBeenCalled();
           });
         });
@@ -558,46 +557,46 @@ describe('Scanner', () => {
             onReject.calls.reset();
             onEvaluate.calls.reset();
           });
-  
+
           describe("given neither the evaluator's resolution or rejection criteria are met", () => {
             beforeEach(async () => {
               storeA.value = 0;
               await sleep(1);
             });
-  
+
             it('does not invoke the evalutator again', () => {
               expect(onEvaluate).not.toHaveBeenCalled();
             });
           });
-  
+
           describe("given the evaluator's resolution criteria are met", () => {
             beforeEach(async () => {
               storeA.value = 1;
               storeB.value = 1;
               await sleep(1);
             });
-  
+
             it('does not invoke the evalutator again', () => {
               expect(onEvaluate).not.toHaveBeenCalled();
             });
-  
+
             it('does not attempt to re-resolve the scanner', () => {
               expect(onResolve).not.toHaveBeenCalled();
               expect(onReject).not.toHaveBeenCalled();
             });
           });
-  
+
           describe("given the evaluator's rejection criteria are met", () => {
             beforeEach(async () => {
               storeA.value = 2;
               storeB.value = 2;
               await sleep(1);
             });
-  
+
             it('does not invoke the evalutator again', () => {
               expect(onEvaluate).not.toHaveBeenCalled();
             });
-  
+
             it('does not attempt to re-reject the scanner', () => {
               expect(onResolve).not.toHaveBeenCalled();
               expect(onReject).not.toHaveBeenCalled();
@@ -623,7 +622,7 @@ describe('Scanner', () => {
           expect(onReject).not.toHaveBeenCalled();
         });
 
-        it('does not affect listeners on Scannables', async () => {    
+        it('does not affect listeners on Scannables', async () => {
           expect(storeA.listeners.size).toEqual(1);
           expect(storeB.listeners.size).toEqual(1);
         });
@@ -636,13 +635,12 @@ describe('Scanner', () => {
           });
 
           it("Resolves the Scanner's promise", () => {
-
             expect(onEvaluate).toHaveBeenCalled();
             expect(onResolve).toHaveBeenCalledWith(true);
             expect(onReject).not.toHaveBeenCalled();
           });
 
-          it('removes all listeners on all Scannables', async () => {    
+          it('removes all listeners on all Scannables', async () => {
             expect(storeA.listeners.size).toEqual(0);
             expect(storeB.listeners.size).toEqual(0);
           });
@@ -684,7 +682,7 @@ describe('Scanner', () => {
             storeA.destroy();
             storeB.destroy();
             await sleep(1);
-    
+
             expect(onReject).not.toHaveBeenCalled();
           });
         });
@@ -695,46 +693,46 @@ describe('Scanner', () => {
             onReject.calls.reset();
             onEvaluate.calls.reset();
           });
-  
+
           describe("given neither the evaluator's resolution or rejection criteria are met", () => {
             beforeEach(async () => {
               storeA.value = 0;
               await sleep(1);
             });
-  
+
             it('does not invoke the evalutator again', () => {
               expect(onEvaluate).not.toHaveBeenCalled();
             });
           });
-  
+
           describe("given the evaluator's resolution criteria are met", () => {
             beforeEach(async () => {
               storeA.value = 1;
               storeB.value = 1;
               await sleep(1);
             });
-  
+
             it('does not invoke the evalutator again', () => {
               expect(onEvaluate).not.toHaveBeenCalled();
             });
-  
+
             it('does not attempt to re-resolve the scanner', () => {
               expect(onResolve).not.toHaveBeenCalled();
               expect(onReject).not.toHaveBeenCalled();
             });
           });
-  
+
           describe("given the evaluator's rejection criteria are met", () => {
             beforeEach(async () => {
               storeA.value = 2;
               storeB.value = 2;
               await sleep(1);
             });
-  
+
             it('does not invoke the evalutator again', () => {
               expect(onEvaluate).not.toHaveBeenCalled();
             });
-  
+
             it('does not attempt to re-reject the scanner', () => {
               expect(onResolve).not.toHaveBeenCalled();
               expect(onReject).not.toHaveBeenCalled();
@@ -760,7 +758,7 @@ describe('Scanner', () => {
           expect(onReject).not.toHaveBeenCalled();
         });
 
-        it('does not affect listeners on Scannables', async () => {    
+        it('does not affect listeners on Scannables', async () => {
           expect(storeA.listeners.size).toEqual(1);
           expect(storeB.listeners.size).toEqual(1);
         });
@@ -778,7 +776,7 @@ describe('Scanner', () => {
             expect(onReject).toHaveBeenCalled();
           });
 
-          it('removes all listeners on all Scannables', async () => {   
+          it('removes all listeners on all Scannables', async () => {
             expect(storeA.listeners.size).toEqual(0);
             expect(storeB.listeners.size).toEqual(0);
           });
