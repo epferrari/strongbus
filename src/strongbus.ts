@@ -254,22 +254,66 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     return p;
   }
 
+  private readonly scanners = new WeakMap<Scanner.Evaluator<any, TEventMap>, {
+    eager: Set<{
+      scanner: Scanner<any>;
+      trigger: Events.Listenable<EventKeys<TEventMap>>}>;
+    lazy: Set<{
+      scanner: Scanner<any>;
+      trigger: Events.Listenable<EventKeys<TEventMap>>}>;
+  }>();
+
   /**
    * Utility for resolving/rejecting a promise based on an evaluation done when an event is triggered.
    * If params.eager=true (default), evaluates condition immedately.
    * If evaluator resolves or rejects, the scanner does not subscribe to any events.
    * @typeParam TResult - scan promise is resolved with this type
    */
-  public scan<TResult>(
+  public scan<TEvaluator extends Scanner.Evaluator<any, TEventMap>>(
     params: {
-      evaluator: Scanner.Evaluator<TResult, TEventMap>,
+      evaluator: TEvaluator,
       trigger: Events.Listenable<EventKeys<TEventMap>>,
       eager?: boolean
     }
-  ): CancelablePromise<TResult> {
+  ): CancelablePromise<TEvaluator extends Scanner.Evaluator<infer U, TEventMap> ? U : any> {
     const {trigger, ...rest} = params;
-    const scanner = new Scanner<TResult>(rest);
-    scanner.scan<TEventMap>(this, trigger);
+
+    /*
+    Determine if we can use an existing scanner
+    - are the evaluators the same?
+    - is the eager flag the same?
+    - is the trigger a subset of an existing trigger?
+    */
+    let scanner: Scanner<TEvaluator extends Scanner.Evaluator<infer U, TEventMap> ? U : any>;
+    (() => {
+      const existing = this.scanners.get(params.evaluator)?.[params.eager === false ? 'lazy' : 'eager'];
+      if(existing) {
+        if(Boolean(params.eager) === existing.eager) {
+          if(existing.trigger === Events.WILDCARD) {
+            scanner = existing.scanner;
+            return;
+          } else if(params.trigger !== Events.WILDCARD) {
+            const existingEvents = new Set(Array.isArray(existing.trigger) ? existing.trigger : [existing.trigger]);
+            const eventArray = Array.isArray(params.trigger) ? params.trigger : [params.trigger];
+            for(const e in eventArray) {
+              if(!existingEvents.has(e as (keyof TEventMap))) {
+                
+                return;
+              }
+            }
+            scanner = existing.scanner;
+            return;
+          }
+        }
+      }
+    })();
+
+    if(!scanner) {
+      scanner = new Scanner<TEvaluator extends Scanner.Evaluator<infer U, TEventMap> ? U : any>(rest);
+      scanner.scan<TEventMap>(this, trigger);
+      
+      // TODO: 
+    }
     return scanner;
   }
 
