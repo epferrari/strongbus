@@ -1,6 +1,6 @@
 import {StrongbusLogger} from './strongbusLogger';
 import {autobind} from 'core-decorators';
-import {CancelablePromise} from 'jaasync/lib/cancelable';
+import {CancelablePromise} from 'jaasync';
 
 import {Scanner} from './scanner';
 import * as Events from './types/events';
@@ -97,6 +97,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     };
     this.logger = new StrongbusLogger<TEventMap>({
       ...this.options,
+      impl: this.options.logger,
       name: this.name
     });
   }
@@ -109,7 +110,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
    */
   protected handleUnexpectedEvent<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T]) {
     const errorMessage = [
-      `Strongbus.Bus received unexpected message type '${event}' with contents:`,
+      `Strongbus.Bus received unexpected message type '${String(event)}' with contents:`,
       JSON.stringify(payload, null, 2)
     ].join('\n');
 
@@ -133,7 +134,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
 
   public emit<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T]): boolean {
     if(event === Events.WILDCARD) {
-      throw new Error(`Do not emit "${event}" manually. Reserved for internal use.`);
+      throw new Error(`Do not emit "${String(event)}" manually. Reserved for internal use.`);
     }
 
     let handled = false;
