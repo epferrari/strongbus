@@ -1,6 +1,6 @@
 import {StrongbusLogger} from './strongbusLogger';
 import {autobind} from 'core-decorators';
-import {CancelablePromise} from 'jaasync';
+import {CancelablePromise, cancelable} from 'jaasync';
 
 import {Scanner} from './scanner';
 import * as Events from './types/events';
@@ -213,7 +213,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
           } else {
             e = rejectingEvent as EventKeys<TEventMap>;
           }
-          reject(new Error(`Rejected with event (${e})`));
+          reject(new Error(`Rejected with event (${String(e)})`));
         }) as any)
       : null;
 
@@ -240,7 +240,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
       return true;
     }
 
-    const p = new CancelablePromise<T extends EventKeys<TEventMap> ? TEventMap[T] : void>(() => {
+    const p: CancelablePromise<T extends EventKeys<TEventMap> ? TEventMap[T] : void> = cancelable<T extends EventKeys<TEventMap> ? TEventMap[T] : void>(() => {
       return new Promise<T extends EventKeys<TEventMap> ? TEventMap[T] : void>(($resolve, $reject) => {
         resolveInternalPromise = $resolve;
         rejectInternalPromise = $reject;
@@ -255,29 +255,29 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     return p;
   }
 
-  private readonly scanners = new WeakMap<Scanner.Evaluator<any, TEventMap>, {
-    eager: Set<{
-      scanner: Scanner<any>;
-      trigger: Events.Listenable<EventKeys<TEventMap>>}>;
-    lazy: Set<{
-      scanner: Scanner<any>;
-      trigger: Events.Listenable<EventKeys<TEventMap>>}>;
-  }>();
+  private readonly scannerPools = new WeakMap<Scanner.Evaluator<any, TEventMap>, Map<'eager'|'lazy', {
+    wildcard: Promise<any>;
+    event: Map<Promise<any>, Set<EventKeys<TEventMap>>>[];
+  }>>();
 
   /**
    * Utility for resolving/rejecting a promise based on an evaluation done when an event is triggered.
    * If params.eager=true (default), evaluates condition immedately.
-   * If evaluator resolves or rejects, the scanner does not subscribe to any events.
-   * @typeParam TResult - scan promise is resolved with this type
+   * If evaluator resolves or rejects, the scanner does not subscribe to any events
    */
-  public scan<TEvaluator extends Scanner.Evaluator<any, TEventMap>>(
-    params: {
-      evaluator: TEvaluator,
-      trigger: Events.Listenable<EventKeys<TEventMap>>,
-      eager?: boolean
+  public scan<TParams extends Bus.ScanParams<TEventMap>>(
+    params: TParams
+  ): TParams extends {cancelable: true}
+    ? CancelablePromise<TParams['evaluator'] extends Scanner.Evaluator<infer U, TEventMap> ? U : any>
+    : Promise<TParams['evaluator'] extends Scanner.Evaluator<infer U, TEventMap> ? U : any>
+  {
+
+    if(params.cancelable === true) {
+      // not poolable
+      const scanner = new Scanner<TParams['evaluator'] extends Scanner.Evaluator<infer U, TEventMap> ? U : any>(params);
+      scanner.scan<TEventMap>(this, params.trigger);
+      return scanner as any;
     }
-  ): CancelablePromise<TEvaluator extends Scanner.Evaluator<infer U, TEventMap> ? U : any> {
-    const {trigger, ...rest} = params;
 
     /*
     Determine if we can use an existing scanner
@@ -285,37 +285,119 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     - is the eager flag the same?
     - is the trigger a subset of an existing trigger?
     */
-    let scanner: Scanner<TEvaluator extends Scanner.Evaluator<infer U, TEventMap> ? U : any>;
-    (() => {
-      const existing = this.scanners.get(params.evaluator)?.[params.eager === false ? 'lazy' : 'eager'];
-      if(existing) {
-        if(Boolean(params.eager) === existing.eager) {
-          if(existing.trigger === Events.WILDCARD) {
-            scanner = existing.scanner;
-            return;
-          } else if(params.trigger !== Events.WILDCARD) {
-            const existingEvents = new Set(Array.isArray(existing.trigger) ? existing.trigger : [existing.trigger]);
-            const eventArray = Array.isArray(params.trigger) ? params.trigger : [params.trigger];
-            for(const e in eventArray) {
-              if(!existingEvents.has(e as (keyof TEventMap))) {
-                
-                return;
+    const lazyOrEager: 'eager'|'lazy' = params.eager === false ? 'lazy' : 'eager';
+    let promise: Promise<TParams['evaluator'] extends Scanner.Evaluator<infer U, TEventMap> ? U : any> = (() => {
+      const pool = this.scannerPools.get(params.evaluator)?.get(lazyOrEager);
+      if(pool) {
+        if(pool.wildcard) {
+          return pool.wildcard;
+        } else if(params.trigger !== Events.WILDCARD) {
+          const events: Set<EventKeys<TEventMap>> = new Set(Array.isArray(params.trigger) ? params.trigger : [params.trigger]);
+          // start comparing with longest candidates first
+          const candidatesByEventLengthDesc = pool.event.slice(events.size - 1).reverse();
+          for(const candidatesOfEventLengthN of candidatesByEventLengthDesc) {
+            evaluateCandidate:
+            for(const [_promise, _events] of candidatesOfEventLengthN) {
+              for(const e in events) {
+                if(!_events.has(e as EventKeys<TEventMap>)) {
+                  continue evaluateCandidate;
+                }
               }
+              return _promise;
             }
-            scanner = existing.scanner;
-            return;
           }
         }
       }
     })();
 
-    if(!scanner) {
-      scanner = new Scanner<TEvaluator extends Scanner.Evaluator<infer U, TEventMap> ? U : any>(rest);
-      scanner.scan<TEventMap>(this, trigger);
+    if(!promise) {
+      const scanner = new Scanner<TParams['evaluator'] extends Scanner.Evaluator<infer U, TEventMap> ? U : any>(params);
+      scanner.scan<TEventMap>(this, params.trigger);
       
-      // TODO: 
+      let byEvaluator = this.scannerPools.get(params.evaluator);
+      if(!byEvaluator) {
+        byEvaluator = new Map();
+        this.scannerPools.set(params.evaluator, byEvaluator);
+      }
+      let pools = byEvaluator.get(lazyOrEager);
+      if(!pools) {
+        pools = {
+          wildcard: null,
+          event: []
+        }
+        byEvaluator.set(lazyOrEager, pools);
+      }
+
+      let cleanup: () => void;
+      promise = new Promise<TParams['evaluator'] extends Scanner.Evaluator<infer U, TEventMap> ? U : any>(
+        async (resolve, reject) => {
+          try {
+            resolve(await scanner);
+          } catch(e) {
+            reject(e);
+          } finally {
+            cleanup();
+          }
+        }
+      );
+
+      if(params.trigger === Events.WILDCARD) {
+        pools.wildcard = promise;
+
+        cleanup = () => {
+          const byEvaluator = this.scannerPools.get(params.evaluator);
+          if(byEvaluator) {
+            const pools = byEvaluator.get(lazyOrEager);
+            if(pools) {
+              pools.wildcard = null;
+              if(!pools.event || pools.event?.length === 0) {
+                byEvaluator.delete(lazyOrEager);
+                if(byEvaluator.size === 0) {
+                  this.scannerPools.delete(params.evaluator);
+                }
+              }
+            }
+          }
+        }
+        
+      } else {
+        const events: Set<EventKeys<TEventMap>> = new Set(Array.isArray(params.trigger) ? params.trigger : [params.trigger]);
+        const index = events.size - 1;
+        let byEventCount = pools.event[index];
+        if(!byEventCount) {
+          byEventCount = new Map<Promise<any>, Set<EventKeys<TEventMap>>>();
+          pools.event[index] = byEventCount;
+        }
+        byEventCount.set(promise, events);
+
+        cleanup = () => {
+          const byEvaluator = this.scannerPools.get(params.evaluator);
+          if(byEvaluator) {
+            const pools = byEvaluator.get(lazyOrEager);
+            if(pools) {
+              const byEvent = pools.event;
+              if(byEvent) {
+                const byEventCount = byEvent[index];
+                if(byEventCount) {
+                  byEventCount.delete(promise);
+                  if(byEventCount.size === 0 && byEvent.every(b => b.size === 0)) {
+                    if(!pools.wildcard) {
+                      byEvaluator.delete(lazyOrEager);
+                      if(byEvaluator.size === 0) {
+                        this.scannerPools.delete(params.evaluator);
+                      }
+                    } else {
+                      pools.event = null;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
-    return scanner;
+    return promise as any;
   }
 
   /**
@@ -610,6 +692,15 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
       this._active = false;
       this.emitLifecycleEvent(Lifecycle.idle, null);
     }
+  }
+}
+
+export namespace Bus {
+  export type ScanParams<TEventMap extends object = object> = {
+    evaluator: Scanner.Evaluator<any, TEventMap>;
+    trigger: Events.Listenable<EventKeys<TEventMap>>;
+    eager?: boolean;
+    cancelable?: boolean;
   }
 }
 

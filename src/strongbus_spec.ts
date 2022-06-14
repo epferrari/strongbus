@@ -1,5 +1,5 @@
 
-import {sleep} from 'jaasync/lib/cancelable';
+import {sleep} from 'jaasync';
 
 import * as Strongbus from './';
 import {Scanner} from './scanner';
@@ -1289,7 +1289,7 @@ describe('Strongbus.Bus', () => {
               resolve(true);
             }
           };
-          const p = bus.scan<boolean>({
+          const p = bus.scan({
             evaluator,
             trigger: 'foo'
           });
@@ -1331,7 +1331,7 @@ describe('Strongbus.Bus', () => {
               resolve(true);
             }
           };
-          const p = bus.scan<boolean>({
+          const p = bus.scan({
             evaluator,
             trigger: 'foo'
           });
@@ -1388,7 +1388,7 @@ describe('Strongbus.Bus', () => {
             reject(new Error('unexpected foo'));
           }
         };
-        const p = bus.scan<boolean>({
+        const p = bus.scan({
           evaluator,
           trigger: 'foo'
         });
@@ -1424,7 +1424,7 @@ describe('Strongbus.Bus', () => {
               resolve(true);
             }
           };
-          const p = bus.scan<boolean>({
+          const p = bus.scan({
             evaluator,
             trigger: 'foo'
           });
@@ -1447,7 +1447,7 @@ describe('Strongbus.Bus', () => {
               reject(new Error('unexpected foo'));
             }
           };
-          const p = bus.scan<boolean>({
+          const p = bus.scan({
             evaluator,
             trigger: 'foo'
           });
@@ -1469,7 +1469,7 @@ describe('Strongbus.Bus', () => {
             // doing nothing in the evaluator
             return;
           };
-          const p = bus.scan<boolean>({
+          const p = bus.scan({
             evaluator,
             trigger: 'foo'
           });
@@ -1493,7 +1493,7 @@ describe('Strongbus.Bus', () => {
             resolve(true);
           }
         };
-        const p = bus.scan<boolean>({
+        const p = bus.scan({
           evaluator,
           trigger: 'foo'
         });
@@ -1513,7 +1513,7 @@ describe('Strongbus.Bus', () => {
               resolve(true);
             }
           };
-          const p = bus.scan<boolean>({
+          const p = bus.scan({
             evaluator,
             trigger: 'foo',
             eager: false
