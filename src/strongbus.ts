@@ -13,7 +13,7 @@ import {EventKeys, ElementType} from './types/utility';
 import {over} from './utils/over';
 import {generateSubscription} from './utils/generateSubscription';
 import {randomId} from './utils/randomId';
-import {INTERNAL_PROMISE} from './types/testUtility';
+import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 
 
 /**

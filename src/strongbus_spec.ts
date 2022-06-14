@@ -5,7 +5,7 @@ import * as Strongbus from './';
 import {Scanner} from './scanner';
 import {StrongbusLogMessages} from './strongbusLogger';
 import {Logger} from './types/logger';
-import {INTERNAL_PROMISE} from './types/testUtility';
+import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import {EventKeys} from './types/utility';
 import {over} from './utils/over';
 
