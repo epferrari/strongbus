@@ -1,0 +1,1 @@
+export const INTERNAL_PROMISE = Symbol('internal_promise');

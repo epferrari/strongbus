@@ -1,10 +1,11 @@
 
-import {sleep} from 'jaasync';
+import {parallel, sleep} from 'jaasync';
 
 import * as Strongbus from './';
 import {Scanner} from './scanner';
 import {StrongbusLogMessages} from './strongbusLogger';
 import {Logger} from './types/logger';
+import {INTERNAL_PROMISE} from './types/testUtility';
 import {EventKeys} from './types/utility';
 import {over} from './utils/over';
 
@@ -1532,181 +1533,165 @@ describe('Strongbus.Bus', () => {
       });
 
       describe('Scanner pooling', () => {
-        describe('and params.cancelable=false (default)', () => {
-          describe('given multiple invocations in which params.evaluator and params.eager are the same', () => {
-            describe('given params.trigger is the same single event', () => {
-              it('returns the same promise object', () => {
-                let criteria: boolean = false;
-                const evaluator = (resolve: Scanner.Resolver<boolean>) => {
-                  if(criteria) {
-                    resolve(criteria);
-                  }
-                };
-
-                const p1 = bus.scan({
-                  evaluator,
-                  trigger: 'foo',
-                });
-                const p2 = bus.scan({
-                  evaluator,
-                  trigger: 'foo'
-                });
-
-                expect(p1 === p2).toBeTrue();
-              });
-            });
-
-            describe('given params.trigger is the same vector of events in the same order', () => {
-              it('returns the same promise object', () => {
-                let criteria: boolean = false;
-                const evaluator = (resolve: Scanner.Resolver<boolean>) => {
-                  if(criteria) {
-                    resolve(criteria);
-                  }
-                };
-
-                const p1 = bus.scan({
-                  evaluator,
-                  trigger: ['foo', 'bar'],
-                });
-                const p2 = bus.scan({
-                  evaluator,
-                  trigger: ['foo', 'bar']
-                });
-
-                expect(p1 === p2).toBeTrue();
-              });
-            });
-
-            describe('given params.trigger is the same vector of events in a different order', () => {
-              it('returns the same promise object', () => {
-                let criteria: boolean = false;
-                const evaluator = (resolve: Scanner.Resolver<boolean>) => {
-                  if(criteria) {
-                    resolve(criteria);
-                  }
-                };
-
-                const p1 = bus.scan({
-                  evaluator,
-                  trigger: ['foo', 'bar'],
-                });
-                const p2 = bus.scan({
-                  evaluator,
-                  trigger: ['bar', 'foo']
-                });
-
-                expect(p1 === p2).toBeTrue();
-              });
-            });
-
-            describe('given params.trigger is a subset of an existing vector of events', () => {
-              it('returns the same promise object', () => {
-                let criteria: boolean = false;
-                const evaluator = (resolve: Scanner.Resolver<boolean>) => {
-                  if(criteria) {
-                    resolve(criteria);
-                  }
-                };
-
-                const p1 = bus.scan({
-                  evaluator,
-                  trigger: ['foo', 'bar'],
-                });
-                const p2 = bus.scan({
-                  evaluator,
-                  trigger: ['bar']
-                });
-                const p3 = bus.scan({
-                  evaluator,
-                  trigger: 'foo'
-                });
-
-                expect(p1 === p2).toBeTrue();
-                expect(p1 === p3).toBeTrue();
-              });
-            });
-
-            describe('given params.trigger is a subset of an existing wildcard scan', () => {
-              it('returns the same promise object', () => {
-                let criteria: boolean = false;
-                const evaluator = (resolve: Scanner.Resolver<boolean>) => {
-                  if(criteria) {
-                    resolve(criteria);
-                  }
-                };
-
-                const p1 = bus.scan({
-                  evaluator,
-                  trigger: '*',
-                });
-                const p2 = bus.scan({
-                  evaluator,
-                  trigger: ['bar']
-                });
-                const p3 = bus.scan({
-                  evaluator,
-                  trigger: 'foo'
-                });
-                const p4 = bus.scan({
-                  evaluator,
-                  trigger: ['foo', 'bar'],
-                });
-                const p5 = bus.scan({
-                  evaluator,
-                  trigger: '*',
-                });
-
-                expect(p1 === p2).toBeTrue();
-                expect(p1 === p3).toBeTrue();
-                expect(p2 === p4).toBeTrue();
-                expect(p3 === p5).toBeTrue();
-              });
-            });
-          });
-
-          describe('given params.trigger is NOT subset of an existing trigger', () => {
-            it('returns different promise objects', () => {
-              let criteria: boolean = false;
-              const evaluator = (resolve: Scanner.Resolver<boolean>) => {
-                if(criteria) {
-                  resolve(criteria);
-                }
+        describe('given multiple invocations in which params.evaluator and params.eager are the same', () => {
+          describe('given params.trigger is the same single event', () => {
+            it('returns the same promise object', () => {
+              const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+                // doing nothing in the evaluator
+                return;
               };
 
               const p1 = bus.scan({
                 evaluator,
-                trigger: ['foo', 'bar'],
+                trigger: 'foo'
               });
               const p2 = bus.scan({
                 evaluator,
-                trigger: ['bar', 'baz']
+                trigger: 'foo'
+              });
+
+              expect((p1 as any)[INTERNAL_PROMISE] === (p2 as any)[INTERNAL_PROMISE]).toBeTrue();
+            });
+          });
+
+          describe('given params.trigger is the same vector of events in the same order', () => {
+            it('returns the same promise object', () => {
+              const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+                // doing nothing in the evaluator
+                return;
+              };
+
+              const p1 = bus.scan({
+                evaluator,
+                trigger: ['foo', 'bar']
+              });
+              const p2 = bus.scan({
+                evaluator,
+                trigger: ['foo', 'bar']
+              });
+
+              expect((p1 as any)[INTERNAL_PROMISE] === (p2 as any)[INTERNAL_PROMISE]).toBeTrue();
+            });
+          });
+
+          describe('given params.trigger is the same vector of events in a different order', () => {
+            it('returns the same promise object', () => {
+              const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+                // doing nothing in the evaluator
+                return;
+              };
+
+              const p1 = bus.scan({
+                evaluator,
+                trigger: ['foo', 'bar']
+              });
+              const p2 = bus.scan({
+                evaluator,
+                trigger: ['bar', 'foo']
+              });
+
+              expect((p1 as any)[INTERNAL_PROMISE] === (p2 as any)[INTERNAL_PROMISE]).toBeTrue();
+            });
+          });
+
+          describe('given params.trigger is a subset of an existing vector of events', () => {
+            it('returns the same promise object', () => {
+              const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+                // doing nothing in the evaluator
+                return;
+              };
+
+              const p1 = bus.scan({
+                evaluator,
+                trigger: ['foo', 'bar']
+              });
+              const p2 = bus.scan({
+                evaluator,
+                trigger: ['bar']
               });
               const p3 = bus.scan({
+                evaluator,
+                trigger: 'foo'
+              });
+
+              expect((p1 as any)[INTERNAL_PROMISE] === (p2 as any)[INTERNAL_PROMISE]).toBeTrue();
+              expect((p2 as any)[INTERNAL_PROMISE] === (p3 as any)[INTERNAL_PROMISE]).toBeTrue();
+            });
+          });
+
+          describe('given params.trigger is a subset of an existing wildcard scan', () => {
+            it('returns the same promise object', () => {
+              const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+                // doing nothing in the evaluator
+                return;
+              };
+
+              const p1 = bus.scan({
+                evaluator,
+                trigger: '*'
+              });
+              const p2 = bus.scan({
+                evaluator,
+                trigger: ['bar']
+              });
+              const p3 = bus.scan({
+                evaluator,
+                trigger: 'foo'
+              });
+              const p4 = bus.scan({
+                evaluator,
+                trigger: ['foo', 'bar']
+              });
+              const p5 = bus.scan({
                 evaluator,
                 trigger: '*'
               });
 
-              expect(p1 === p2).not.toBeTrue();
-              expect(p1 === p3).not.toBeTrue();
-              expect(p2 === p3).not.toBeTrue();
+              expect((p1 as any)[INTERNAL_PROMISE] === (p2 as any)[INTERNAL_PROMISE]).toBeTrue();
+              expect((p2 as any)[INTERNAL_PROMISE] === (p3 as any)[INTERNAL_PROMISE]).toBeTrue();
+              expect((p3 as any)[INTERNAL_PROMISE] === (p4 as any)[INTERNAL_PROMISE]).toBeTrue();
+              expect((p4 as any)[INTERNAL_PROMISE] === (p5 as any)[INTERNAL_PROMISE]).toBeTrue();
             });
+          });
+        });
+
+        describe('given params.trigger is NOT subset of an existing trigger', () => {
+          it('returns different promise objects', () => {
+            const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+              // doing nothing in the evaluator
+              return;
+            };
+
+            const p1 = bus.scan({
+              evaluator,
+              trigger: ['foo', 'bar']
+            });
+            const p2 = bus.scan({
+              evaluator,
+              trigger: ['bar', 'baz']
+            });
+            const p3 = bus.scan({
+              evaluator,
+              trigger: '*'
+            });
+
+            expect((p1 as any)[INTERNAL_PROMISE] === (p2 as any)[INTERNAL_PROMISE]).toBeFalse();
+            expect((p1 as any)[INTERNAL_PROMISE] === (p3 as any)[INTERNAL_PROMISE]).toBeFalse();
+            expect((p2 as any)[INTERNAL_PROMISE] === (p3 as any)[INTERNAL_PROMISE]).toBeFalse();
           });
         });
 
         describe('given params.trigger is the wildcard', () => {
           describe('and a scanner exists for the wildcard already', () => {
             it('returns the same promise object', () => {
-              let criteria: boolean = false;
-              const evaluator = (resolve: Scanner.Resolver<boolean>) => {
-                if(criteria) {
-                  resolve(criteria);
-                }
+              const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+                // doing nothing in the evaluator
+                return;
               };
 
               const p1 = bus.scan({
                 evaluator,
-                trigger: '*',
+                trigger: '*'
               });
 
               const p2 = bus.scan({
@@ -1714,9 +1699,67 @@ describe('Strongbus.Bus', () => {
                 trigger: '*'
               });
 
-              expect(p1 === p2).toBeTrue();
+              expect((p1 as any)[INTERNAL_PROMISE] === (p2 as any)[INTERNAL_PROMISE]).toBeTrue();
             });
           });
+        });
+
+        describe('given an scan invocation is canceled', () => {
+          it('only rejects the canceled invocation, not all scans in the pool', async () => {
+            let criteria: boolean = false;
+            const evaluator = (resolve: Scanner.Resolver<boolean>) => {
+              if(criteria) {
+                resolve(criteria);
+              }
+            };
+
+            const resolveSpy = jasmine.createSpy('resolve');
+            const rejectSpy = jasmine.createSpy('reject');
+
+            const p1 = bus.scan({
+              evaluator,
+              trigger: '*'
+            });
+            p1.then(resolveSpy);
+
+            const p2 = bus.scan({
+              evaluator,
+              trigger: '*'
+            });
+            p2.catch(rejectSpy);
+
+            p2.cancel('test');
+            criteria = true;
+            bus.emit('foo', null);
+
+            await parallel([p1, p2]);
+
+            expect(resolveSpy).toHaveBeenCalledWith(true);
+            expect(rejectSpy).toHaveBeenCalledWith('test');
+
+          });
+        });
+      });
+
+      describe('given params.pool=false', () => {
+        it('does not return the same promise object', () => {
+          const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+            // doing nothing in the evaluator
+            return;
+          };
+
+          const p1 = bus.scan({
+            evaluator,
+            trigger: '*',
+            pool: false
+          });
+
+          const p2 = bus.scan({
+            evaluator,
+            trigger: '*'
+          });
+
+          expect((p1 as any)[INTERNAL_PROMISE] === (p2 as any)[INTERNAL_PROMISE]).toBeFalse();
         });
       });
     });
