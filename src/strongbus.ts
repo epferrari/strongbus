@@ -298,7 +298,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
           for(const candidatesOfEventLengthN of candidatesByEventLengthDesc) {
             evaluateCandidate:
             for(const [_promise, _events] of candidatesOfEventLengthN) {
-              for(const e in events) {
+              for(const e of events) {
                 if(!_events.has(e as EventKeys<TEventMap>)) {
                   continue evaluateCandidate;
                 }
