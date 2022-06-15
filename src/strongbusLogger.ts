@@ -9,11 +9,11 @@ import * as Events from './types/events';
 @autobind
 export class StrongbusLogger<TEventMap extends object = object> {
   private readonly name: string;
-  private readonly logger: Logger;
+  private readonly impl: Logger;
   private readonly thresholds: Required<ListenerThresholds>;
   private readonly verbose: boolean;
 
-  constructor(params: {name: string, logger: Logger, thresholds: Required<ListenerThresholds>, verbose: boolean}) {
+  constructor(params: {name: string, impl: Logger, thresholds: Required<ListenerThresholds>, verbose: boolean}) {
     Object.assign(this, params);
   }
 
@@ -70,52 +70,52 @@ export class StrongbusLogger<TEventMap extends object = object> {
   }
 
   private logInfoThresholdReached(event: EventKeys<TEventMap>|Events.WILDCARD) {
-    const {logger, thresholds} = this;
+    const {impl: logger, thresholds} = this;
     logger.info(StrongbusLogMessages.infoThresholdReached(this.name, thresholds.info, event));
   }
 
   private logWarningThresholdReached(event: EventKeys<TEventMap>|Events.WILDCARD) {
-    const {logger, thresholds} = this;
+    const {impl: logger, thresholds} = this;
     logger.info(StrongbusLogMessages.warnThresholdReached(this.name, thresholds.warn, event));
   }
 
   private logErrorThresholdReached(event: EventKeys<TEventMap>|Events.WILDCARD) {
-    const {logger, thresholds} = this;
+    const {impl: logger, thresholds} = this;
     logger.info(StrongbusLogMessages.errorThresholdReached(this.name, thresholds.error, event));
   }
 
   private logErrorThresholdExceeded(event: EventKeys<TEventMap>|Events.WILDCARD, count: number) {
-    const {logger, thresholds} = this;
+    const {impl: logger, thresholds} = this;
     logger.error(StrongbusLogMessages.errorThresholdExceeded(this.name, thresholds.error, count, event));
   }
 
   private logWarnThresholdExceeded(event: EventKeys<TEventMap>|Events.WILDCARD, count: number) {
-    const {logger, thresholds} = this;
+    const {impl: logger, thresholds} = this;
     logger.warn(StrongbusLogMessages.warnThresholdExceeded(this.name, thresholds.warn, count, event));
   }
 
   private logInfoThresholdExceeded(event: EventKeys<TEventMap>|Events.WILDCARD, count: number) {
-    const {logger, thresholds} = this;
+    const {impl: logger, thresholds} = this;
     logger.info(StrongbusLogMessages.infoThresholdExceeded(this.name, thresholds.info, count, event));
   }
 
   private logErrorThresholdExceededVerbose(event: EventKeys<TEventMap>|Events.WILDCARD, count: number) {
-    const {logger, thresholds} = this;
-    logger.error(`Potential Memory Leak. ${this.name} has ${count} listeners for "${event}", exceeds threshold set to ${thresholds.error}`);
+    const {impl: logger, thresholds} = this;
+    logger.error(`Potential Memory Leak. ${this.name} has ${count} listeners for "${String(event)}", exceeds threshold set to ${thresholds.error}`);
   }
 
   private logWarnThresholdExceededVerbose(event: EventKeys<TEventMap>|Events.WILDCARD, count: number) {
-    const {logger, thresholds} = this;
-    logger.warn(`Potential Memory Leak. ${this.name} has ${count} listeners for "${event}", exceeds threshold set to ${thresholds.warn}`);
+    const {impl: logger, thresholds} = this;
+    logger.warn(`Potential Memory Leak. ${this.name} has ${count} listeners for "${String(event)}", exceeds threshold set to ${thresholds.warn}`);
   }
 
   private logInfoThresholdExceededVerbose(event: EventKeys<TEventMap>|Events.WILDCARD, count: number) {
-    const {logger, thresholds} = this;
-    logger.info(`${this.name} has ${count} listeners for "${event}", ${thresholds.info} max listeners expected.`);
+    const {impl: logger, thresholds} = this;
+    logger.info(`${this.name} has ${count} listeners for "${String(event)}", ${thresholds.info} max listeners expected.`);
   }
 
   public onListenerRemoved(event: EventKeys<TEventMap>|Events.WILDCARD, count: number): void {
-    const {logger, thresholds} = this;
+    const {impl: logger, thresholds} = this;
     if(count === thresholds.error - 1) {
       logger.info(StrongbusLogMessages.memoryPressureReducedBelowErrorThreshold(this.name, thresholds, count, event));
     } else if(count === thresholds.warn - 1) {

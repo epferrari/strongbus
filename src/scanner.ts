@@ -1,7 +1,6 @@
 import {autobind} from 'core-decorators';
-import {CancelablePromise} from 'jaasync/lib/cancelable';
-import {Deferred} from 'jaasync/lib/deferred';
-import { EventHandler } from './types/eventHandlers';
+import {CancelablePromise, Deferred} from 'jaasync';
+import {EventHandler} from './types/eventHandlers';
 
 import * as Events from './types/events';
 import {Lifecycle} from './types/lifecycle';

@@ -1,4 +1,4 @@
-import {sleep} from 'jaasync/lib/sleep';
+import {sleep} from 'jaasync';
 
 import {Scanner} from './scanner';
 import {Bus} from './strongbus';
