@@ -1,8 +1,9 @@
-import {StrongbusLogger} from './strongbusLogger';
+
 import {autobind} from 'core-decorators';
 import {CancelablePromise, cancelable} from 'jaasync';
 
 import {Scanner} from './scanner';
+import {StrongbusLogger} from './strongbusLogger';
 import * as Events from './types/events';
 import * as EventHandlers from './types/eventHandlers';
 import {Lifecycle} from './types/lifecycle';
