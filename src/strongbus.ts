@@ -294,17 +294,17 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     */
     const lazyOrEager: 'eager'|'lazy' = (params.eager === false) ? 'lazy' : 'eager';
     let promise: Promise<TReturnType> = (() => {
-      const pool = this.scannerPools.get(params.evaluator)?.get(lazyOrEager);
-      if(pool) {
-        if(pool.wildcard) {
-          return pool.wildcard;
+      const pools = this.scannerPools.get(params.evaluator)?.get(lazyOrEager);
+      if(pools) {
+        if(pools.wildcard) {
+          return pools.wildcard;
         } else if(params.trigger !== Events.WILDCARD) {
           const events: Set<EventKeys<TEventMap>> = new Set(Array.isArray(params.trigger) ? params.trigger : [params.trigger]);
           // start comparing with longest candidates first
-          const candidatesByEventLengthDesc = pool.event.slice(events.size - 1).reverse();
-          for(const candidatesOfEventLengthN of candidatesByEventLengthDesc) {
+          const candidatesByEventCountDesc = pools.event.slice(events.size - 1).reverse();
+          for(const candidatesOfEventCountN of candidatesByEventCountDesc) {
             evaluateCandidate:
-            for(const [_promise, _events] of candidatesOfEventLengthN) {
+            for(const [_promise, _events] of candidatesOfEventCountN) {
               for(const e of events) {
                 if(!_events.has(e as EventKeys<TEventMap>)) {
                   continue evaluateCandidate;
@@ -404,7 +404,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
                     this.scannerPools.delete(params.evaluator);
                   }
                 } else {
-                  pools.event = null;
+                  pools.event = [];
                 }
               }
             }
