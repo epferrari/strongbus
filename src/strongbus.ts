@@ -259,7 +259,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
 
   private readonly scannerPools = new WeakMap<Scanner.Evaluator<any, TEventMap>, Map<'eager'|'lazy', {
     wildcard: Promise<any>;
-    event: Map<Promise<any>, Set<EventKeys<TEventMap>>>[];
+    event: (Map<Promise<any>, Set<EventKeys<TEventMap>>>[]);
   }>>();
 
   /**
