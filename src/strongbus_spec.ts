@@ -1533,7 +1533,7 @@ describe('Strongbus.Bus', () => {
       });
 
       describe('Scanner pooling', () => {
-        describe('given multiple invocations in which params.evaluator and params.eager are the same', () => {
+        describe('given multiple scan invocations in which params.evaluator and params.eager are the same', () => {
           describe('given params.trigger is the same single event', () => {
             it('returns the same promise object', () => {
               const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
@@ -1682,7 +1682,7 @@ describe('Strongbus.Bus', () => {
         });
 
         describe('given params.trigger is the wildcard', () => {
-          describe('and a scanner exists for the wildcard already', () => {
+          describe('and a pooled scanner exists for the wildcard already', () => {
             it('returns the same promise object', () => {
               const evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
                 // doing nothing in the evaluator
@@ -1700,6 +1700,36 @@ describe('Strongbus.Bus', () => {
               });
 
               expect((p1 as any)[INTERNAL_PROMISE] === (p2 as any)[INTERNAL_PROMISE]).toBeTrue();
+            });
+          });
+        });
+
+        describe('given a pooled scanner is settled', () => {
+          describe('and another scan is invoked with the same parameters that created the pooled scanner', () => {
+            it('a new pooled scanner is created', async () => {
+              let criteria: boolean = false;
+              const evaluator = (resolve: Scanner.Resolver<boolean>) => {
+                if(criteria) {
+                  resolve(criteria);
+                }
+              };
+
+              const p1 = bus.scan({
+                evaluator,
+                trigger: 'foo'
+              });
+
+              criteria = true;
+              bus.emit('foo', null);
+
+              await p1;
+
+              const p2 = bus.scan({
+                evaluator,
+                trigger: 'foo'
+              });
+
+              expect((p1 as any)[INTERNAL_PROMISE] === (p2 as any)[INTERNAL_PROMISE]).toBeFalse();
             });
           });
         });
