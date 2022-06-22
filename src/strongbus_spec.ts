@@ -1795,7 +1795,7 @@ describe('Strongbus.Bus', () => {
       });
     });
 
-    fdescribe('given params.timeout is configured', () => {
+    describe('given params.timeout is configured', () => {
       describe('and its value is 0', () => {
         describe('given pooling is configured', () => {
           it('pooling is used (timeout is ignored)', () => {
