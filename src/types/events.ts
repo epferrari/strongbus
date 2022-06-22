@@ -1,13 +1,13 @@
 export type Event = string|number|symbol;
 
 /**
- * {[event: Event]: Payload}
+ * {[event: [[Event]]]: Payload}
  */
  export type EventMap = object;
 
 /**
- * Subscription can be released by invoking it directly,
- * or invoking <Subscription>.unsubscribe()
+ * Subscription `s` can be released by invoking it directly (`s()`),
+ * or invoking `s.unsubscribe()`
  */
 export interface Subscription {
     (): void;

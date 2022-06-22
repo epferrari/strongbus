@@ -1,7 +1,7 @@
 {
   "name": "strongbus",
   "version": "2.4.0",
-  "description": "Strongly typed, battle-tested event bus",
+  "description": "Strongly typed, battle-tested event emitter",
   "keywords": [
     "bus",
     "message-bus",
@@ -23,7 +23,7 @@
     "test": "npm run dev && jasmine --config=./jasmine.json",
     "validate": "npm run test && npm run lint",
     "install": "([ -d ./src ] && [ ! -d ./lib ] && mkdir lib && npm install . &&  npm run dist) || echo ''",
-    "docs": "./node_modules/.bin/typedoc --tsconfig tsconfig.dist.json --out ./docs --theme minimal --mode file --excludePrivate --exclude **/*/utils/*,**/*/utility.ts,**/*spec.ts,**/strongbusLogger.ts ./src/index.ts",
+    "docs": "./node_modules/.bin/typedoc",
     "prepare": "rm -rf ./lib && npm run dist",
     "version": "git add -A src",
     "postversion": "git push && git push --tags"
@@ -45,7 +45,7 @@
     "jasmine": "^3.3.0",
     "jasmine-spec-reporter": "^7.0.0",
     "tslint": "^6.1.3",
-    "typedoc": "^0.19.2",
-    "typescript": "^4.0.3"
+    "typedoc": "^0.23.0",
+    "typescript": "^4.7.4"
   }
 }

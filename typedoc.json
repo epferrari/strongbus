@@ -1,0 +1,15 @@
+{
+  "tsconfig": "./tsconfig.dist.json",
+  "out": "./docs",
+  "excludePrivate": true,
+  "includeVersion": true,
+  "readme": "none",
+  "sort": ["required-first"],
+  "exclude": [
+    "**/*/utils/*",
+    "**/*/utility.ts",
+    "**/*spec.ts",
+    "**/strongbusLogger.ts"
+  ],
+  "entryPoints": ["./src/index.ts"]
+}

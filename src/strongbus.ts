@@ -263,18 +263,18 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
    * Utility for resolving/rejecting a promise based on an evaluation done when an event is triggered.
    * If params.eager=true (default), evaluates condition immedately.
    * If evaluator resolves or rejects in the eager evaluation, the scanner does not subscribe to any events
-   * @param params - object
+   * @param params
    * @param params.evaluator - an evaluation function that should check for a certain state
    * and may resolve or reject the scan based on the state.
    * @param params.trigger - event or events that should trigger evaluator
-   * @param {boolean} [params.eager=true] - should `params.evaluator` be called immediately?
+   * @param {boolean} [params.eager=true] - should `params.evaluator` be called immediately; default is `true`.
    * This eliminates the following anti-pattern:
    * ```
    * if(!someCondition) {
    *  await this.scan({evaluator: evaluateSomeCondition, trigger: ...});
    * }
    * ```
-   * @param {boolean} [params.pool=true] - attempt to pool scanners that can be resolved by the same evaluator and trigger.
+   * @param {boolean} [params.pool=true] - attempt to pool scanners that can be resolved by the same evaluator and trigger; default is `true`
    */
   public scan<TEvaluator extends Scanner.Evaluator<any, TEventMap>>(
     params: {
