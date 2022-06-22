@@ -182,10 +182,10 @@ is-core-module@^2.8.1:
   dependencies:
     has "^1.0.3"
 
-jaasync@^0.10.1:
-  version "0.10.1"
-  resolved "https://registry.yarnpkg.com/jaasync/-/jaasync-0.10.1.tgz#7a516a72625c41a34d1a397a97c4e25152c4f377"
-  integrity sha512-4TKOvo8iZ+i7yNzUPhYolhpEZW+ZtQdba12+YIj5HAPDyGro6HeLbNZnHlUoyv7m/PUPJsJuR+bjl7wrqDaWyg==
+jaasync@^0.11.0:
+  version "0.11.0"
+  resolved "https://registry.yarnpkg.com/jaasync/-/jaasync-0.11.0.tgz#d1d1a287d573d114f191d1d52a2bafb27133905b"
+  integrity sha512-J1zp19w0hwpFA8hCU7hD/8xYadCxs2/63549W/bndBW/UzTvLtk8l7RZvzLELt8/731DPFGyqz9zRJXA0QvV1A==
   dependencies:
     core-decorators "^0.20.0"
 
@@ -351,7 +351,7 @@ tsutils@^2.29.0:
   dependencies:
     tslib "^1.8.1"
 
-typedoc@^0.23.0:
+typedoc@0.23.0-beta.5:
   version "0.23.0-beta.5"
   resolved "https://registry.yarnpkg.com/typedoc/-/typedoc-0.23.0-beta.5.tgz#dc7d716063c19212b48ba117817c3047f2106535"
   integrity sha512-6z6dJMIBbErjtLKJ4iTx9BN9/BwScARZq3YH4bmDOT0IN200FbT2A7JSGujw7rP6aMLlUm605VpZNIB4GYbDBg==

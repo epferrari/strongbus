@@ -1,6 +1,6 @@
 
 import {autobind} from 'core-decorators';
-import {CancelablePromise, cancelable} from 'jaasync';
+import {CancelablePromise, cancelable, timeout} from 'jaasync';
 
 import {Scanner} from './scanner';
 import {StrongbusLogger} from './strongbusLogger';
@@ -267,6 +267,8 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
    * @param params.evaluator - an evaluation function that should check for a certain state
    * and may resolve or reject the scan based on the state.
    * @param params.trigger - event or events that should trigger evaluator
+   * @param {boolean} [params.pool=true] - attempt to pool scanners that can be resolved by the same evaluator and trigger; default is `true`
+   * @param {integer} [params.timeout] - cancel the scan after `params.timeout` milliseconds. Values `<= 0` are ignored. If configured, will disable pooling regardles of `params.pool`'s value
    * @param {boolean} [params.eager=true] - should `params.evaluator` be called immediately; default is `true`.
    * This eliminates the following anti-pattern:
    * ```
@@ -274,7 +276,6 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
    *  await this.scan({evaluator: evaluateSomeCondition, trigger: ...});
    * }
    * ```
-   * @param {boolean} [params.pool=true] - attempt to pool scanners that can be resolved by the same evaluator and trigger; default is `true`
    */
   public scan<TEvaluator extends Scanner.Evaluator<any, TEventMap>>(
     params: {
@@ -282,17 +283,31 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
       trigger: Events.Listenable<EventKeys<TEventMap>>;
       eager?: boolean;
       pool?: boolean;
+      timeout?: number;
   }): CancelablePromise<TEvaluator extends Scanner.Evaluator<infer U, TEventMap> ? U : any> {
 
     type TReturnType = TEvaluator extends Scanner.Evaluator<infer U, TEventMap> ? U : any;
 
-    if(params.pool === false) {
+    if(params.timeout && params.timeout > 0) {
       const scanner = new Scanner<TReturnType>(params);
       scanner.scan<TEventMap>(this, params.trigger);
+      // tslint:disable-next-line:prefer-object-spread
       return Object.assign(
-        cancelable(() => scanner),
+        timeout(scanner, {ms: params.timeout, cancelUnderlyingPromiseOnTimeout: true}),
+        {
+          [INTERNAL_PROMISE]: scanner,
+          cancel: (err: any) => scanner.cancel(err)
+        }
+      );
+    } else if(params.pool === false) {
+      const scanner = new Scanner<TReturnType>(params);
+      scanner.scan<TEventMap>(this, params.trigger);
+      // tslint:disable-next-line:prefer-object-spread
+      return Object.assign(
+        scanner,
         {[INTERNAL_PROMISE]: scanner}
       );
+
     }
 
     /*

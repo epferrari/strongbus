@@ -107,7 +107,7 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
     return this._promise.finally(onfinally);
   }
 
-  public cancel(reason?: string): boolean {
+  public cancel(reason?: string|Error): boolean {
     if(this.settle()) {
       this._promise.reject(reason);
       return true;
