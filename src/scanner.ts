@@ -11,19 +11,19 @@ import {over} from './utils/over';
 
 export namespace Scanner {
   export type TriggerType = 'eager'|'event'|'destroy';
-  export interface Trigger<TEventMap extends object, T extends keyof TEventMap> {
+  export interface Trigger<TEventMap extends Events.EventMap, T extends keyof TEventMap> {
     type: TriggerType;
     event: T;
     payload: TEventMap[T];
   }
-  export interface Resolver<TResult, TEventMap extends object = any> {
+  export interface Resolver<TResult, TEventMap extends Events.EventMap = any> {
     (result: TResult): void;
     resolve: (result: TResult) => void;
     reject: (err?: Error) => void;
     trigger: Trigger<TEventMap, keyof TEventMap>;
   }
   export type Rejecter = (err?: Error) => void;
-  export type Evaluator<TResult, TEventMap extends object> = (
+  export type Evaluator<TResult, TEventMap extends Events.EventMap> = (
     resolve: Resolver<TResult, TEventMap>,
     reject: Rejecter
   ) => void|Promise<void>;
@@ -59,7 +59,7 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
     }
   }
 
-  private evaluate<TEventMap extends object, T extends keyof TEventMap>(trigger: Scanner.Trigger<TEventMap, T>): void|Promise<void> {
+  private evaluate<TEventMap extends Events.EventMap, T extends keyof TEventMap>(trigger: Scanner.Trigger<TEventMap, T>): void|Promise<void> {
     const resolver = (val: TResult) => this.resolve(val);
     (resolver as any).resolve = this.resolve;
     (resolver as any).reject = this.reject;
@@ -119,7 +119,7 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
   /**
    * scan listenable and resolve based on `this.evaluator`
    */
-  public scan<TEventMap extends object>(
+  public scan<TEventMap extends Events.EventMap>(
     scannable: Scannable<TEventMap>,
     listenable: Events.Listenable<EventKeys<TEventMap>>
   ): this {

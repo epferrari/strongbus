@@ -6,6 +6,7 @@ import {Scanner} from './scanner';
 import {StrongbusLogMessages} from './strongbusLogger';
 import {Logger} from './types/logger';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
+import * as Events from './types/events';
 import {EventKeys} from './types/utility';
 import {over} from './utils/over';
 
@@ -15,7 +16,7 @@ type TestEventMap = {
   baz: number;
 };
 
-class DelegateTestBus<T extends object = TestEventMap> extends Strongbus.Bus<T> {
+class DelegateTestBus<T extends Events.EventMap = TestEventMap> extends Strongbus.Bus<T> {
   private readonly emulateListenerCount: boolean = false;
   constructor(options: Strongbus.Options & {emulateListenerCount?: boolean}) {
     super(options);

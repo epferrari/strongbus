@@ -17,11 +17,8 @@ import {randomId} from './utils/randomId';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 
 
-/**
- * @typeParam TEventMap - `{[Event]: Payload}`
- */
 @autobind
-export class Bus<TEventMap extends object = object> implements Scannable<TEventMap> {
+export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements Scannable<TEventMap> {
 
   private static defaultOptions: Required<Options> & {thresholds: Required<ListenerThresholds>} = {
     name: 'Anonymous',
@@ -106,9 +103,9 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
 
   /**
    * @override
-   * How should the bus handle events emitted that have no listeners.
-   * The default implementation is to throw an error.
+   * Declare how the bus should handle events emitted that have no listeners.
    * Will be invoked when an instance's `options.allowUnhandledEvents = false` (default is true).
+   * The default implementation is to throw an error.
    */
   protected handleUnexpectedEvent<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T]) {
     const errorMessage = [
@@ -265,7 +262,19 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   /**
    * Utility for resolving/rejecting a promise based on an evaluation done when an event is triggered.
    * If params.eager=true (default), evaluates condition immedately.
-   * If evaluator resolves or rejects, the scanner does not subscribe to any events
+   * If evaluator resolves or rejects in the eager evaluation, the scanner does not subscribe to any events
+   * @param params - object
+   * @param params.evaluator - an evaluation function that should check for a certain state
+   * and may resolve or reject the scan based on the state.
+   * @param params.trigger - event or events that should trigger evaluator
+   * @param {boolean} [params.eager=true] - should `params.evaluator` be called immediately?
+   * This eliminates the following anti-pattern:
+   * ```
+   * if(!someCondition) {
+   *  await this.scan({evaluator: evaluateSomeCondition, trigger: ...});
+   * }
+   * ```
+   * @param {boolean} [params.pool=true] - attempt to pool scanners that can be resolved by the same evaluator and trigger.
    */
   public scan<TEvaluator extends Scanner.Evaluator<any, TEventMap>>(
     params: {
@@ -273,7 +282,7 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
       trigger: Events.Listenable<EventKeys<TEventMap>>;
       eager?: boolean;
       pool?: boolean;
-    }): CancelablePromise<TEvaluator extends Scanner.Evaluator<infer U, TEventMap> ? U : any> {
+  }): CancelablePromise<TEvaluator extends Scanner.Evaluator<infer U, TEventMap> ? U : any> {
 
     type TReturnType = TEvaluator extends Scanner.Evaluator<infer U, TEventMap> ? U : any;
 

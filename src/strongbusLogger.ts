@@ -7,7 +7,7 @@ import * as Events from './types/events';
 
 
 @autobind
-export class StrongbusLogger<TEventMap extends object = object> {
+export class StrongbusLogger<TEventMap extends Events.EventMap = Events.EventMap> {
   private readonly name: string;
   private readonly impl: Logger;
   private readonly thresholds: Required<ListenerThresholds>;

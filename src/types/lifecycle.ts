@@ -17,7 +17,7 @@ export const Lifecycle = strEnum([
 export type Lifecycle = keyof typeof Lifecycle;
 
 export namespace Lifecycle {
-  export interface EventMap<TEventMap extends object> {
+  export interface EventMap<TEventMap extends Events.EventMap> {
     [Lifecycle.willActivate]: void;
     [Lifecycle.active]: void;
     [Lifecycle.willIdle]: void;
