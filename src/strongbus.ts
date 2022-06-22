@@ -181,13 +181,13 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
   /**
    * Utility for resolving/rejecting a promise based on the reception of an event.
    * Promise will resolve with event payload, if a single event, or undefined if listening to multiple events.
-   * @param resolvingEvent - what event/events should resolve the promise
-   * @param rejectingEvent - what event/events should reject the promise. Must be mutually disjoint with `resolvingEvent`
+   * @param resolutionTrigger - what event/events should resolve the promise
+   * @param rejectionTrigger - what event/events should reject the promise. Must be mutually disjoint with `resolvingEvent`
    */
   public next<T extends Events.Listenable<EventKeys<TEventMap>>>(
-    resolvingEvent: T,
+    resolutionTrigger: T,
     // this ensures the resolving and rejecting events are disjoint sets
-    rejectingEvent?: T extends Events.WILDCARD
+    rejectionTrigger?: T extends Events.WILDCARD
       ? never
       : T extends EventKeys<TEventMap>[]
         ? EventKeys<Omit<TEventMap, T[number]>>|EventKeys<Omit<TEventMap, T[number]>>[]
@@ -200,20 +200,20 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
     let rejectInternalPromise: (err?: Error) => void;
     let willDestroyListener: Events.Subscription;
 
-    const resolvingEventSub = this.on(resolvingEvent, ((...args: any[]) => {
-      if(resolvingEvent === Events.WILDCARD || Array.isArray(resolvingEvent)) {
+    const resolutionSub = this.on(resolutionTrigger, ((...args: any[]) => {
+      if(resolutionTrigger === Events.WILDCARD || Array.isArray(resolutionTrigger)) {
         resolve(undefined);
       } else {
         resolve(args[0]);
       }
     }) as any);
-    const rejectingEventSub = rejectingEvent
-      ? this.on(rejectingEvent, ((...args: any[]) => {
+    const rejectionSub = rejectionTrigger
+      ? this.on(rejectionTrigger, ((...args: any[]) => {
           let e: EventKeys<TEventMap>;
-          if(rejectingEvent === Events.WILDCARD || Array.isArray(rejectingEvent)) {
+          if(rejectionTrigger === Events.WILDCARD || Array.isArray(rejectionTrigger)) {
             e = args[0];
           } else {
-            e = rejectingEvent as EventKeys<TEventMap>;
+            e = rejectionTrigger as EventKeys<TEventMap>;
           }
           reject(new Error(`Rejected with event (${String(e)})`));
         }) as any)
@@ -235,8 +235,8 @@ export class Bus<TEventMap extends object = object> implements Scannable<TEventM
       if(settled) {
         return false;
       }
-      resolvingEventSub();
-      rejectingEventSub?.();
+      resolutionSub();
+      rejectionSub?.();
       willDestroyListener?.();
       settled = true;
       return true;
