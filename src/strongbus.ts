@@ -268,7 +268,8 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
    * and may resolve or reject the scan based on the state.
    * @param params.trigger - event or events that should trigger evaluator
    * @param {boolean} [params.pool=true] - attempt to pool scanners that can be resolved by the same evaluator and trigger; default is `true`
-   * @param {integer} [params.timeout] - cancel the scan after `params.timeout` milliseconds. Values `<= 0` are ignored. If configured, will disable pooling regardles of `params.pool`'s value
+   * @param {integer} [params.timeout] - cancel the scan after `params.timeout` milliseconds. Values `<= 0` are ignored.
+   * Currently pooling timeouts is not supported. If `params.timeout` is configured, it will disable pooling regardless if `params.pool=true`
    * @param {boolean} [params.eager=true] - should `params.evaluator` be called immediately; default is `true`.
    * This eliminates the following anti-pattern:
    * ```
