@@ -458,6 +458,15 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
 
   public unpipe<TDelegate extends Bus<TEventMap>>(delegate: TDelegate): void {
     over(this._delegates.get(delegate) || [])();
+    delegate.listeners.forEach((delegateListeners, event) => {
+      if(!delegateListeners.size) {
+        return;
+      }
+      let listeners = this._allListenersCache.get(event);
+      if(listeners) {
+        delegateListeners.forEach(d => listeners.delete(d));
+      }
+    });
     this._delegates.delete(delegate);
   }
 
@@ -540,14 +549,9 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     return map;
   }
 
+  private _allListenersCache: Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>> = new Map();
   private get ownListeners(): Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>> {
-    const map = new Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>>();
-    this.bus.forEach((listeners, event) => {
-      if(listeners.size) {
-        map.set(event, new Set(listeners));
-      }
-    });
-    return map;
+    return this._allListenersCache;
   }
 
   public hasListenersFor(event: EventKeys<TEventMap>|Events.WILDCARD): boolean {
@@ -587,6 +591,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     // and they will be removed from the cache
     over(this.subscriptionCache)();
     this.bus.clear();
+    this._allListenersCache.clear();
   }
 
   private releaseDelegates(): void {
@@ -603,6 +608,9 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
       this.willAddListener(event);
       const {added} = addListener(this.bus, event, handler);
       if(added) {
+        const listenerSet = this._allListenersCache.get(event) || new Set();
+        listenerSet.add(handler)
+        this._allListenersCache.set(event, listenerSet);
         this.didAddListener(event);
       }
     }
@@ -646,6 +654,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     this.willRemoveListener(event);
     const {removed} = removeListener(this.bus, event, handler);
     if(removed) {
+      this._allListenersCache.get(event).delete(handler)
       this.didRemoveListener(event);
       const count = this.bus.get(event)?.size ?? 0;
       this.logger.onListenerRemoved(event, count);
