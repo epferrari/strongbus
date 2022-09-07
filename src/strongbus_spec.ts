@@ -979,19 +979,19 @@ describe('Strongbus.Bus', () => {
 
       describe('and the instance has no delegates', () => {
         it("lists the instance's listeners", () => {
-          expect(bus.listeners).toEqual(new Map([[
+          expect(bus.ownListeners).toEqual(new Map([[
             'foo', new Set([onTestEvent])
           ]]));
           bus.on('*', onAnyEvent);
-          expect(bus.listeners.get('foo')).toEqual(new Set([onTestEvent]));
-          expect(bus.listeners.get('*').size).toEqual(1); // will be an anonymous wrapper around `onAnyEvent`
+          expect(bus.ownListeners.get('foo')).toEqual(new Set([onTestEvent]));
+          expect(bus.ownListeners.get('*').size).toEqual(1); // will be an anonymous wrapper around `onAnyEvent`
         });
       });
 
       describe('and the instance has delegates with no listeners', () => {
         it("lists the instance's listeners", () => {
           bus.pipe(bus2);
-          expect(bus.listeners).toEqual(new Map([[
+          expect(bus.ownListeners).toEqual(new Map([[
             'foo', new Set([onTestEvent])
           ]]));
         });
@@ -1057,6 +1057,35 @@ describe('Strongbus.Bus', () => {
         bus.on('foo', handleFoo);
 
         expect(bus.hasListenersFor('foo')).toBe(true);
+      });
+    });
+  });
+
+  describe('#hasOwnListenersFor', () => {
+    describe('given an instance has no listeners registered for an event', () => {
+      it('returns false', () => {
+        bus.destroy();
+        expect(bus.hasOwnListenersFor('foo')).toBe(false);
+      });
+
+      describe('given an instance has delegates registered for an event', () => {
+        it('returns false', () => {
+          bus.destroy();
+          const bus2 = new DelegateTestBus({emulateListenerCount: true});
+          bus.pipe(bus2);
+          bus2.on('foo', () => {return; });
+          expect(bus.hasOwnListenersFor('foo')).toBe(false);
+        });
+      });
+    });
+
+    describe('given an instance has listeners registered for an event', () => {
+      it('returns true', () => {
+        bus.destroy();
+        const handleFoo = (payload: string) => {return; };
+        bus.on('foo', handleFoo);
+
+        expect(bus.hasOwnListenersFor('foo')).toBe(true);
       });
     });
   });
