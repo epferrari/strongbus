@@ -447,9 +447,9 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
       if(!this._delegates.has(delegate)) {
         this._delegates.set(delegate, [
           delegate.hook(Lifecycle.willAddListener, this.willAddListener),
-          delegate.hook(Lifecycle.didAddListener, this.didAddListener),
+          delegate.hook(Lifecycle.didAddListener, this.didAddDelegateListener),
           delegate.hook(Lifecycle.willRemoveListener, this.willRemoveListener),
-          delegate.hook(Lifecycle.didRemoveListener, this.didRemoveListener)
+          delegate.hook(Lifecycle.didRemoveListener, this.didRemoveDelegateListener)
         ]);
       }
     }
@@ -522,32 +522,40 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     return false;
   }
 
-  public get listeners(): Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.GenericHandler>> {
-    const map = this.ownListeners;
-    this._delegates.forEach((_, delegate) => {
-      delegate.listeners.forEach((delegateListeners, event) => {
-        if(!delegateListeners.size) {
-          return;
-        }
-        let listeners = map.get(event);
-        if(!listeners) {
-          listeners = new Set<EventHandlers.GenericHandler>();
-          map.set(event, listeners);
-        }
-        delegateListeners.forEach(d => listeners.add(d));
+  private _cachedGetListersValue: Map<EventKeys<TEventMap>|Events.WILDCARD, ReadonlySet<EventHandlers.GenericHandler>>;
+  public get listeners(): ReadonlyMap<EventKeys<TEventMap>|Events.WILDCARD, ReadonlySet<EventHandlers.GenericHandler>> {
+    if(!this._cachedGetListersValue) {
+      const listenerCache = new Map(this.ownListeners);
+      this._delegates.forEach((_, delegate) => {
+        delegate.listeners.forEach((delegateListeners, event) => {
+          if(!delegateListeners.size) {
+            return;
+          }
+          let listeners = listenerCache.get(event);
+          if(!listeners) {
+            listeners = new Set<EventHandlers.GenericHandler>();
+            listenerCache.set(event, listeners);
+          }
+          delegateListeners.forEach(d => (listeners as Set<any>).add(d));
+        });
       });
-    });
-    return map;
+      this._cachedGetListersValue = listenerCache;
+    }
+    return this._cachedGetListersValue;
   }
 
-  public get ownListeners(): Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>> {
-    const map = new Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>>();
-    this.bus.forEach((listeners, event) => {
-      if(listeners.size) {
-        map.set(event, new Set(listeners));
-      }
-    });
-    return map;
+  private _cachedGetOwnListenersValue: Map<EventKeys<TEventMap>|Events.WILDCARD, ReadonlySet<EventHandlers.EventHandler<TEventMap, any>>>;
+  public get ownListeners(): ReadonlyMap<EventKeys<TEventMap>|Events.WILDCARD, ReadonlySet<EventHandlers.EventHandler<TEventMap, any>>> {
+    if(!this._cachedGetOwnListenersValue) {
+      const ownListenerCache = new Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>>();
+      this.bus.forEach((listeners, event) => {
+        if(listeners.size) {
+          ownListenerCache.set(event, new Set(listeners));
+        }
+      });
+      this._cachedGetOwnListenersValue = ownListenerCache;
+    }
+    return this._cachedGetOwnListenersValue;
   }
 
   public hasListenersFor(event: EventKeys<TEventMap>|Events.WILDCARD): boolean {
@@ -606,10 +614,10 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
         this.didAddListener(event);
       }
     }
-    return this.cacheListener(event as EventKeys<TEventMap>, handler);
+    return this.generateListenerSubscription(event as EventKeys<TEventMap>, handler);
   }
 
-  private cacheListener(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): Events.Subscription {
+  private generateListenerSubscription(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): Events.Subscription {
     const token = randomId();
     const sub = generateSubscription(() => {
       this._unsubQueue.push({
@@ -707,12 +715,20 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     }
   }
 
-  private didAddListener(event: EventKeys<TEventMap>|Events.WILDCARD) {
+  private didAddListener(event: EventKeys<TEventMap>|Events.WILDCARD, invokedByDelegate: boolean = false) {
+    this._cachedGetListersValue = null;
+    if(!invokedByDelegate) {
+      this._cachedGetOwnListenersValue = null;
+    }
     this.emitLifecycleEvent(Lifecycle.didAddListener, event);
     if(!this.active && this.hasListeners) {
       this._active = true;
       this.emitLifecycleEvent(Lifecycle.active, null);
     }
+  }
+
+  private didAddDelegateListener(event: EventKeys<TEventMap>|Events.WILDCARD): void {
+    this.didAddListener(event, true);
   }
 
   private willRemoveListener(event: EventKeys<TEventMap>|Events.WILDCARD): void {
@@ -725,12 +741,20 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     }
   }
 
-  private didRemoveListener(event: EventKeys<TEventMap>|Events.WILDCARD) {
+  private didRemoveListener(event: EventKeys<TEventMap>|Events.WILDCARD, invokedByDelegate: boolean = false) {
+    this._cachedGetListersValue = null;
+    if(!invokedByDelegate) {
+      this._cachedGetOwnListenersValue = null;
+    }
     this.emitLifecycleEvent(Lifecycle.didRemoveListener, event);
     if(this.active && !this.hasListeners) {
       this._active = false;
       this.emitLifecycleEvent(Lifecycle.idle, null);
     }
+  }
+
+  private didRemoveDelegateListener(event: EventKeys<TEventMap>|Events.WILDCARD): void {
+    this.didRemoveListener(event, true);
   }
 }
 
