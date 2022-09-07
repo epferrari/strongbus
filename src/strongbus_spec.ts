@@ -1002,10 +1002,7 @@ describe('Strongbus.Bus', () => {
         });
 
         describe('given the instance has delegates', () => {
-          let bus2: DelegateTestBus;
-
           beforeEach(() => {
-            bus2 = new DelegateTestBus({emulateListenerCount: true});
             bus.pipe(bus2);
           });
 
@@ -1152,10 +1149,8 @@ describe('Strongbus.Bus', () => {
         });
 
         describe('given the instance has delegates', () => {
-          let bus2: DelegateTestBus;
 
           beforeEach(() => {
-            bus2 = new DelegateTestBus({emulateListenerCount: true});
             bus.pipe(bus2);
           });
 
