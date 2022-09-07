@@ -540,7 +540,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     return map;
   }
 
-  private get ownListeners(): Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>> {
+  public get ownListeners(): Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>> {
     const map = new Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>>();
     this.bus.forEach((listeners, event) => {
       if(listeners.size) {
@@ -554,7 +554,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     return this.hasOwnListenersFor(event) || this.hasDelegateListenersFor(event);
   }
 
-  public  hasOwnListenersFor(event: EventKeys<TEventMap>|Events.WILDCARD): boolean {
+  public hasOwnListenersFor(event: EventKeys<TEventMap>|Events.WILDCARD): boolean {
     const handlers = this.bus.get(event);
     return handlers?.size > 0;
   }

@@ -908,14 +908,14 @@ describe('Strongbus.Bus', () => {
         bus.on('foo', onTestEvent);
       });
 
-      describe('and there are no delegate listeners', () => {
+      describe('and the instance has no delegates', () => {
         it('lists the listeners on the instance', () => {
           expect(bus.listeners).toEqual(new Map([[
             'foo', new Set([onTestEvent])
           ]]));
           bus.on('*', onAnyEvent);
           expect(bus.listeners.get('foo')).toEqual(new Set([onTestEvent]));
-          expect(bus.listeners.get('*').size).toEqual(1); // will be an anonymous wrapper around onEveryEvent
+          expect(bus.listeners.get('*').size).toEqual(1); // will be an anonymous wrapper around `onAnyEvent`
         });
       });
 
@@ -951,15 +951,82 @@ describe('Strongbus.Bus', () => {
       });
 
       describe('and the instance has delegates with no listeners', () => {
-        it('returns an empty object', () => {
+        it('lists no listeners', () => {
           bus.pipe(bus2);
           expect(bus.listeners.size).toEqual(0);
         });
       });
 
       describe('and the instance has no delegates', () => {
-        it('returns an empty object', () => {
+        it('lists no listeners', () => {
           expect(bus.listeners.size).toEqual(0);
+        });
+      });
+    });
+  });
+
+  describe('#ownListeners', () => {
+    let bus2: DelegateTestBus;
+
+    beforeEach(() => {
+      bus2 = new DelegateTestBus({emulateListenerCount: true});
+    });
+
+    describe('given there are event listeners on the instance', () => {
+      beforeEach(() => {
+        bus.on('foo', onTestEvent);
+      });
+
+      describe('and the instance has no delegates', () => {
+        it("lists the instance's listeners", () => {
+          expect(bus.listeners).toEqual(new Map([[
+            'foo', new Set([onTestEvent])
+          ]]));
+          bus.on('*', onAnyEvent);
+          expect(bus.listeners.get('foo')).toEqual(new Set([onTestEvent]));
+          expect(bus.listeners.get('*').size).toEqual(1); // will be an anonymous wrapper around `onAnyEvent`
+        });
+      });
+
+      describe('and the instance has delegates with no listeners', () => {
+        it("lists the instance's listeners", () => {
+          bus.pipe(bus2);
+          expect(bus.listeners).toEqual(new Map([[
+            'foo', new Set([onTestEvent])
+          ]]));
+        });
+      });
+
+      describe('and the instance has delegates with listeners', () => {
+        it("lists only the instance's listeners", () => {
+          bus.pipe(bus2);
+          bus2.on('foo', onAnyEvent);
+          expect(bus.ownListeners).toEqual(new Map([[
+            'foo', new Set([onTestEvent])
+          ]]));
+        });
+      });
+    });
+
+    describe('given there are no event listeners on the instance', () => {
+      describe('and the instance has delegates with listeners', () => {
+        it('lists no listeners', () => {
+          bus.pipe(bus2);
+          bus2.on('foo', onAnyEvent);
+          expect(bus.ownListeners.size).toEqual(0);
+        });
+      });
+
+      describe('and the instance has delegates with no listeners', () => {
+        it('lists no listeners', () => {
+          bus.pipe(bus2);
+          expect(bus.ownListeners.size).toEqual(0);
+        });
+      });
+
+      describe('and the instance has no delegates', () => {
+        it('lists no listeners', () => {
+          expect(bus.ownListeners.size).toEqual(0);
         });
       });
     });
