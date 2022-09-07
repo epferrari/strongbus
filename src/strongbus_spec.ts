@@ -1006,7 +1006,7 @@ describe('Strongbus.Bus', () => {
             bus.pipe(bus2);
           });
 
-          describe('and no listeners have been added or removed between invocations', () => {
+          describe('and no delegate listeners have been added or removed between invocations', () => {
             it('returns the same reference', () => {
               bus.on('foo', onTestEvent);
               bus2.on('bar', onTestEvent);
@@ -1028,7 +1028,7 @@ describe('Strongbus.Bus', () => {
             });
           });
 
-          describe('and a listener is removed from a delegate instance between invocations', () => {
+          describe('and a listener is removed from a delegate between invocations', () => {
             it('cachebusts', () => {
               bus.on('foo', onTestEvent);
               const sub = bus2.on('bar', onTestEvent);
@@ -1154,7 +1154,7 @@ describe('Strongbus.Bus', () => {
             bus.pipe(bus2);
           });
 
-          describe('and no listeners have been added or removed between invocations', () => {
+          describe('and no delegate listeners have been added or removed between invocations', () => {
             it('returns the same reference', () => {
               bus.on('foo', onTestEvent);
               bus2.on('bar', onTestEvent);
@@ -1176,7 +1176,7 @@ describe('Strongbus.Bus', () => {
             });
           });
 
-          describe('and a listener is removed from a delegate instance between invocations', () => {
+          describe('and a listener is removed from a delegate between invocations', () => {
             it('returns the same reference', () => {
               bus.on('foo', onTestEvent);
               const sub = bus2.on('bar', onTestEvent);
