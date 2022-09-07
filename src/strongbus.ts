@@ -718,7 +718,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
 
   private willAddListener(event: EventKeys<TEventMap>|Events.WILDCARD) {
     this.emitLifecycleEvent(Lifecycle.willAddListener, event);
-    if(!this.active) {
+    if(!this._active) {
       this.emitLifecycleEvent(Lifecycle.willActivate, null);
     }
   }
@@ -736,7 +736,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     }
 
     this.emitLifecycleEvent(Lifecycle.didAddListener, event);
-    if(!this.active && this.hasListeners) {
+    if(!this._active && this.hasListeners) {
       this._active = true;
       this.emitLifecycleEvent(Lifecycle.active, null);
     }
@@ -747,7 +747,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     const eventHandlerCount = this.getListenerCountFor(event);
     if(eventHandlerCount) {
       this.emitLifecycleEvent(Lifecycle.willRemoveListener, event);
-      if(this.active && this.listeners.size === 1 && eventHandlerCount === 1) {
+      if(this._active && this.listenerCount === 1 && eventHandlerCount === 1) {
         this.emitLifecycleEvent(Lifecycle.willIdle, null);
       }
     }
@@ -766,7 +766,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     }
 
     this.emitLifecycleEvent(Lifecycle.didRemoveListener, event);
-    if(this.active && !this.hasListeners) {
+    if(this._active && !this.hasListeners) {
       this._active = false;
       this.emitLifecycleEvent(Lifecycle.idle, null);
     }
