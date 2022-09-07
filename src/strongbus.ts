@@ -522,8 +522,8 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     return false;
   }
 
-  private _cachedGetListersValue: Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.GenericHandler>>;
-  public get listeners(): Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.GenericHandler>> {
+  private _cachedGetListersValue: Map<EventKeys<TEventMap>|Events.WILDCARD, ReadonlySet<EventHandlers.GenericHandler>>;
+  public get listeners(): ReadonlyMap<EventKeys<TEventMap>|Events.WILDCARD, ReadonlySet<EventHandlers.GenericHandler>> {
     if(!this._cachedGetListersValue) {
       const listenerCache = new Map(this.ownListeners);
       this._delegates.forEach((_, delegate) => {
@@ -536,7 +536,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
             listeners = new Set<EventHandlers.GenericHandler>();
             listenerCache.set(event, listeners);
           }
-          delegateListeners.forEach(d => listeners.add(d));
+          delegateListeners.forEach(d => (listeners as Set<any>).add(d));
         });
       });
       this._cachedGetListersValue = listenerCache;
@@ -544,8 +544,8 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     return this._cachedGetListersValue;
   }
 
-  private _cachedGetOwnListenersValue: Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>>;
-  public get ownListeners(): Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>> {
+  private _cachedGetOwnListenersValue: Map<EventKeys<TEventMap>|Events.WILDCARD, ReadonlySet<EventHandlers.EventHandler<TEventMap, any>>>;
+  public get ownListeners(): ReadonlyMap<EventKeys<TEventMap>|Events.WILDCARD, ReadonlySet<EventHandlers.EventHandler<TEventMap, any>>> {
     if(!this._cachedGetOwnListenersValue) {
       const ownListenerCache = new Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>>();
       this.bus.forEach((listeners, event) => {
