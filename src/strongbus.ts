@@ -68,7 +68,6 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   }
 
   private _active = false;
-  private _ownListenerTotalCount: number = 0;
   private _delegates = new Map<Bus<TEventMap>, Events.Subscription[]>();
   private _delegateListenerTotalCount: number = 0;
   private _delegateListenerCountsByEvent = new Map<EventKeys<TEventMap>|Events.WILDCARD, number>();
@@ -569,7 +568,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   }
 
   public get listenerCount(): number {
-    return this._ownListenerTotalCount + this._delegateListenerTotalCount;
+    return this.bus.size + this._delegateListenerTotalCount;
   }
 
   public getListenerCountFor(event: EventKeys<TEventMap>|Events.WILDCARD): number {
@@ -728,7 +727,6 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     this._cachedGetListersValue = null;
     if(bus === this) {
       this._cachedGetOwnListenersValue = null;
-      this._ownListenerTotalCount = Math.max(this._ownListenerTotalCount + 1, 0);
     } else {
       const currCount = this._delegateListenerCountsByEvent.get(event) ?? 0;
       this._delegateListenerCountsByEvent.set(event, Math.max(currCount + 1, 0));
@@ -758,7 +756,6 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     this._cachedGetListersValue = null;
     if(bus === this) {
       this._cachedGetOwnListenersValue = null;
-      this._ownListenerTotalCount = Math.max(this._ownListenerTotalCount - 1, 0);
     } else {
       const currCount = this._delegateListenerCountsByEvent.get(event) ?? 0;
       this._delegateListenerCountsByEvent.set(event, Math.max(currCount - 1, 0));
