@@ -4,4 +4,5 @@ lib
 .DS_Store
 *.tgz
 .yarnrc
+.npmrc
 yarn-error.log
