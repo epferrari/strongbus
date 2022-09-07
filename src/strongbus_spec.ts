@@ -1250,6 +1250,94 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('#listenerCount', () => {
+    describe('given an instance has no delegates', () => {
+      it('counts listeners for the instance', () => {
+        bus.on('foo', onTestEvent);
+        bus.on('bar', () => ({}));
+
+        expect(bus.listenerCount).toEqual(2);
+      });
+    });
+
+    describe('given an instance has delegates', () => {
+      let bus2: DelegateTestBus;
+      beforeEach(() => {
+        bus2 = new DelegateTestBus({emulateListenerCount: true});
+        bus.pipe(bus2);
+      });
+
+      describe('and a delegate has listeners', () => {
+        it('counts listeners for the instance and its delegates', () => {
+          bus.on('foo', onTestEvent);
+          bus.on('bar', () => ({}));
+          bus2.on('foo', onTestEvent);
+  
+          expect(bus.listenerCount).toEqual(3);
+        });
+      });
+
+      describe('and delegates have no listeners', () => {
+        it('counts listeners for the instance and its delegates', () => {
+          bus.on('foo', onTestEvent);
+          bus.on('bar', () => ({}));
+  
+          expect(bus.listenerCount).toEqual(2);
+        });
+      });
+    });
+  });
+
+  describe('#listenerCount', () => {
+    describe('given an instance has no delegates', () => {
+      it('counts listeners for the instance', () => {
+        const sub1 = bus.on('foo', onTestEvent);
+        const sub2 = bus.on('bar', () => ({}));
+
+        expect(bus.listenerCount).toEqual(2);
+        sub1.unsubscribe();
+        expect(bus.listenerCount).toEqual(1);
+        sub2.unsubscribe();
+        expect(bus.listenerCount).toEqual(0);
+      });
+    });
+
+    describe('given an instance has delegates', () => {
+      let bus2: DelegateTestBus;
+      beforeEach(() => {
+        bus2 = new DelegateTestBus({emulateListenerCount: true});
+        bus.pipe(bus2);
+      });
+
+      describe('and a delegate has listeners', () => {
+        it('counts listeners for the instance and its delegates', () => {
+          const sub1 = bus.on('foo', onTestEvent);
+          const sub2 = bus.on('bar', () => ({}));
+          const sub3 = bus2.on('foo', onTestEvent);
+  
+          expect(bus.listenerCount).toEqual(3);
+          sub1.unsubscribe();
+          expect(bus.listenerCount).toEqual(2);
+          sub2.unsubscribe();
+          expect(bus.listenerCount).toEqual(1);
+          sub3.unsubscribe();
+          expect(bus.listenerCount).toEqual(0);
+          sub1.unsubscribe();
+          expect(bus.listenerCount).toEqual(0);
+        });
+      });
+
+      describe('and delegates have no listeners', () => {
+        it('counts listeners for the instance and its delegates', () => {
+          bus.on('foo', onTestEvent);
+          bus.on('bar', () => ({}));
+  
+          expect(bus.listenerCount).toEqual(2);
+        });
+      });
+    });
+  });
+
   describe('#destroy', () => {
     it('removes all event listeners, triggering proper lifecycle events', () => {
       bus = new Strongbus.Bus({allowUnhandledEvents: false});

@@ -69,6 +69,8 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
 
   private _active = false;
   private _delegates = new Map<Bus<TEventMap>, Events.Subscription[]>();
+  private _delegateListenerTotalCount: number = 0;
+  private _delegateListenerCountsByEvent = new Map<EventKeys<TEventMap>|Events.WILDCARD, number>();
   private readonly subscriptionCache = new Map<string, Events.Subscription>();
   private readonly options: Required<Options> & {thresholds: Required<ListenerThresholds>};
 
@@ -447,9 +449,9 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
       if(!this._delegates.has(delegate)) {
         this._delegates.set(delegate, [
           delegate.hook(Lifecycle.willAddListener, this.willAddListener),
-          delegate.hook(Lifecycle.didAddListener, this.didAddDelegateListener),
+          delegate.hook(Lifecycle.didAddListener, event => this.didAddListener(event, delegate)),
           delegate.hook(Lifecycle.willRemoveListener, this.willRemoveListener),
-          delegate.hook(Lifecycle.didRemoveListener, this.didRemoveDelegateListener)
+          delegate.hook(Lifecycle.didRemoveListener, event => this.didRemoveListener(event, delegate))
         ]);
       }
     }
@@ -514,12 +516,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
    * @getter `boolean`
    */
   public get hasDelegateListeners(): boolean {
-    for(const delegate of this._delegates.keys()) {
-      if(delegate.hasListeners) {
-        return true;
-      }
-    }
-    return false;
+    return this._delegateListenerTotalCount > 0;
   }
 
   private _cachedGetListersValue: Map<EventKeys<TEventMap>|Events.WILDCARD, ReadonlySet<EventHandlers.GenericHandler>>;
@@ -559,21 +556,31 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   }
 
   public hasListenersFor(event: EventKeys<TEventMap>|Events.WILDCARD): boolean {
-    return this.hasOwnListenersFor(event) || this.hasDelegateListenersFor(event);
+    return this.getListenerCountFor(event) > 0;
   }
 
   public hasOwnListenersFor(event: EventKeys<TEventMap>|Events.WILDCARD): boolean {
-    const handlers = this.bus.get(event);
-    return handlers?.size > 0;
+    return this.getOwnListenerCountFor(event) > 0;
   }
 
   public hasDelegateListenersFor(event: EventKeys<TEventMap>|Events.WILDCARD): boolean {
-    for(const delegate of this._delegates.keys()) {
-      if(delegate.hasListenersFor(event)) {
-        return true;
-      }
-    }
-    return false;
+    return this.getDelegateListenerCountFor(event) > 0;
+  }
+
+  public get listenerCount(): number {
+    return this.bus.size + this._delegateListenerTotalCount;
+  }
+
+  public getListenerCountFor(event: EventKeys<TEventMap>|Events.WILDCARD): number {
+    return this.getOwnListenerCountFor(event) + this.getDelegateListenerCountFor(event);
+  }
+
+  public getOwnListenerCountFor(event: EventKeys<TEventMap>|Events.WILDCARD): number {
+    return this.bus.get(event)?.size ?? 0;
+  }
+
+  public getDelegateListenerCountFor(event: EventKeys<TEventMap>|Events.WILDCARD): number {
+    return (this._delegateListenerCountsByEvent.get(event) ?? 0);
   }
 
   /**
@@ -710,51 +717,56 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
 
   private willAddListener(event: EventKeys<TEventMap>|Events.WILDCARD) {
     this.emitLifecycleEvent(Lifecycle.willAddListener, event);
-    if(!this.active) {
+    if(!this._active) {
       this.emitLifecycleEvent(Lifecycle.willActivate, null);
     }
   }
 
-  private didAddListener(event: EventKeys<TEventMap>|Events.WILDCARD, invokedByDelegate: boolean = false) {
+  private didAddListener(event: EventKeys<TEventMap>|Events.WILDCARD, bus: Bus<any> = this) {
+
     this._cachedGetListersValue = null;
-    if(!invokedByDelegate) {
+    if(bus === this) {
       this._cachedGetOwnListenersValue = null;
+    } else {
+      const currCount = this._delegateListenerCountsByEvent.get(event) ?? 0;
+      this._delegateListenerCountsByEvent.set(event, Math.max(currCount + 1, 0));
+      this._delegateListenerTotalCount = Math.max(this._delegateListenerTotalCount + 1, 0);
     }
+
     this.emitLifecycleEvent(Lifecycle.didAddListener, event);
-    if(!this.active && this.hasListeners) {
+    if(!this._active && this.hasListeners) {
       this._active = true;
       this.emitLifecycleEvent(Lifecycle.active, null);
     }
   }
 
-  private didAddDelegateListener(event: EventKeys<TEventMap>|Events.WILDCARD): void {
-    this.didAddListener(event, true);
-  }
 
   private willRemoveListener(event: EventKeys<TEventMap>|Events.WILDCARD): void {
-    const eventHandlerCount = this.listeners.get(event)?.size || 0;
+    const eventHandlerCount = this.getListenerCountFor(event);
     if(eventHandlerCount) {
       this.emitLifecycleEvent(Lifecycle.willRemoveListener, event);
-      if(this.active && this.listeners.size === 1 && eventHandlerCount === 1) {
+      if(this._active && this.listenerCount === 1 && eventHandlerCount === 1) {
         this.emitLifecycleEvent(Lifecycle.willIdle, null);
       }
     }
   }
 
-  private didRemoveListener(event: EventKeys<TEventMap>|Events.WILDCARD, invokedByDelegate: boolean = false) {
+  private didRemoveListener(event: EventKeys<TEventMap>|Events.WILDCARD, bus: Bus<any> = this) {
+
     this._cachedGetListersValue = null;
-    if(!invokedByDelegate) {
+    if(bus === this) {
       this._cachedGetOwnListenersValue = null;
+    } else {
+      const currCount = this._delegateListenerCountsByEvent.get(event) ?? 0;
+      this._delegateListenerCountsByEvent.set(event, Math.max(currCount - 1, 0));
+      this._delegateListenerTotalCount = Math.max(this._delegateListenerTotalCount - 1, 0);
     }
+
     this.emitLifecycleEvent(Lifecycle.didRemoveListener, event);
-    if(this.active && !this.hasListeners) {
+    if(this._active && !this.hasListeners) {
       this._active = false;
       this.emitLifecycleEvent(Lifecycle.idle, null);
     }
-  }
-
-  private didRemoveDelegateListener(event: EventKeys<TEventMap>|Events.WILDCARD): void {
-    this.didRemoveListener(event, true);
   }
 }
 
