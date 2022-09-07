@@ -1272,7 +1272,7 @@ describe('Strongbus.Bus', () => {
           bus.on('foo', onTestEvent);
           bus.on('bar', () => ({}));
           bus2.on('foo', onTestEvent);
-  
+
           expect(bus.listenerCount).toEqual(3);
         });
       });
@@ -1281,7 +1281,7 @@ describe('Strongbus.Bus', () => {
         it('counts listeners for the instance and its delegates', () => {
           bus.on('foo', onTestEvent);
           bus.on('bar', () => ({}));
-  
+
           expect(bus.listenerCount).toEqual(2);
         });
       });
@@ -1314,7 +1314,7 @@ describe('Strongbus.Bus', () => {
           const sub1 = bus.on('foo', onTestEvent);
           const sub2 = bus.on('bar', () => ({}));
           const sub3 = bus2.on('foo', onTestEvent);
-  
+
           expect(bus.listenerCount).toEqual(3);
           sub1.unsubscribe();
           expect(bus.listenerCount).toEqual(2);
@@ -1331,7 +1331,7 @@ describe('Strongbus.Bus', () => {
         it('counts listeners for the instance and its delegates', () => {
           bus.on('foo', onTestEvent);
           bus.on('bar', () => ({}));
-  
+
           expect(bus.listenerCount).toEqual(2);
         });
       });
