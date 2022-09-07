@@ -614,10 +614,10 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
         this.didAddListener(event);
       }
     }
-    return this.cacheListener(event as EventKeys<TEventMap>, handler);
+    return this.generateListenerSubscription(event as EventKeys<TEventMap>, handler);
   }
 
-  private cacheListener(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): Events.Subscription {
+  private generateListenerSubscription(event: EventKeys<TEventMap>|Events.WILDCARD, handler: EventHandlers.GenericHandler): Events.Subscription {
     const token = randomId();
     const sub = generateSubscription(() => {
       this._unsubQueue.push({
