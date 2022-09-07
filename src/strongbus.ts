@@ -608,6 +608,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
       this.willAddListener(event);
       const {added} = addListener(this.bus, event, handler);
       if(added) {
+        console.log('adding', event)
         const listenerSet = this._allListenersCache.get(event) || new Set();
         listenerSet.add(handler)
         this._allListenersCache.set(event, listenerSet);
@@ -654,7 +655,11 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     this.willRemoveListener(event);
     const {removed} = removeListener(this.bus, event, handler);
     if(removed) {
+      console.log('removing', event)
       this._allListenersCache.get(event).delete(handler)
+      if(this._allListenersCache.get(event).size === 0) {
+        this._allListenersCache.delete(event)
+      }
       this.didRemoveListener(event);
       const count = this.bus.get(event)?.size ?? 0;
       this.logger.onListenerRemoved(event, count);
