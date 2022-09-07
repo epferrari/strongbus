@@ -963,6 +963,89 @@ describe('Strongbus.Bus', () => {
         });
       });
     });
+
+    describe('caching', () => {
+      describe('given multiple invocations of get listeners', () => {
+        describe('and no listeners have been added or removed between invocations', () => {
+          it('returns the same reference', () => {
+            bus.on('foo', onTestEvent);
+            bus.on('bar', onTestEvent);
+            const l1 = bus.listeners;
+            const l2 = bus.listeners;
+            expect(l1 === l2).toBeTrue();
+          });
+        });
+
+        describe('and a listener is added to the instance between invocations', () => {
+          it('cachebusts', () => {
+            bus.on('foo', onTestEvent);
+            const l1 = bus.listeners;
+            expect(l1.size).toEqual(1);
+            bus.on('bar', onTestEvent);
+            const l2 = bus.listeners;
+            expect(l2.size).toEqual(2);
+            expect(l1 === l2).toBeFalse();
+          });
+        });
+
+        describe('and a listener is removed from the instance between invocations', () => {
+          it('cachebusts', () => {
+            bus.on('foo', onTestEvent);
+            const sub = bus.on('bar', onTestEvent);
+            const l1 = bus.listeners;
+            expect(l1.size).toEqual(2);
+            sub.unsubscribe();
+            const l2 = bus.listeners;
+            expect(l2.size).toEqual(1);
+            expect(l1 === l2).toBeFalse();
+          });
+        });
+
+        describe('given the instance has delegates', () => {
+          let bus2: DelegateTestBus;
+
+          beforeEach(() => {
+            bus2 = new DelegateTestBus({emulateListenerCount: true});
+            bus.pipe(bus2);
+          });
+
+          describe('and no listeners have been added or removed between invocations', () => {
+            it('returns the same reference', () => {
+              bus.on('foo', onTestEvent);
+              bus2.on('bar', onTestEvent);
+              const l1 = bus.listeners;
+              const l2 = bus.listeners;
+              expect(l1 === l2).toBeTrue();
+            });
+          });
+
+          describe('and a listener is added to a delegate between invocations', () => {
+            it('cachebusts', () => {
+              bus.on('foo', onTestEvent);
+              const l1 = bus.listeners;
+              expect(l1.size).toEqual(1);
+              bus2.on('bar', onTestEvent);
+              const l2 = bus.listeners;
+              expect(l2.size).toEqual(2);
+              expect(l1 === l2).toBeFalse();
+            });
+          });
+
+          describe('and a listener is removed from a delegate instance between invocations', () => {
+            it('cachebusts', () => {
+              bus.on('foo', onTestEvent);
+              const sub = bus2.on('bar', onTestEvent);
+              const l1 = bus.listeners;
+              expect(l1.size).toEqual(2);
+              sub.unsubscribe();
+              const l2 = bus.listeners;
+              expect(l2.size).toEqual(1);
+              expect(l1 === l2).toBeFalse();
+            });
+          });
+        });
+      });
+    });
   });
 
   describe('#ownListeners', () => {
@@ -1027,6 +1110,88 @@ describe('Strongbus.Bus', () => {
       describe('and the instance has no delegates', () => {
         it('lists no listeners', () => {
           expect(bus.ownListeners.size).toEqual(0);
+        });
+      });
+    });
+
+    describe('caching', () => {
+      describe('given multiple invocations of get ownListeners', () => {
+        describe('and no listeners have been added or removed between invocations', () => {
+          it('returns the same reference', () => {
+            bus.on('foo', onTestEvent);
+            bus.on('bar', onTestEvent);
+            const l1 = bus.ownListeners;
+            const l2 = bus.ownListeners;
+            expect(l1 === l2).toBeTrue();
+          });
+        });
+
+        describe('and a listener is added to the instance between invocations', () => {
+          it('cachebusts', () => {
+            bus.on('foo', onTestEvent);
+            const l1 = bus.ownListeners;
+            expect(l1.size).toEqual(1);
+            bus.on('bar', onTestEvent);
+            const l2 = bus.ownListeners;
+            expect(l2.size).toEqual(2);
+            expect(l1 === l2).toBeFalse();
+          });
+        });
+
+        describe('and a listener is removed from the instance between invocations', () => {
+          it('cachebusts', () => {
+            bus.on('foo', onTestEvent);
+            const sub = bus.on('bar', onTestEvent);
+            const l1 = bus.ownListeners;
+            expect(l1.size).toEqual(2);
+            sub.unsubscribe();
+            const l2 = bus.ownListeners;
+            expect(l2.size).toEqual(1);
+            expect(l1 === l2).toBeFalse();
+          });
+        });
+
+        describe('given the instance has delegates', () => {
+          let bus2: DelegateTestBus;
+
+          beforeEach(() => {
+            bus2 = new DelegateTestBus({emulateListenerCount: true});
+            bus.pipe(bus2);
+          });
+
+          describe('and no listeners have been added or removed between invocations', () => {
+            it('returns the same reference', () => {
+              bus.on('foo', onTestEvent);
+              bus2.on('bar', onTestEvent);
+              const l1 = bus.ownListeners;
+              expect(l1.size).toEqual(1);
+              const l2 = bus.ownListeners;
+              expect(l1 === l2).toBeTrue();
+            });
+          });
+
+          describe('and a listener is added to a delegate between invocations', () => {
+            it('returns the same reference', () => {
+              bus.on('foo', onTestEvent);
+              const l1 = bus.ownListeners;
+              expect(l1.size).toEqual(1);
+              bus2.on('bar', onTestEvent);
+              const l2 = bus.ownListeners;
+              expect(l1 === l2).toBeTrue();
+            });
+          });
+
+          describe('and a listener is removed from a delegate instance between invocations', () => {
+            it('returns the same reference', () => {
+              bus.on('foo', onTestEvent);
+              const sub = bus2.on('bar', onTestEvent);
+              const l1 = bus.ownListeners;
+              expect(l1.size).toEqual(1);
+              sub.unsubscribe();
+              const l2 = bus.ownListeners;
+              expect(l1 === l2).toBeTrue();
+            });
+          });
         });
       });
     });
