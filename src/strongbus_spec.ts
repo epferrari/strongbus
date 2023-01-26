@@ -1,4 +1,3 @@
-
 import {parallel, sleep, TimeoutExpiredError} from 'jaasync';
 
 import * as Strongbus from './';
@@ -2285,10 +2284,9 @@ describe('Strongbus.Bus', () => {
         // Take final memory snapshot
         gc();
         const memEnd = process.memoryUsage().heapUsed;
-        if(memEnd - memStart > 0) {
-          console.error(`Memory leak detected: ${bytes(memEnd - memStart)} added over ${numCalls} calls`);
+        if(memEnd > memStart) {
+          throw new Error(`Memory leak detected: ${bytes(memEnd - memStart)} added over ${numCalls} calls`);
         }
-        expect(memEnd).toBeLessThanOrEqual(memStart);
 
         // Make arbitrary calls to variables to keep them in memory after the gc()
         expect(bus.hasListeners).toBeTrue();
