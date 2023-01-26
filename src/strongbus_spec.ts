@@ -2241,7 +2241,7 @@ describe('Strongbus.Bus', () => {
 
   const {gc} = global;
   if(gc) {
-    fdescribe('it does not leak memory', () => {
+    describe('it does not leak memory', () => {
       const numCalls = 10000;
 
       function generateId(): string {
