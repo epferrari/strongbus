@@ -2261,7 +2261,7 @@ describe('Strongbus.Bus', () => {
         return `${(bytes / mb).toFixed(2)}mb`
       }
 
-      it('TypedMsgBus does not leak memory', () => {
+      it('TypedMsgBus does not leak memory', async () => {
         const bus = new Strongbus.Bus<any>();
         const sub = bus.on('*', () => {});
         const events = new Array(100).fill(0).map(generateId);
@@ -2281,6 +2281,11 @@ describe('Strongbus.Bus', () => {
           const event = sample(events);
           bus.emit(event, generateId());
         }
+
+        // Wait for msgbus promises to resolve
+        await new Promise((resolve) => {
+          setTimeout(resolve, 0);
+        });
 
         // Take final memory snapshot
         gc();
