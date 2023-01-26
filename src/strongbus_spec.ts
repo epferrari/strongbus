@@ -2238,4 +2238,66 @@ describe('Strongbus.Bus', () => {
       });
     });
   });
+
+  const {gc} = global;
+  if(gc) {
+    fdescribe('it does not leak memory', () => {
+      const numCalls = 10000;
+
+      function generateId(): string {
+        return (
+          Math.random().toString(36).substring(2, 15) +
+          Math.random().toString(36).substring(2, 15)
+        );
+      }
+
+      function sample<T>(array: T[]): T {
+        const idx = Math.floor(array.length * Math.random());
+        return array[idx];
+      }
+
+      function bytes(bytes: number): string {
+        const mb = Math.pow(2, 20);
+        return `${(bytes / mb).toFixed(2)}mb`
+      }
+
+      it('TypedMsgBus does not leak memory', () => {
+        const bus = new Strongbus.Bus<any>();
+        const sub = bus.on('*', () => {});
+        const events = new Array(100).fill(0).map(generateId);
+
+        // Bootstrap events
+        for(const event of events) {
+          bus.emit(event, generateId());
+        }
+
+        // Take baseline memory snapshot
+        gc();
+        const memStart = process.memoryUsage().heapUsed;
+
+        // Emit a bunch of events
+        // In theory, this shouldn't increase heap size
+        for(let i = 0; i < numCalls; i++) {
+          const event = sample(events);
+          bus.emit(event, generateId());
+        }
+
+        // Take final memory snapshot
+        gc();
+        const memEnd = process.memoryUsage().heapUsed;
+        if(memEnd - memStart > 0) {
+          console.error(`Memory leak detected: ${bytes(memEnd - memStart)} added over ${numCalls} calls`);
+        }
+        expect(memEnd).toBeLessThanOrEqual(memStart);
+
+        // Make arbitrary calls to variables to keep them in memory after the gc()
+        expect(bus.hasListeners).toBeTrue();
+        sub();
+        expect(bus.hasListeners).toBeFalse();
+        expect(events.length).toEqual(100);
+      });
+    });
+  } else {
+    console.info('Run specs with "node --expose-gc" to enable memory testing');
+  }
 });
