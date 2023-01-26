@@ -2266,11 +2266,6 @@ describe('Strongbus.Bus', () => {
         const sub = bus.on('*', () => {});
         const events = new Array(100).fill(0).map(generateId);
 
-        // Bootstrap events
-        for(const event of events) {
-          bus.emit(event, generateId());
-        }
-
         // Take baseline memory snapshot
         gc();
         const memStart = process.memoryUsage().heapUsed;
