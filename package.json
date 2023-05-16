@@ -1,6 +1,6 @@
 {
   "name": "strongbus",
-  "version": "2.7.0",
+  "version": "2.8.0",
   "description": "Strongly typed, battle-tested event emitter",
   "keywords": [
     "bus",
@@ -37,7 +37,7 @@
   "license": "MIT",
   "dependencies": {
     "core-decorators": "^0.20.0",
-    "jaasync": "^0.11.0"
+    "jaasync": "^0.12.0"
   },
   "devDependencies": {
     "@types/jasmine": "^3.3.0",
