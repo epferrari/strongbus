@@ -2254,7 +2254,7 @@ describe('Strongbus.Bus', () => {
 
     const events = new Array(100).fill(0).map(generateId);
 
-    fit('Strongbus.On does not leak memory', async () => {
+    it('Strongbus.On does not leak memory', async () => {
       const bus = new Strongbus.Bus<any>();
       const events = new Array(100).fill(0).map(generateId);
       const subs = [
@@ -2280,7 +2280,7 @@ describe('Strongbus.Bus', () => {
       expect(events.length).toEqual(100);
     });
 
-    fit('Strongbus.Scan does not leak memory', async () => {
+    it('Strongbus.Scan does not leak memory', async () => {
       const bus = new Strongbus.Bus<any>();
 
       const memtest = testForMemoryLeak(async () => {
