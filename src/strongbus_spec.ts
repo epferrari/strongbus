@@ -2256,7 +2256,6 @@ describe('Strongbus.Bus', () => {
 
     it('Strongbus.On does not leak memory', async () => {
       const bus = new Strongbus.Bus<any>();
-      const events = new Array(100).fill(0).map(generateId);
       const subs = [
         bus.on('*', () => {}),
         ...events.map((event) => bus.on(event, () => {})),
