@@ -8,6 +8,7 @@ import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import * as Events from './types/events';
 import {EventKeys} from './types/utility';
 import {over} from './utils/over';
+import {testForMemoryLeak} from './utils/testForMemoryLeak';
 
 type TestEventMap = {
   foo: string;
@@ -2238,64 +2239,42 @@ describe('Strongbus.Bus', () => {
     });
   });
 
-  const {gc} = global;
-  if(gc) {
-    describe('it does not leak memory', () => {
-      const numCalls = 10000;
+  describe('it does not leak memory', () => {
+    const numCalls = 100000;
 
-      function generateId(): string {
-        return (
-          Math.random().toString(36).substring(2, 15) +
-          Math.random().toString(36).substring(2, 15)
-        );
-      }
+    function generateId(): string {
+      return (
+        Math.random().toString(36).substring(2, 15) +
+        Math.random().toString(36).substring(2, 15)
+      );
+    }
 
-      function sample<T>(array: T[]): T {
-        const idx = Math.floor(array.length * Math.random());
-        return array[idx];
-      }
+    function sample<T>(array: T[]): T {
+      const idx = Math.floor(array.length * Math.random());
+      return array[idx];
+    }
 
-      function bytes(bytes: number): string {
-        const mb = Math.pow(2, 20);
-        return `${(bytes / mb).toFixed(2)}mb`
-      }
+    it('Strongbus.Bus does not leak memory', async () => {
+      const bus = new Strongbus.Bus<any>();
+      const sub = bus.on('*', () => {});
+      const events = new Array(100).fill(0).map(generateId);
 
-      it('Strongbus.Bus does not leak memory', async () => {
-        const bus = new Strongbus.Bus<any>();
-        const sub = bus.on('*', () => {});
-        const events = new Array(100).fill(0).map(generateId);
-
-        // Take baseline memory snapshot
-        gc();
-        const memStart = process.memoryUsage().heapUsed;
-
+      const memtest = testForMemoryLeak(() => {
         // Emit a bunch of events
         // In theory, this shouldn't increase heap size
         for(let i = 0; i < numCalls; i++) {
           const event = sample(events);
           bus.emit(event, generateId());
         }
+      })
 
-        // Wait for msgbus promises to resolve
-        await new Promise((resolve) => {
-          setTimeout(resolve, 0);
-        });
+      await expectAsync(memtest).toBeResolved();
 
-        // Take final memory snapshot
-        gc();
-        const memEnd = process.memoryUsage().heapUsed;
-        if(memEnd > memStart) {
-          throw new Error(`Memory leak detected: ${bytes(memEnd - memStart)} added over ${numCalls} calls`);
-        }
-
-        // Make arbitrary calls to variables to keep them in memory after the gc()
-        expect(bus.hasListeners).toBeTrue();
-        sub();
-        expect(bus.hasListeners).toBeFalse();
-        expect(events.length).toEqual(100);
-      });
+      // Make arbitrary calls to variables to keep them in memory after the gc()
+      expect(bus.hasListeners).toBeTrue();
+      sub();
+      expect(bus.hasListeners).toBeFalse();
+      expect(events.length).toEqual(100);
     });
-  } else {
-    console.info('Run specs with "node --expose-gc" to enable memory testing');
-  }
+  });
 });
