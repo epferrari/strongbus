@@ -2240,8 +2240,6 @@ describe('Strongbus.Bus', () => {
   });
 
   describe('it does not leak memory', () => {
-    const numCalls = 100000;
-
     function generateId(): string {
       return (
         Math.random().toString(36).substring(2, 15) +
@@ -2254,15 +2252,20 @@ describe('Strongbus.Bus', () => {
       return array[idx];
     }
 
-    it('Strongbus.Bus does not leak memory', async () => {
+    const events = new Array(100).fill(0).map(generateId);
+
+    fit('Strongbus.On does not leak memory', async () => {
       const bus = new Strongbus.Bus<any>();
-      const sub = bus.on('*', () => {});
       const events = new Array(100).fill(0).map(generateId);
+      const subs = [
+        bus.on('*', () => {}),
+        ...events.map((event) => bus.on(event, () => {})),
+      ];
 
       const memtest = testForMemoryLeak(() => {
         // Emit a bunch of events
         // In theory, this shouldn't increase heap size
-        for(let i = 0; i < numCalls; i++) {
+        for(let i = 0; i < 100_000; i++) {
           const event = sample(events);
           bus.emit(event, generateId());
         }
@@ -2272,9 +2275,32 @@ describe('Strongbus.Bus', () => {
 
       // Make arbitrary calls to variables to keep them in memory after the gc()
       expect(bus.hasListeners).toBeTrue();
-      sub();
+      subs.forEach((sub) => sub());
       expect(bus.hasListeners).toBeFalse();
       expect(events.length).toEqual(100);
+    });
+
+    fit('Strongbus.Scan does not leak memory', async () => {
+      const bus = new Strongbus.Bus<any>();
+
+      const memtest = testForMemoryLeak(async () => {
+        for(let i = 0; i < 1000; i++) {
+          const promises = events.map((event) => (
+            bus.scan({
+              trigger: event,
+              evaluator: (resolve: Strongbus.Scanner.Resolver<void>) => {resolve()}
+            })
+          ));
+
+          for(const event of events) {
+            bus.emit(event, null)
+          }
+
+          await Promise.all(promises);
+        }
+      })
+
+      await expectAsync(memtest).toBeResolved();
     });
   });
 });
