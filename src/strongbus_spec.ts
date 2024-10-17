@@ -14,6 +14,7 @@ type TestEventMap = {
   foo: string;
   bar: boolean;
   baz: number;
+  quo: void;
 };
 
 class DelegateTestBus<T extends Events.EventMap = TestEventMap> extends Strongbus.Bus<T> {
@@ -343,6 +344,20 @@ describe('Strongbus.Bus', () => {
           expect(bus.listeners.get('bar')).toBeUndefined();
           expect(logger.info).toHaveBeenCalledTimes(3);
         });
+      });
+    });
+  });
+
+  describe('#emit', () => {
+    describe('given an event is mapped to a void payload', () => {
+      it('emit can be called with only the event argument', () => {
+        bus.emit('quo'); // no type error;
+      });
+    });
+
+    describe('given an event is mapped to a non-void payload', () => {
+      it('emit must be called with a payload argument', () => {
+        bus.emit('foo', 'eagle'); // attempt to remove the second arg, and observe a type error
       });
     });
   });

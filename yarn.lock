@@ -182,10 +182,10 @@ is-core-module@^2.8.1:
   dependencies:
     has "^1.0.3"
 
-jaasync@^0.11.0:
-  version "0.11.0"
-  resolved "https://registry.yarnpkg.com/jaasync/-/jaasync-0.11.0.tgz#d1d1a287d573d114f191d1d52a2bafb27133905b"
-  integrity sha512-J1zp19w0hwpFA8hCU7hD/8xYadCxs2/63549W/bndBW/UzTvLtk8l7RZvzLELt8/731DPFGyqz9zRJXA0QvV1A==
+jaasync@^0.12.0:
+  version "0.12.0"
+  resolved "https://nexus.drwholdings.com/repository/npm/jaasync/-/jaasync-0.12.0.tgz#cb449c8d9273c7a8934aa4a1c3b06a21f004083b"
+  integrity sha512-ejK6EkZI+BOzcqn4ZTT2EAl0tOdSvKOS5K8wGl78/wqwhDfO4tFNwYsXcYKOUf0zKeiWXB93BYj/XYZckDVRTA==
   dependencies:
     core-decorators "^0.20.0"
 
