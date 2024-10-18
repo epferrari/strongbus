@@ -146,8 +146,8 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
 
     let handled = false;
 
-    handled = this.emitEvent(event, payload) || handled;
-    handled = this.emitEvent(Events.WILDCARD, event, payload) || handled;
+    handled = this.emitEvent(event, ...payload) || handled;
+    handled = this.emitEvent(Events.WILDCARD, event, ...payload) || handled;
     handled = this.forward<T>(event, ...payload) || handled;
 
     if(!handled && !this.options.allowUnhandledEvents) {
@@ -718,7 +718,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     const {_delegates} = this;
     if(_delegates.size) {
       return Array.from(_delegates.keys())
-        .reduce((acc, d) => (d.emit(event as any, payload) || acc), false);
+        .reduce((acc, d) => (d.emit(event as any, ...payload) || acc), false);
     } else {
       return false;
     }

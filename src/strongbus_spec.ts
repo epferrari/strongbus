@@ -351,7 +351,7 @@ describe('Strongbus.Bus', () => {
   describe('#emit', () => {
     describe('given an event is mapped to a void payload', () => {
       it('emit can be called with only the event argument', () => {
-        bus.emit('quo'); // no type error;
+        bus.emit('quo'); // not passing second arg, no type error;
       });
     });
 
