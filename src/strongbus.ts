@@ -10,7 +10,7 @@ import {Lifecycle} from './types/lifecycle';
 import {Logger} from './types/logger';
 import {Options, ListenerThresholds} from './types/options';
 import {Scannable} from './types/scannable';
-import {EventKeys, ElementType} from './types/utility';
+import {EventKeys, ElementType, type EventPayload} from './types/utility';
 import {over} from './utils/over';
 import {generateSubscription} from './utils/generateSubscription';
 import {randomId} from './utils/randomId';
@@ -109,10 +109,15 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
    * Will be invoked when an instance's `options.allowUnhandledEvents = false` (default is true).
    * The default implementation is to throw an error.
    */
-  protected handleUnexpectedEvent<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T]) {
+  protected handleUnexpectedEvent<T extends EventKeys<TEventMap>>(
+    event: T,
+    ...payload: TEventMap[T] extends void
+      ? ([] | [null] | [undefined])
+      : [TEventMap[T]]
+  ) {
     const errorMessage = [
       `Strongbus.Bus received unexpected message type '${String(event)}' with contents:`,
-      JSON.stringify(payload, null, 2)
+      JSON.stringify(payload[0], null, 2)
     ].join('\n');
 
     throw new Error(errorMessage);
@@ -133,19 +138,19 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     }
   }
 
-  public emit<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T]): boolean {
+  public emit<T extends EventKeys<TEventMap>>(event: T, ...payload: EventPayload<TEventMap, T>): boolean {
     if(event === Events.WILDCARD) {
       throw new Error(`Do not emit "${String(event)}" manually. Reserved for internal use.`);
     }
 
     let handled = false;
 
-    handled = this.emitEvent(event, payload) || handled;
-    handled = this.emitEvent(Events.WILDCARD, event, payload) || handled;
-    handled = this.forward(event, payload) || handled;
+    handled = this.emitEvent(event, ...payload) || handled;
+    handled = this.emitEvent(Events.WILDCARD, event, ...payload) || handled;
+    handled = this.forward<T>(event, ...payload) || handled;
 
     if(!handled && !this.options.allowUnhandledEvents) {
-      this.handleUnexpectedEvent(event, payload);
+      this.handleUnexpectedEvent<T>(event, ...payload);
     }
     return handled;
   }
@@ -705,11 +710,11 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     }
   }
 
-  private forward<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T], ...args: any[]): boolean {
+  private forward<T extends EventKeys<TEventMap>>(event: T, ...payload: EventPayload<TEventMap, T>): boolean {
     const {_delegates} = this;
     if(_delegates.size) {
       return Array.from(_delegates.keys())
-        .reduce((acc, d) => (d.emit(event, payload) || acc), false);
+        .reduce((acc, d) => (d.emit(event as any, ...payload) || acc), false);
     } else {
       return false;
     }
