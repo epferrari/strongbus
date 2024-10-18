@@ -111,7 +111,9 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
    */
   protected handleUnexpectedEvent<T extends EventKeys<TEventMap>>(
     event: T,
-    ...payload: TEventMap[T] extends void ? any[] : [TEventMap[T]]
+    ...payload: TEventMap[T] extends void
+      ? ([] | [null] | [undefined])
+      : [TEventMap[T]]
   ) {
     const errorMessage = [
       `Strongbus.Bus received unexpected message type '${String(event)}' with contents:`,
@@ -138,7 +140,9 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
 
   public emit<T extends EventKeys<TEventMap>>(
     event: T,
-    ...payload: TEventMap[T] extends void ? any[] : [TEventMap[T]]
+    ...payload: TEventMap[T] extends void
+      ? ([] | [null] | [undefined])
+      : [TEventMap[T]]
   ): boolean {
     if(event === Events.WILDCARD) {
       throw new Error(`Do not emit "${String(event)}" manually. Reserved for internal use.`);
