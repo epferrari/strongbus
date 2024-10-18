@@ -7,7 +7,7 @@ import {StrongbusLogMessages} from './strongbusLogger';
 import {Logger} from './types/logger';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import * as Events from './types/events';
-import {EventKeys} from './types/utility';
+import {EventKeys, type EventPayload} from './types/utility';
 import {over} from './utils/over';
 
 type TestEventMap = {
@@ -24,8 +24,8 @@ class DelegateTestBus<T extends Events.EventMap = TestEventMap> extends Strongbu
     this.emulateListenerCount = options.emulateListenerCount;
   }
 
-  public emit<E extends EventKeys<T>>(event: E, payload: T[E]): boolean {
-    super.emit(event, payload);
+  public emit<E extends EventKeys<T>>(event: E, ...payload: EventPayload<T, E>): boolean {
+    super.emit(event, ...payload);
     return this.emulateListenerCount;
   }
 }
@@ -350,13 +350,31 @@ describe('Strongbus.Bus', () => {
 
   describe('#emit', () => {
     describe('given an event is mapped to a void payload', () => {
-      it('emit can be called with only the event argument', () => {
+      it('can be called with only the event argument', () => {
         bus.emit('quo'); // not passing second arg, no type error;
+      });
+
+      it('can be called with a second argument of `null`', () => {
+        bus.emit('quo', null); // no type error;
+      });
+
+      it('can be called with a second argument of `undefined`', () => {
+        bus.emit('quo', undefined); // no type error;
+      });
+
+      it('can be called with a second argument of `void(0)`', () => {
+        bus.emit('quo', void(0)); // no type error;
+      });
+
+      it('cannot be called with any other second argument', () => {
+        // uncomment following lines and observe type error
+        // bus.emit('quo', false); // not passing second arg, no type error;
+        // bus.emit('quo', 0); // not passing second arg, no type error;
       });
     });
 
     describe('given an event is mapped to a non-void payload', () => {
-      it('emit must be called with a payload argument', () => {
+      it('must be called with a payload argument', () => {
         bus.emit('foo', 'eagle'); // attempt to remove the second arg, and observe a type error
       });
     });

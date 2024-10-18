@@ -10,7 +10,7 @@ import {Lifecycle} from './types/lifecycle';
 import {Logger} from './types/logger';
 import {Options, ListenerThresholds} from './types/options';
 import {Scannable} from './types/scannable';
-import {EventKeys, ElementType} from './types/utility';
+import {EventKeys, ElementType, type EventPayload} from './types/utility';
 import {over} from './utils/over';
 import {generateSubscription} from './utils/generateSubscription';
 import {randomId} from './utils/randomId';
@@ -138,24 +138,19 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     }
   }
 
-  public emit<T extends EventKeys<TEventMap>>(
-    event: T,
-    ...payload: TEventMap[T] extends void
-      ? ([] | [null] | [undefined])
-      : [TEventMap[T]]
-  ): boolean {
+  public emit<T extends EventKeys<TEventMap>>(event: T, ...payload: EventPayload<TEventMap, T>): boolean {
     if(event === Events.WILDCARD) {
       throw new Error(`Do not emit "${String(event)}" manually. Reserved for internal use.`);
     }
 
     let handled = false;
 
-    handled = this.emitEvent(event, payload[0]) || handled;
-    handled = this.emitEvent(Events.WILDCARD, event, payload[0]) || handled;
-    handled = this.forward<T>(event, payload[0]) || handled;
+    handled = this.emitEvent(event, ...payload) || handled;
+    handled = this.emitEvent(Events.WILDCARD, event, ...payload) || handled;
+    handled = this.forward<T>(event, ...payload) || handled;
 
     if(!handled && !this.options.allowUnhandledEvents) {
-      this.handleUnexpectedEvent<T>(event, payload[0]);
+      this.handleUnexpectedEvent<T>(event, ...payload);
     }
     return handled;
   }
@@ -715,14 +710,11 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     }
   }
 
-  private forward<T extends EventKeys<TEventMap>>(
-    event: T,
-    ...payload: TEventMap[T] extends void ? any[] : [TEventMap[T]]
-  ): boolean {
+  private forward<T extends EventKeys<TEventMap>>(event: T, ...payload: EventPayload<TEventMap, T>): boolean {
     const {_delegates} = this;
     if(_delegates.size) {
       return Array.from(_delegates.keys())
-        .reduce((acc, d) => (d.emit(event as any, payload[0]) || acc), false);
+        .reduce((acc, d) => (d.emit(event as any, ...payload) || acc), false);
     } else {
       return false;
     }
