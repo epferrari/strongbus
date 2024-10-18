@@ -115,7 +115,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   ) {
     const errorMessage = [
       `Strongbus.Bus received unexpected message type '${String(event)}' with contents:`,
-      JSON.stringify(payload, null, 2)
+      JSON.stringify(payload[0], null, 2)
     ].join('\n');
 
     throw new Error(errorMessage);
@@ -146,12 +146,12 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
 
     let handled = false;
 
-    handled = this.emitEvent(event, ...payload) || handled;
-    handled = this.emitEvent(Events.WILDCARD, event, ...payload) || handled;
-    handled = this.forward<T>(event, ...payload) || handled;
+    handled = this.emitEvent(event, payload[0]) || handled;
+    handled = this.emitEvent(Events.WILDCARD, event, payload[0]) || handled;
+    handled = this.forward<T>(event, payload[0]) || handled;
 
     if(!handled && !this.options.allowUnhandledEvents) {
-      this.handleUnexpectedEvent<T>(event, ...payload);
+      this.handleUnexpectedEvent<T>(event, payload[0]);
     }
     return handled;
   }
@@ -718,7 +718,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     const {_delegates} = this;
     if(_delegates.size) {
       return Array.from(_delegates.keys())
-        .reduce((acc, d) => (d.emit(event as any, ...payload) || acc), false);
+        .reduce((acc, d) => (d.emit(event as any, payload[0]) || acc), false);
     } else {
       return false;
     }
