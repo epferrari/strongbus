@@ -6,9 +6,9 @@ import {Scanner} from './scanner';
 import {StrongbusLogMessages} from './strongbusLogger';
 import {Logger} from './types/logger';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
-import * as Events from './types/events';
 import {EventKeys, type EventPayload} from './types/utility';
 import {over} from './utils/over';
+import { Pipeable } from './types/pipeable';
 
 type TestEventMap = {
   foo: string;
@@ -17,14 +17,14 @@ type TestEventMap = {
   quo: void;
 };
 
-class DelegateTestBus<T extends Events.EventMap = TestEventMap> extends Strongbus.Bus<T> {
+class DelegateTestBus extends Strongbus.Bus<TestEventMap> implements Pipeable<TestEventMap> {
   private readonly emulateListenerCount: boolean = false;
   constructor(options: Strongbus.Options & {emulateListenerCount?: boolean}) {
     super(options);
     this.emulateListenerCount = options.emulateListenerCount;
   }
 
-  public emit<E extends EventKeys<T>>(event: E, ...payload: EventPayload<T, E>): boolean {
+  public emit<E extends EventKeys<TestEventMap>>(event: E, ...payload: EventPayload<TestEventMap, E>): boolean {
     super.emit(event, ...payload);
     return this.emulateListenerCount;
   }
@@ -502,8 +502,8 @@ describe('Strongbus.Bus', () => {
   });
 
   describe('event delegation', () => {
-    let bus2: DelegateTestBus;
-    let bus3: DelegateTestBus;
+    let bus2: Pipeable<TestEventMap>;
+    let bus3: Pipeable<TestEventMap>;
 
     describe('#pipe', () => {
       beforeEach(() => {
@@ -520,6 +520,8 @@ describe('Strongbus.Bus', () => {
 
           expect(onTestEvent).toHaveBeenCalledWith('wow!');
           expect(bus2.emit).toHaveBeenCalledWith('foo', 'wow!');
+
+          bus.pipe(bus2);
         });
       });
 
@@ -811,7 +813,7 @@ describe('Strongbus.Bus', () => {
 
       beforeEach(() => {
         delegate = new DelegateTestBus({});
-        bus.pipe(delegate);
+        bus.pipe(delegate as Pipeable<TestEventMap>);
 
         delegate.hook('willAddListener', onDelegateWillAddListener = jasmine.createSpy('onDelegateWillAddListener'));
         delegate.hook('didAddListener', onDelegateDidAddListener = jasmine.createSpy('onDelegateDidAddListener'));
@@ -954,7 +956,7 @@ describe('Strongbus.Bus', () => {
 
       describe('and the instance has delegates with no listeners', () => {
         it("lists the instance's listeners", () => {
-          bus.pipe(bus2);
+          bus.pipe(bus2 as Pipeable<TestEventMap>);
           expect(bus.listeners).toEqual(new Map([[
             'foo', new Set([onTestEvent])
           ]]));
@@ -963,7 +965,7 @@ describe('Strongbus.Bus', () => {
 
       describe('and the instance has delegates with listeners', () => {
         it("lists the instance's listeners and the delegate listeners", () => {
-          bus.pipe(bus2);
+          bus.pipe(bus2 as Pipeable<TestEventMap>);
           bus2.on('foo', onAnyEvent);
           expect(bus.listeners).toEqual(new Map([[
             'foo', new Set([onTestEvent, onAnyEvent])
@@ -975,7 +977,7 @@ describe('Strongbus.Bus', () => {
     describe('given there are no event listeners on the instance', () => {
       describe('and the instance has delegates with listeners', () => {
         it('lists the delegate listeners', () => {
-          bus.pipe(bus2);
+          bus.pipe((bus2 satisfies Pipeable<TestEventMap>));
           bus2.on('foo', onAnyEvent);
           expect(bus.listeners).toEqual(new Map([[
             'foo', new Set([onAnyEvent])
@@ -985,7 +987,7 @@ describe('Strongbus.Bus', () => {
 
       describe('and the instance has delegates with no listeners', () => {
         it('lists no listeners', () => {
-          bus.pipe(bus2);
+          bus.pipe(bus2 as Pipeable<TestEventMap>);
           expect(bus.listeners.size).toEqual(0);
         });
       });
@@ -1036,7 +1038,7 @@ describe('Strongbus.Bus', () => {
 
         describe('given the instance has delegates', () => {
           beforeEach(() => {
-            bus.pipe(bus2);
+            bus.pipe(bus2 as Pipeable<TestEventMap>);
           });
 
           describe('and no delegate listeners have been added or removed between invocations', () => {
@@ -1054,7 +1056,7 @@ describe('Strongbus.Bus', () => {
               bus.on('foo', onTestEvent);
               const l1 = bus.listeners;
               expect(l1.size).toEqual(1);
-              bus2.on('bar', onTestEvent);
+              (bus2 as DelegateTestBus).on('bar', onTestEvent);
               const l2 = bus.listeners;
               expect(l2.size).toEqual(2);
               expect(l1 === l2).toBeFalse();
@@ -1103,7 +1105,7 @@ describe('Strongbus.Bus', () => {
 
       describe('and the instance has delegates with no listeners', () => {
         it("lists the instance's listeners", () => {
-          bus.pipe(bus2);
+          bus.pipe(bus2 as Pipeable<TestEventMap>);
           expect(bus.ownListeners).toEqual(new Map([[
             'foo', new Set([onTestEvent])
           ]]));
@@ -1112,7 +1114,7 @@ describe('Strongbus.Bus', () => {
 
       describe('and the instance has delegates with listeners', () => {
         it("lists only the instance's listeners", () => {
-          bus.pipe(bus2);
+          bus.pipe(bus2 as Pipeable<TestEventMap>);
           bus2.on('foo', onAnyEvent);
           expect(bus.ownListeners).toEqual(new Map([[
             'foo', new Set([onTestEvent])
@@ -1124,7 +1126,7 @@ describe('Strongbus.Bus', () => {
     describe('given there are no event listeners on the instance', () => {
       describe('and the instance has delegates with listeners', () => {
         it('lists no listeners', () => {
-          bus.pipe(bus2);
+          bus.pipe(bus2 as Pipeable<TestEventMap>);
           bus2.on('foo', onAnyEvent);
           expect(bus.ownListeners.size).toEqual(0);
         });
@@ -1132,7 +1134,7 @@ describe('Strongbus.Bus', () => {
 
       describe('and the instance has delegates with no listeners', () => {
         it('lists no listeners', () => {
-          bus.pipe(bus2);
+          bus.pipe(bus2 as Pipeable<TestEventMap>);
           expect(bus.ownListeners.size).toEqual(0);
         });
       });
@@ -1184,7 +1186,7 @@ describe('Strongbus.Bus', () => {
         describe('given the instance has delegates', () => {
 
           beforeEach(() => {
-            bus.pipe(bus2);
+            bus.pipe(bus2 as Pipeable<TestEventMap>);
           });
 
           describe('and no delegate listeners have been added or removed between invocations', () => {
@@ -1236,7 +1238,7 @@ describe('Strongbus.Bus', () => {
         it('returns true', () => {
           bus.destroy();
           const bus2 = new DelegateTestBus({emulateListenerCount: true});
-          bus.pipe(bus2);
+          bus.pipe(bus2 as Pipeable<TestEventMap>);
           bus2.on('foo', () => {return; });
           expect(bus.hasListenersFor('foo')).toBe(true);
         });
@@ -1265,7 +1267,7 @@ describe('Strongbus.Bus', () => {
         it('returns false', () => {
           bus.destroy();
           const bus2 = new DelegateTestBus({emulateListenerCount: true});
-          bus.pipe(bus2);
+          bus.pipe(bus2 as Pipeable<TestEventMap>);
           bus2.on('foo', () => {return; });
           expect(bus.hasOwnListenersFor('foo')).toBe(false);
         });
@@ -1297,7 +1299,7 @@ describe('Strongbus.Bus', () => {
       let bus2: DelegateTestBus;
       beforeEach(() => {
         bus2 = new DelegateTestBus({emulateListenerCount: true});
-        bus.pipe(bus2);
+        bus.pipe(bus2 as Pipeable<TestEventMap>);
       });
 
       describe('and a delegate has listeners', () => {
@@ -1339,7 +1341,7 @@ describe('Strongbus.Bus', () => {
       let bus2: DelegateTestBus;
       beforeEach(() => {
         bus2 = new DelegateTestBus({emulateListenerCount: true});
-        bus.pipe(bus2);
+        bus.pipe(bus2 as Pipeable<TestEventMap>);
       });
 
       describe('and a delegate has listeners', () => {
@@ -1416,7 +1418,7 @@ describe('Strongbus.Bus', () => {
       bus2.on('foo', onTestEvent);
       bus2.every(onEveryEvent);
 
-      bus.pipe(bus2);
+      bus.pipe(bus2 as Pipeable<TestEventMap>);
 
       bus.emit('foo', null);
       expect(onTestEvent).toHaveBeenCalled();
