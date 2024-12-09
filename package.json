@@ -20,7 +20,7 @@
     "dev": "./node_modules/.bin/tsc -p tsconfig.dev.json",
     "dist": "./node_modules/.bin/tsc -p tsconfig.dist.json",
     "lint": "./node_modules/.bin/tslint -c tslint.json -p tsconfig.dev.json",
-    "test": "npm run dev && jasmine --config=./jasmine.json",
+    "test": "npm run dev && node --expose-gc ./node_modules/.bin/jasmine --config=./jasmine.json",
     "validate": "npm run test && npm run lint",
     "install": "([ -d ./src ] && [ ! -d ./lib ] && mkdir lib && npm install . &&  npm run dist) || echo ''",
     "docs": "./node_modules/.bin/typedoc",
