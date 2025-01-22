@@ -705,6 +705,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
       for(const fn of handlers) {
         try {
           const execution = fn(payload);
+
           // Emit errors if fn returns promise that rejects
           (execution as Promise<any>)?.catch?.((e) => {
             if(event === Lifecycle.error) {

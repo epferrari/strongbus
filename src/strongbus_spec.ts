@@ -798,6 +798,22 @@ describe('Strongbus.Bus', () => {
       });
     });
 
+    it('raises "error" when the listener returns a promise that rejects', async () => {
+      const error = new Error('Error in callback');
+      bus.on('bar', () => (
+        Promise.reject(error)
+      ));
+      bus.emit('bar', true);
+
+      // Wait for promises to be processed
+      await Promise.resolve();
+
+      expect(onError).toHaveBeenCalledWith({
+        error,
+        event: 'bar'
+      });
+    });
+
     describe('given bus has delegates', () => {
       let delegate: DelegateTestBus;
       let onDelegateWillAddListener: jasmine.Spy;
