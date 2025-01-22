@@ -1,6 +1,6 @@
 
 import {autobind} from 'core-decorators';
-import {CancelablePromise, cancelable, timeout, isPromise} from 'jaasync';
+import {CancelablePromise, cancelable, timeout} from 'jaasync';
 
 import {Scanner} from './scanner';
 import {StrongbusLogger} from './strongbusLogger';
