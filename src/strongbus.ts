@@ -682,12 +682,16 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     const handlers = this.bus.get(event);
       if(handlers && handlers.size) {
         for(const fn of handlers) {
-          const execution = fn(...args);
+          try {
+            const execution = fn(...args);
 
-          // Bubble up errors if fn returns promise
-          (execution as Promise<any>)?.catch?.((e) => {
+            // Bubble up errors if fn returns promise
+            (execution as Promise<any>)?.catch?.((e) => {
+              this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
+            });
+          } catch(e) {
             this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
-          });
+          }
         }
         return true;
       }
@@ -698,8 +702,22 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     const handlers = this.lifecycle.get(event);
     if(handlers && handlers.size) {
       for(const fn of handlers) {
-        const execution = fn(payload);
-        (execution as Promise<any>)?.catch?.((e) => {
+        try {
+          const execution = fn(payload);
+          (execution as Promise<any>)?.catch?.((e) => {
+            if(event === Lifecycle.error) {
+              const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
+              this.options.logger.error('Error thrown in error handler', {
+                  errorHandler: fn.name,
+                  errorHandlerError: e,
+                  originalEvent: errorPayload.event,
+                  eventHandlerError: errorPayload.error
+              });
+            } else {
+              this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
+            }
+          })
+        } catch(e) {
           if(event === Lifecycle.error) {
             const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
             this.options.logger.error('Error thrown in error handler', {
@@ -711,7 +729,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
           } else {
             this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
           }
-        })
+        }
       }
     }
   }
