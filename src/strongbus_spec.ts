@@ -786,31 +786,61 @@ describe('Strongbus.Bus', () => {
       sub2();
     });
 
-    it('raises "error" when errors are thrown in the listener', () => {
-      const error = new Error('Error in callback');
-      bus.on('bar', () => {
-        throw error;
+    describe('error events', () => {
+      it('emits "error" when errors are thrown in the listener', () => {
+        const error = new Error('Error in callback');
+        bus.on('bar', () => {
+          throw error;
+        });
+        bus.emit('bar', true);
+        expect(onError).toHaveBeenCalledWith({
+          error,
+          event: 'bar'
+        });
       });
-      bus.emit('bar', true);
-      expect(onError).toHaveBeenCalledWith({
-        error,
-        event: 'bar'
+
+      it('emits "error" when the listener returns a promise that rejects', async () => {
+        const error = new Error('Error in callback');
+        bus.on('bar', () => (
+          Promise.reject(error)
+        ));
+        bus.emit('bar', true);
+
+        // Wait for promises to be processed
+        await Promise.resolve();
+
+        expect(onError).toHaveBeenCalledWith({
+          error,
+          event: 'bar'
+        });
       });
-    });
 
-    it('raises "error" when the listener returns a promise that rejects', async () => {
-      const error = new Error('Error in callback');
-      bus.on('bar', () => (
-        Promise.reject(error)
-      ));
-      bus.emit('bar', true);
+      it('emits an "error" event if a synchronous error is thrown in a hook', () => {
+        const error = new Error('error');
+        bus.hook('active', () => {
+          throw error;
+        });
+        bus.on('foo', () => {});
+        expect(onError).toHaveBeenCalledWith({
+          error,
+          event: 'active'
+        });
+      });
 
-      // Wait for promises to be processed
-      await Promise.resolve();
+      it('emits "error" when a hook returns a promise that rejects', async () => {
+        const error = new Error('error');
+        bus.hook('active', () => (
+          Promise.reject(error)
+        ));
+        bus.on('foo', () => {});
 
-      expect(onError).toHaveBeenCalledWith({
-        error,
-        event: 'bar'
+        // Wait for promises to be processed
+        await Promise.resolve();
+
+        expect(onError).toHaveBeenCalledWith({
+          error,
+          event: 'active'
+        });
       });
     });
 
