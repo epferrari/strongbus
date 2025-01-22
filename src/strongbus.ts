@@ -528,19 +528,21 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   public get listeners(): ReadonlyMap<EventKeys<TEventMap>|Events.WILDCARD, ReadonlySet<EventHandlers.GenericHandler>> {
     if(!this._cachedGetListersValue) {
       const listenerCache = new Map(this.ownListeners);
-      this._delegates.forEach((_, delegate) => {
-        delegate.listeners.forEach((delegateListeners, event) => {
+      for(const delegate of this._delegates.keys()) {
+        for(const [event, delegateListeners] of delegate.listeners) {
           if(!delegateListeners.size) {
-            return;
+            continue;
           }
           let listeners = listenerCache.get(event);
           if(!listeners) {
             listeners = new Set<EventHandlers.GenericHandler>();
             listenerCache.set(event, listeners);
           }
-          delegateListeners.forEach(d => (listeners as Set<any>).add(d));
-        });
-      });
+          for(const listener of delegateListeners) {
+            (listeners as Set<any>).add(listener);
+          }
+        }
+      }
       this._cachedGetListersValue = listenerCache;
     }
     return this._cachedGetListersValue;
@@ -550,11 +552,11 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   public get ownListeners(): ReadonlyMap<EventKeys<TEventMap>|Events.WILDCARD, ReadonlySet<EventHandlers.EventHandler<TEventMap, any>>> {
     if(!this._cachedGetOwnListenersValue) {
       const ownListenerCache = new Map<EventKeys<TEventMap>|Events.WILDCARD, Set<EventHandlers.EventHandler<TEventMap, any>>>();
-      this.bus.forEach((listeners, event) => {
+      for(const [event, listeners] of this.bus) {
         if(listeners.size) {
           ownListenerCache.set(event, new Set(listeners));
         }
-      });
+      }
       this._cachedGetOwnListenersValue = ownListenerCache;
     }
     return this._cachedGetOwnListenersValue;
@@ -610,7 +612,11 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   }
 
   private releaseDelegates(): void {
-    this._delegates.forEach(subs => over(subs)());
+    for(const subs of Object.values(this._delegates)) {
+      for(const sub of subs()) {
+        sub();
+      }
+    }
     this._delegates.clear();
   }
 
@@ -675,13 +681,19 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   private emitEvent(event: EventKeys<TEventMap>|Events.WILDCARD, ...args: any[]): boolean {
     const handlers = this.bus.get(event);
       if(handlers && handlers.size) {
-        handlers.forEach(async fn => {
+        for(const fn of handlers) {
           try {
-            await fn(...args);
+            const execution = fn(...args);
+
+            // Emit errors if fn returns promise that rejects
+            (execution as Promise<any>)?.catch?.((e) => {
+              this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
+            });
           } catch(e) {
+            // Emit errors if callback fails synchronously
             this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
           }
-        });
+        }
         return true;
       }
       return false;
@@ -690,10 +702,26 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   private emitLifecycleEvent<L extends Lifecycle>(event: L, payload: Lifecycle.EventMap<TEventMap>[L]): void {
     const handlers = this.lifecycle.get(event);
     if(handlers && handlers.size) {
-      handlers.forEach(async fn => {
+      for(const fn of handlers) {
         try {
-          await fn(payload);
+          const execution = fn(payload);
+
+          // Emit errors if fn returns promise that rejects
+          (execution as Promise<any>)?.catch?.((e) => {
+            if(event === Lifecycle.error) {
+              const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
+              this.options.logger.error('Error thrown in async error handler', {
+                  errorHandler: fn.name,
+                  errorHandlerError: e,
+                  originalEvent: errorPayload.event,
+                  eventHandlerError: errorPayload.error
+              });
+            } else {
+              this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
+            }
+          })
         } catch(e) {
+          // Emit errors if callback fails synchronously
           if(event === Lifecycle.error) {
             const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
             this.options.logger.error('Error thrown in error handler', {
@@ -706,7 +734,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
             this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
           }
         }
-      });
+      }
     }
   }
 
