@@ -131,7 +131,7 @@ describe('Strongbus.Bus', () => {
         if(typeof p === 'function') {
           provider = () => {
             return (logger = p());
-          }
+          };
         } else {
           logger = provider = p;
         }
@@ -139,7 +139,7 @@ describe('Strongbus.Bus', () => {
 
       afterEach(() => {
         resetLogSpies();
-      })
+      });
 
       describe('when adding a listener and listener count for an event exceeds a configured threshold', () => {
         describe('given `options.verbose=false`', () => {
@@ -379,7 +379,6 @@ describe('Strongbus.Bus', () => {
           });
         });
       });
-    
     }
 
   });
@@ -842,7 +841,7 @@ describe('Strongbus.Bus', () => {
         ));
         bus.emit('bar', true);
 
-        // Wait for promises to be processed
+        // wait for promises to be processed
         await Promise.resolve();
 
         expect(onError).toHaveBeenCalledWith({
@@ -856,7 +855,7 @@ describe('Strongbus.Bus', () => {
         bus.hook('active', () => {
           throw error;
         });
-        bus.on('foo', () => {});
+        bus.on('foo', () => void(0));
         expect(onError).toHaveBeenCalledWith({
           error,
           event: 'active'
@@ -868,9 +867,9 @@ describe('Strongbus.Bus', () => {
         bus.hook('active', () => (
           Promise.reject(error)
         ));
-        bus.on('foo', () => {});
+        bus.on('foo', () => void(0));
 
-        // Wait for promises to be processed
+        // wait for promises to be processed
         await Promise.resolve();
 
         expect(onError).toHaveBeenCalledWith({
