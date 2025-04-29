@@ -1,5 +1,5 @@
 
-import {Logger} from './logger';
+import {LoggerProvider} from './logger';
 
 /**
  * @description notify of possible memory leaks
@@ -17,13 +17,13 @@ export interface ListenerThresholds {
  * @prop allowUnhandledEvents `true` - Should the Bus throw an error when an event is emitted and there are no listeners for the event
  * @prop name `"Anonymous"` - A name for the bus. Included in warn/info/error potential memory leak messages and unhandled event errors thrown
  * @prop thresholds [[ListenerThresholds]]
- * @prop logger [[Logger]] [`console`] - How to log potential memory leaks, if thresholds are < Infinity
+ * @prop logger [[Logger|() => Logger]] [`console`] - How to log potential memory leaks, if thresholds are < Infinity
  * @prop verbose - should memory leak warnings be output on every listener added above the thresholds, or only at intervals
  */
 export interface Options {
   allowUnhandledEvents?: boolean;
   name?: string;
   thresholds?: Partial<ListenerThresholds>;
-  logger?: Logger;
+  logger?: LoggerProvider;
   verbose?: boolean;
 }

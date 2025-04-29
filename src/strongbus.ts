@@ -98,7 +98,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     };
     this.logger = new StrongbusLogger<TEventMap>({
       ...this.options,
-      impl: this.options.logger,
+      provider: this.options.logger,
       name: this.name
     });
   }
@@ -710,7 +710,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
           (execution as Promise<any>)?.catch?.((e) => {
             if(event === Lifecycle.error) {
               const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
-              this.options.logger.error('Error thrown in async error handler', {
+              this.logger.error('Error thrown in async error handler', {
                   errorHandler: fn.name,
                   errorHandlerError: e,
                   originalEvent: errorPayload.event,
@@ -724,7 +724,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
           // Emit errors if callback fails synchronously
           if(event === Lifecycle.error) {
             const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
-            this.options.logger.error('Error thrown in error handler', {
+            this.logger.error('Error thrown in error handler', {
                 errorHandler: fn.name,
                 errorHandlerError: e,
                 originalEvent: errorPayload.event,
