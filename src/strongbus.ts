@@ -685,12 +685,12 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
           try {
             const execution = fn(...args);
 
-            // Emit errors if fn returns promise that rejects
+            // emit errors if fn returns promise that rejects
             (execution as Promise<any>)?.catch?.((e) => {
               this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
             });
           } catch(e) {
-            // Emit errors if callback fails synchronously
+            // emit errors if callback fails synchronously
             this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
           }
         }
@@ -706,7 +706,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
         try {
           const execution = fn(payload);
 
-          // Emit errors if fn returns promise that rejects
+          // emit errors if fn returns promise that rejects
           (execution as Promise<any>)?.catch?.((e) => {
             if(event === Lifecycle.error) {
               const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
@@ -719,9 +719,9 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
             } else {
               this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
             }
-          })
+          });
         } catch(e) {
-          // Emit errors if callback fails synchronously
+          // emit errors if callback fails synchronously
           if(event === Lifecycle.error) {
             const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
             this.logger.error('Error thrown in error handler', {
