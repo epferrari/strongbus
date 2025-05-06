@@ -1,4 +1,3 @@
-
 import {parallel, sleep, TimeoutExpiredError} from 'jaasync';
 
 import * as Strongbus from './';
@@ -9,6 +8,7 @@ import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import * as Events from './types/events';
 import {EventKeys, type EventPayload} from './types/utility';
 import {over} from './utils/over';
+import {testForMemoryLeak} from './utils/testForMemoryLeak';
 
 type TestEventMap = {
   foo: string;
@@ -2350,6 +2350,70 @@ describe('Strongbus.Bus', () => {
           });
         });
       });
+    });
+  });
+
+  describe('it does not leak memory', () => {
+    function generateId(): string {
+      return (
+        Math.random().toString(36).substring(2, 15) +
+        Math.random().toString(36).substring(2, 15)
+      );
+    }
+
+    function sample<T>(array: T[]): T {
+      const idx = Math.floor(array.length * Math.random());
+      return array[idx];
+    }
+
+    const events = new Array(100).fill(0).map(generateId);
+
+    it('Strongbus.On does not leak memory', async () => {
+      const bus = new Strongbus.Bus<any>();
+      const subs = [
+        bus.on('*', () => {}),
+        ...events.map((event) => bus.on(event, () => {})),
+      ];
+
+      const memtest = testForMemoryLeak(() => {
+        // Emit a bunch of events
+        // In theory, this shouldn't increase heap size
+        for(let i = 0; i < 100_000; i++) {
+          const event = sample(events);
+          bus.emit(event, generateId());
+        }
+      })
+
+      await expectAsync(memtest).toBeResolved();
+
+      // Make arbitrary calls to variables to keep them in memory after the gc()
+      expect(bus.hasListeners).toBeTrue();
+      subs.forEach((sub) => sub());
+      expect(bus.hasListeners).toBeFalse();
+      expect(events.length).toEqual(100);
+    });
+
+    it('Strongbus.Scan does not leak memory', async () => {
+      const bus = new Strongbus.Bus<any>();
+
+      const memtest = testForMemoryLeak(async () => {
+        for(let i = 0; i < 1000; i++) {
+          const promises = events.map((event) => (
+            bus.scan({
+              trigger: event,
+              evaluator: (resolve: Strongbus.Scanner.Resolver<void>) => {resolve()}
+            })
+          ));
+
+          for(const event of events) {
+            bus.emit(event, null)
+          }
+
+          await Promise.all(promises);
+        }
+      })
+
+      await expectAsync(memtest).toBeResolved();
     });
   });
 });
