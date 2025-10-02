@@ -2256,19 +2256,19 @@ describe('Strongbus.Bus', () => {
     describe('Scanner teardown (unpooled)', () => {
       let s: CancelablePromise<any>;
       let spy: jasmine.Spy;
-      let value: 0|1|2;
+      let condition: 'success'|'failure';
 
       beforeEach(() => {
-        value = 0;
+        condition = undefined;
         spy = jasmine.createSpy('evaluator');
         s = bus.scan({
           trigger: 'foo',
           evaluator: (resolve, reject) => {
             spy();
-            if(value === 1) {
+            if(condition === 'success') {
               resolve(null);
-            } else if(value === 2) {
-              reject(new Error('2'));
+            } else if(condition === 'failure') {
+              reject();
             }
           },
           eager: true
@@ -2280,7 +2280,7 @@ describe('Strongbus.Bus', () => {
           it('does not invoke the evaluator again', async () => {
             expect(spy).toHaveBeenCalledTimes(1);  // eager
             await expectAsync(s).toBePending();
-            value = 1;
+            condition = 'success';
             bus.emit('foo', null);
             await expectAsync(s).toBeResolved();
             expect(spy).withContext('when resolved').toHaveBeenCalledTimes(2);
@@ -2295,7 +2295,7 @@ describe('Strongbus.Bus', () => {
           it('does not invoke the evaluator again', async () => {
             expect(spy).toHaveBeenCalledTimes(1); // eager
             await expectAsync(s).toBePending();
-            value = 1;
+            condition = 'success';
             bus.emit('foo', null);
             await expectAsync(s).toBeResolved();
             expect(spy).withContext('when resolved').toHaveBeenCalledTimes(2);
@@ -2310,7 +2310,7 @@ describe('Strongbus.Bus', () => {
           it('does not invoke the evaluator again', async () => {
             expect(spy).toHaveBeenCalledTimes(1);  // eager
             await expectAsync(s).toBePending();
-            value = 1;
+            condition = 'success';
             bus.emit('foo', null);
             await expectAsync(s).toBeResolved();
             expect(spy).withContext('when resolved').toHaveBeenCalledTimes(2);
@@ -2327,7 +2327,7 @@ describe('Strongbus.Bus', () => {
           it('does not invoke the evaluator again', async() => {
             expect(spy).toHaveBeenCalledTimes(1); // eager
             await expectAsync(s).toBePending();
-            value = 2;
+            condition = 'failure';
             bus.emit('foo', null);
             await expectAsync(s).toBeRejected();
             expect(spy).withContext('when rejected').toHaveBeenCalledTimes(2);
@@ -2342,7 +2342,7 @@ describe('Strongbus.Bus', () => {
           it('does not invoke the evaluator again', async () => {
             expect(spy).toHaveBeenCalledTimes(1); // eager
             await expectAsync(s).toBePending();
-            value = 2;
+            condition = 'failure';
             bus.emit('foo', null);
             await expectAsync(s).toBeRejected();
             expect(spy).withContext('when rejected').toHaveBeenCalledTimes(2);
@@ -2357,7 +2357,7 @@ describe('Strongbus.Bus', () => {
           it('does not invoke the evaluator again', async() => {
             expect(spy).toHaveBeenCalledTimes(1); // eager
             await expectAsync(s).toBePending();
-            value = 2;
+            condition = 'failure';
             bus.emit('foo', null);
             await expectAsync(s).toBeRejected();
             expect(spy).withContext('when rejected').toHaveBeenCalledTimes(2);
@@ -2410,20 +2410,20 @@ describe('Strongbus.Bus', () => {
 
     describe('Scanner teardown (pooled)', () => {
       describe('given one of the scanners is canceled', () => {
-        let value: 0|1|2;
+        let condition: 'success'|'failure';
         let spy: jasmine.Spy;
         let evaluator: (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => void;
         let p1: CancelablePromise<any>;
         let p2: CancelablePromise<any>;
 
         beforeEach(() => {
-          value = 0;
+          condition = undefined;
           spy = jasmine.createSpy('evaluator');
           evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
             spy();
-            if(value === 1) {
+            if(condition === 'success') {
               resolve(true);
-            } else if (value === 2) {
+            } else if (condition === 'failure') {
               reject();
             }
           };
@@ -2493,7 +2493,7 @@ describe('Strongbus.Bus', () => {
             await expectAsync(p1).toBeRejected();
             await expectAsync(p2).toBePending();
 
-            value = 1;
+            condition = 'success';
             bus.emit('foo', null);
             await expectAsync(p1).toBeRejected();
             await expectAsync(p2).toBeResolved();
@@ -2511,7 +2511,7 @@ describe('Strongbus.Bus', () => {
               await expectAsync(p1).toBeRejected();
               await expectAsync(p2).toBePending();
 
-              value = 1;
+              condition = 'success';
               bus.emit('foo', null);
               await expectAsync(p1).toBeRejected();
               await expectAsync(p2).toBeResolved();
@@ -2534,7 +2534,7 @@ describe('Strongbus.Bus', () => {
               await expectAsync(p1).toBeRejected();
               await expectAsync(p2).toBePending();
 
-              value = 1;
+              condition = 'success';
               bus.emit('foo', null);
               await expectAsync(p1).toBeRejected();
               await expectAsync(p2).toBeResolved();
@@ -2558,7 +2558,7 @@ describe('Strongbus.Bus', () => {
             await expectAsync(p1).toBeRejected();
             await expectAsync(p2).toBePending();
 
-            value = 2;
+            condition = 'failure';
             bus.emit('foo', null);
             await expectAsync(p1).toBeRejected();
             await expectAsync(p2).toBeRejected();
@@ -2576,7 +2576,7 @@ describe('Strongbus.Bus', () => {
               await expectAsync(p1).toBeRejected();
               await expectAsync(p2).toBePending();
 
-              value = 2;
+              condition = 'failure';
               bus.emit('foo', null);
               await expectAsync(p1).toBeRejected();
               await expectAsync(p2).toBeRejected();
@@ -2599,7 +2599,7 @@ describe('Strongbus.Bus', () => {
               await expectAsync(p1).toBeRejected();
               await expectAsync(p2).toBePending();
 
-              value = 2;
+              condition = 'failure';
               bus.emit('foo', null);
               await expectAsync(p1).toBeRejected();
               await expectAsync(p2).toBeRejected();
