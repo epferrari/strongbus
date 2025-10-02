@@ -407,18 +407,17 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
       }
     }
 
-    let canceled = false;
+    
     const c = cancelable(() => promise);
+    const cancel = c.cancel.bind(c);
     this.scannerPoolConstituencies.get(promise).constituentCount++;
 
     return Object.assign(
       c,
       {
         [INTERNAL_PROMISE]: promise,
-        cancel: () => {
-          if(!canceled) {
-            canceled = true;
-            c.cancel();
+        cancel: (...args: any[]) => {
+          if(cancel(...args)) {
             const entry = this.scannerPoolConstituencies.get(promise);
             if(entry?.constituentCount > 1) {
               entry.constituentCount--;
