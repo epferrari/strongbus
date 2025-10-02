@@ -1992,161 +1992,6 @@ describe('Strongbus.Bus', () => {
       });
     });
 
-    fdescribe('Scanner cleanup', () => {
-      let s: CancelablePromise<any>;
-      let spy: jasmine.Spy;
-      let value: 0|1|2;
-
-      beforeEach(() => {
-        value = 0;
-        spy = jasmine.createSpy('evaluator');
-        s = bus.scan({
-          trigger: 'foo',
-          evaluator: (resolve, reject) => {
-            spy();
-            if(value === 1) {
-              resolve(null);
-            } else if(value === 2) {
-              reject(new Error('2'));
-            }
-          },
-          eager: true
-        });
-      });
-  
-      describe('given a Scanner has resolved', () => {
-        describe('and the trigger event is emitted again', () => {
-          it('does not invoke the evaluator again', async () => {
-            expect(spy).toHaveBeenCalledTimes(1);  // eager
-            await expectAsync(s).toBePending();
-            value = 1;
-            bus.emit('foo', null);
-            await expectAsync(s).toBeResolved();
-            expect(spy).withContext('when resolved').toHaveBeenCalledTimes(2);
-            // trigger event again
-            bus.emit('foo', null);
-            await sleep(1);
-            expect(spy).withContext('event triggered later').toHaveBeenCalledTimes(2);
-          });
-        });
-
-        describe('and the scannable is destroyed', () => {
-          it('does not invoke the evaluator again', async () => {
-            expect(spy).toHaveBeenCalledTimes(1); // eager
-            await expectAsync(s).toBePending();
-            value = 1;
-            bus.emit('foo', null);
-            await expectAsync(s).toBeResolved();
-            expect(spy).withContext('when resolved').toHaveBeenCalledTimes(2);
-
-            bus.destroy();
-            await sleep(1);
-            expect(spy).withContext('once destroyed').toHaveBeenCalledTimes(2);
-          });
-        });
-
-        describe('and the scanner is canceled', () => {
-          it('does not invoke the evaluator again', async () => {
-            expect(spy).toHaveBeenCalledTimes(1);  // eager
-            await expectAsync(s).toBePending();
-            value = 1;
-            bus.emit('foo', null);
-            await expectAsync(s).toBeResolved();
-            expect(spy).withContext('when resolved').toHaveBeenCalledTimes(2);
-
-            s.cancel();
-            await sleep(1);
-            expect(spy).withContext('event triggered later').toHaveBeenCalledTimes(2);
-          });
-        });
-      });
-
-      describe('given a Scanner has rejected', () => {
-        describe('and the trigger event is emitted again', () => {
-          it('does not invoke the evaluator again', async() => {
-            expect(spy).toHaveBeenCalledTimes(1); // eager
-            await expectAsync(s).toBePending();
-            value = 2;
-            bus.emit('foo', null);
-            await expectAsync(s).toBeRejected();
-            expect(spy).withContext('when rejected').toHaveBeenCalledTimes(2);
-            // trigger event again
-            bus.emit('foo', null);
-            await sleep(1);
-            expect(spy).withContext('event triggered later').toHaveBeenCalledTimes(2);
-          });
-        });
-
-        describe('and the scannable is destroyed', () => {
-          it('does not invoke the evaluator again', async () => {
-            expect(spy).toHaveBeenCalledTimes(1); // eager
-            await expectAsync(s).toBePending();
-            value = 2;
-            bus.emit('foo', null);
-            await expectAsync(s).toBeRejected();
-            expect(spy).withContext('when rejected').toHaveBeenCalledTimes(2);
-
-            bus.destroy();
-            await sleep(1);
-            expect(spy).withContext('once destroyed').toHaveBeenCalledTimes(2);
-          });
-        });
-
-        describe('and the scanner is canceled', () => {
-          it('does not invoke the evaluator again', async() => {
-            expect(spy).toHaveBeenCalledTimes(1); // eager
-            await expectAsync(s).toBePending();
-            value = 2;
-            bus.emit('foo', null);
-            await expectAsync(s).toBeRejected();
-            expect(spy).withContext('when rejected').toHaveBeenCalledTimes(2);
-            
-            s.cancel();
-            await sleep(1);
-            expect(spy).withContext('event triggered later').toHaveBeenCalledTimes(2);
-          });
-        });
-      });
-
-      describe('given the Scanner is canceled while still pending', () => {
-        describe('and the trigger event is emitted again', () => {
-          it('does not invoke the evaluator again', async () => {
-            expect(spy).toHaveBeenCalledTimes(1); // eager
-            await expectAsync(s).toBePending();
-            bus.emit('foo', null);
-            await expectAsync(s).toBePending();
-            expect(spy).withContext('after event').toHaveBeenCalledTimes(2);
-
-            s.cancel();
-            await expectAsync(s).toBeRejected();
-            expect(spy).withContext('after cancel').toHaveBeenCalledTimes(2);
-
-            bus.emit('foo', null);
-            await sleep(1);
-            expect(spy).withContext('event triggered later').toHaveBeenCalledTimes(2);
-          });
-        });
-
-        describe('and the scannable is destroyed', () => {
-          it('does not invoke the evaluator again', async () => {
-            expect(spy).toHaveBeenCalledTimes(1); // eager
-            await expectAsync(s).toBePending();
-            bus.emit('foo', null);
-            await expectAsync(s).toBePending();
-            expect(spy).withContext('after event').toHaveBeenCalledTimes(2);
-
-            s.cancel();
-            await expectAsync(s).toBeRejected();
-            expect(spy).withContext('after cancel').toHaveBeenCalledTimes(2);
-
-            bus.destroy();
-            await sleep(1);
-            expect(spy).withContext('once destroyed').toHaveBeenCalledTimes(2);
-          });
-        });
-      });
-    });
-
     describe('Scanner pooling', () => {
       describe('given multiple scan invocations in which params.evaluator and params.eager are the same', () => {
         describe('given params.trigger is the same single event', () => {
@@ -2404,6 +2249,367 @@ describe('Strongbus.Bus', () => {
           });
 
           expect((p1 as any)[INTERNAL_PROMISE] === (p2 as any)[INTERNAL_PROMISE]).toBeFalse();
+        });
+      });
+    });
+
+    describe('Scanner teardown (unpooled)', () => {
+      let s: CancelablePromise<any>;
+      let spy: jasmine.Spy;
+      let value: 0|1|2;
+
+      beforeEach(() => {
+        value = 0;
+        spy = jasmine.createSpy('evaluator');
+        s = bus.scan({
+          trigger: 'foo',
+          evaluator: (resolve, reject) => {
+            spy();
+            if(value === 1) {
+              resolve(null);
+            } else if(value === 2) {
+              reject(new Error('2'));
+            }
+          },
+          eager: true
+        });
+      });
+  
+      describe('given a Scanner has resolved', () => {
+        describe('and the trigger event is emitted again', () => {
+          it('does not invoke the evaluator again', async () => {
+            expect(spy).toHaveBeenCalledTimes(1);  // eager
+            await expectAsync(s).toBePending();
+            value = 1;
+            bus.emit('foo', null);
+            await expectAsync(s).toBeResolved();
+            expect(spy).withContext('when resolved').toHaveBeenCalledTimes(2);
+            // trigger event again
+            bus.emit('foo', null);
+            await sleep(1);
+            expect(spy).withContext('event triggered later').toHaveBeenCalledTimes(2);
+          });
+        });
+
+        describe('and the scannable is destroyed', () => {
+          it('does not invoke the evaluator again', async () => {
+            expect(spy).toHaveBeenCalledTimes(1); // eager
+            await expectAsync(s).toBePending();
+            value = 1;
+            bus.emit('foo', null);
+            await expectAsync(s).toBeResolved();
+            expect(spy).withContext('when resolved').toHaveBeenCalledTimes(2);
+
+            bus.destroy();
+            await sleep(1);
+            expect(spy).withContext('once destroyed').toHaveBeenCalledTimes(2);
+          });
+        });
+
+        describe('and the scanner is canceled', () => {
+          it('does not invoke the evaluator again', async () => {
+            expect(spy).toHaveBeenCalledTimes(1);  // eager
+            await expectAsync(s).toBePending();
+            value = 1;
+            bus.emit('foo', null);
+            await expectAsync(s).toBeResolved();
+            expect(spy).withContext('when resolved').toHaveBeenCalledTimes(2);
+
+            s.cancel();
+            await sleep(1);
+            expect(spy).withContext('event triggered later').toHaveBeenCalledTimes(2);
+          });
+        });
+      });
+
+      describe('given a Scanner has rejected', () => {
+        describe('and the trigger event is emitted again', () => {
+          it('does not invoke the evaluator again', async() => {
+            expect(spy).toHaveBeenCalledTimes(1); // eager
+            await expectAsync(s).toBePending();
+            value = 2;
+            bus.emit('foo', null);
+            await expectAsync(s).toBeRejected();
+            expect(spy).withContext('when rejected').toHaveBeenCalledTimes(2);
+            // trigger event again
+            bus.emit('foo', null);
+            await sleep(1);
+            expect(spy).withContext('event triggered later').toHaveBeenCalledTimes(2);
+          });
+        });
+
+        describe('and the scannable is destroyed', () => {
+          it('does not invoke the evaluator again', async () => {
+            expect(spy).toHaveBeenCalledTimes(1); // eager
+            await expectAsync(s).toBePending();
+            value = 2;
+            bus.emit('foo', null);
+            await expectAsync(s).toBeRejected();
+            expect(spy).withContext('when rejected').toHaveBeenCalledTimes(2);
+
+            bus.destroy();
+            await sleep(1);
+            expect(spy).withContext('once destroyed').toHaveBeenCalledTimes(2);
+          });
+        });
+
+        describe('and the scanner is canceled', () => {
+          it('does not invoke the evaluator again', async() => {
+            expect(spy).toHaveBeenCalledTimes(1); // eager
+            await expectAsync(s).toBePending();
+            value = 2;
+            bus.emit('foo', null);
+            await expectAsync(s).toBeRejected();
+            expect(spy).withContext('when rejected').toHaveBeenCalledTimes(2);
+            
+            s.cancel();
+            await sleep(1);
+            expect(spy).withContext('event triggered later').toHaveBeenCalledTimes(2);
+          });
+        });
+      });
+
+      describe('given the Scanner is canceled while still pending', () => {
+        describe('and the trigger event is emitted again', () => {
+          it('does not invoke the evaluator again', async () => {
+            expect(spy).toHaveBeenCalledTimes(1); // eager
+            await expectAsync(s).toBePending();
+            bus.emit('foo', null);
+            await expectAsync(s).toBePending();
+            expect(spy).withContext('after event').toHaveBeenCalledTimes(2);
+
+            s.cancel();
+            await expectAsync(s).toBeRejected();
+            expect(spy).withContext('after cancel').toHaveBeenCalledTimes(2);
+
+            bus.emit('foo', null);
+            await sleep(1);
+            expect(spy).withContext('event triggered later').toHaveBeenCalledTimes(2);
+          });
+        });
+
+        describe('and the scannable is destroyed', () => {
+          it('does not invoke the evaluator again', async () => {
+            expect(spy).toHaveBeenCalledTimes(1); // eager
+            await expectAsync(s).toBePending();
+            bus.emit('foo', null);
+            await expectAsync(s).toBePending();
+            expect(spy).withContext('after event').toHaveBeenCalledTimes(2);
+
+            s.cancel();
+            await expectAsync(s).toBeRejected();
+            expect(spy).withContext('after cancel').toHaveBeenCalledTimes(2);
+
+            bus.destroy();
+            await sleep(1);
+            expect(spy).withContext('once destroyed').toHaveBeenCalledTimes(2);
+          });
+        });
+      });
+    });
+
+    describe('Scanner teardown (pooled)', () => {
+      describe('given one of the scanners is canceled', () => {
+        let value: 0|1|2;
+        let spy: jasmine.Spy;
+        let evaluator: (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => void;
+        let p1: CancelablePromise<any>;
+        let p2: CancelablePromise<any>;
+
+        beforeEach(() => {
+          value = 0;
+          spy = jasmine.createSpy('evaluator');
+          evaluator = (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => {
+            spy();
+            if(value === 1) {
+              resolve(true);
+            } else if (value === 2) {
+              reject();
+            }
+          };
+          p1 = bus.scan({
+            evaluator,
+            trigger: 'foo'
+          });
+          p2 = bus.scan({
+            evaluator,
+            trigger: 'foo'
+          });
+        });
+
+        it('does not cancel the other scanner', async() => {
+          await expectAsync(p1).toBePending();
+          await expectAsync(p2).toBePending();
+          expect(spy).toHaveBeenCalledTimes(1); // eager
+
+          p1.cancel();
+
+          await expectAsync(p1).toBeRejected();
+          await expectAsync(p2).toBePending();
+        });
+
+        describe('given a triggering event is emitted from the Scannable', () => {
+          it('still invokes the evaluator', async () => {
+            await expectAsync(p1).toBePending();
+            await expectAsync(p2).toBePending();
+            expect(spy).toHaveBeenCalledTimes(1); // eager
+
+            p1.cancel();
+
+            await expectAsync(p1).toBeRejected();
+            await expectAsync(p2).toBePending();
+
+            bus.emit('foo', null);
+            await sleep(1);
+            expect(spy).toHaveBeenCalledTimes(2);
+          });
+        });
+
+        describe('given the Scannable is destroyed while the uncanceled scanner is still pending', () => {
+          it('still invokes the evaluator', async () => {
+            await expectAsync(p1).toBePending();
+            await expectAsync(p2).toBePending();
+            expect(spy).toHaveBeenCalledTimes(1); // eager
+
+            p1.cancel();
+
+            await expectAsync(p1).toBeRejected();
+            await expectAsync(p2).toBePending();
+
+            bus.destroy();
+            await sleep(1);
+            expect(spy).toHaveBeenCalledTimes(2);
+          });
+        });
+
+        describe('given the evaluator is resolved', () => {
+          it('resolves the uncanceled scanner', async () => {
+            await expectAsync(p1).toBePending();
+            await expectAsync(p2).toBePending();
+            expect(spy).toHaveBeenCalledTimes(1); // eager
+
+            p1.cancel();
+
+            await expectAsync(p1).toBeRejected();
+            await expectAsync(p2).toBePending();
+
+            value = 1;
+            bus.emit('foo', null);
+            await expectAsync(p1).toBeRejected();
+            await expectAsync(p2).toBeResolved();
+            expect(spy).toHaveBeenCalledTimes(2);
+          });
+
+          describe('and a triggering event is subsequently emitted from the Scannable', () => {
+            it('does not invoke the evaluator again', async () => {
+              await expectAsync(p1).toBePending();
+              await expectAsync(p2).toBePending();
+              expect(spy).toHaveBeenCalledTimes(1); // eager
+
+              p1.cancel();
+
+              await expectAsync(p1).toBeRejected();
+              await expectAsync(p2).toBePending();
+
+              value = 1;
+              bus.emit('foo', null);
+              await expectAsync(p1).toBeRejected();
+              await expectAsync(p2).toBeResolved();
+              expect(spy).toHaveBeenCalledTimes(2);
+
+              bus.emit('foo', null);
+              await sleep(1);
+              expect(spy).toHaveBeenCalledTimes(2);
+            });
+          });
+
+          describe('and the Scannable is subsequently destroyed', () => {
+            it('does not invoke the evaluator again', async () => {
+              await expectAsync(p1).toBePending();
+              await expectAsync(p2).toBePending();
+              expect(spy).toHaveBeenCalledTimes(1); // eager
+
+              p1.cancel();
+
+              await expectAsync(p1).toBeRejected();
+              await expectAsync(p2).toBePending();
+
+              value = 1;
+              bus.emit('foo', null);
+              await expectAsync(p1).toBeRejected();
+              await expectAsync(p2).toBeResolved();
+              expect(spy).toHaveBeenCalledTimes(2);
+
+              bus.destroy();
+              await sleep(1);
+              expect(spy).toHaveBeenCalledTimes(2);
+            });
+          });
+        });
+
+        describe('given the evaluator is rejected', () => {
+          it('rejects the uncanceled scanner', async () => {
+            await expectAsync(p1).toBePending();
+            await expectAsync(p2).toBePending();
+            expect(spy).toHaveBeenCalledTimes(1); // eager
+
+            p1.cancel();
+
+            await expectAsync(p1).toBeRejected();
+            await expectAsync(p2).toBePending();
+
+            value = 2;
+            bus.emit('foo', null);
+            await expectAsync(p1).toBeRejected();
+            await expectAsync(p2).toBeRejected();
+            expect(spy).toHaveBeenCalledTimes(2);
+          });
+
+          describe('and a triggering event is subsequently emitted from the Scannable', () => {
+            it('does not invoke the evaluator again', async () => {
+              await expectAsync(p1).toBePending();
+              await expectAsync(p2).toBePending();
+              expect(spy).toHaveBeenCalledTimes(1); // eager
+
+              p1.cancel();
+
+              await expectAsync(p1).toBeRejected();
+              await expectAsync(p2).toBePending();
+
+              value = 2;
+              bus.emit('foo', null);
+              await expectAsync(p1).toBeRejected();
+              await expectAsync(p2).toBeRejected();
+              expect(spy).toHaveBeenCalledTimes(2);
+
+              bus.emit('foo', null);
+              await sleep(1);
+              expect(spy).toHaveBeenCalledTimes(2);
+            });
+          });
+
+          describe('and the Scannable is subsequently destroyed', () => {
+            it('does not invoke the evaluator again', async () => {
+              await expectAsync(p1).toBePending();
+              await expectAsync(p2).toBePending();
+              expect(spy).toHaveBeenCalledTimes(1); // eager
+
+              p1.cancel();
+
+              await expectAsync(p1).toBeRejected();
+              await expectAsync(p2).toBePending();
+
+              value = 2;
+              bus.emit('foo', null);
+              await expectAsync(p1).toBeRejected();
+              await expectAsync(p2).toBeRejected();
+              expect(spy).toHaveBeenCalledTimes(2);
+
+              bus.destroy();
+              await sleep(1);
+              expect(spy).toHaveBeenCalledTimes(2);
+            });
+          });
         });
       });
     });
