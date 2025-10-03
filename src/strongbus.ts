@@ -265,6 +265,10 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     wildcard: Promise<any>;
     event: (Map<Promise<any>, Set<EventKeys<TEventMap>>>[]);
   }>>();
+  private readonly scannerPoolConstituencies = new WeakMap<Promise<any>, {
+    scanner: CancelablePromise<any>,
+    constituentCount: number
+  }>();
 
   /**
    * Utility for resolving/rejecting a promise based on an evaluation done when an event is triggered.
@@ -374,6 +378,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
           } catch(e) {
             reject(e);
           } finally {
+            this.scannerPoolConstituencies.delete(promise);
             this.cleanupPooledScanner({
               ...params,
               lazyOrEager,
@@ -382,6 +387,11 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
           }
         }
       );
+
+      this.scannerPoolConstituencies.set(promise, {
+        scanner,
+        constituentCount: 0
+      });
 
       if(params.trigger === Events.WILDCARD) {
         pools.wildcard = promise;
@@ -397,9 +407,26 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
       }
     }
 
+    
+    const c = cancelable(() => promise);
+    const cancel = c.cancel.bind(c);
+    this.scannerPoolConstituencies.get(promise).constituentCount++;
+
     return Object.assign(
-      cancelable(() => promise),
-      {[INTERNAL_PROMISE]: promise}
+      c,
+      {
+        [INTERNAL_PROMISE]: promise,
+        cancel: (...args: any[]) => {
+          if(cancel(...args)) {
+            const entry = this.scannerPoolConstituencies.get(promise);
+            if(entry?.constituentCount > 1) {
+              entry.constituentCount--;
+            } else if(entry) {
+              entry.scanner.cancel();
+            }
+          }
+        }
+      }
     );
   }
 
