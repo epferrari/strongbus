@@ -2274,7 +2274,7 @@ describe('Strongbus.Bus', () => {
           eager: true
         });
       });
-  
+
       describe('given a Scanner has resolved', () => {
         describe('and the trigger event is emitted again', () => {
           it('does not invoke the evaluator again', async () => {
@@ -2361,7 +2361,7 @@ describe('Strongbus.Bus', () => {
             bus.emit('foo', null);
             await expectAsync(s).toBeRejected();
             expect(spy).withContext('when rejected').toHaveBeenCalledTimes(2);
-            
+
             s.cancel();
             await sleep(1);
             expect(spy).withContext('event triggered later').toHaveBeenCalledTimes(2);

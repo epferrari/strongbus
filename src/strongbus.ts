@@ -407,11 +407,12 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
       }
     }
 
-    
+
     const c = cancelable(() => promise);
     const cancel = c.cancel.bind(c);
     this.scannerPoolConstituencies.get(promise).constituentCount++;
 
+    // tslint:disable-next-line:prefer-object-spread
     return Object.assign(
       c,
       {
