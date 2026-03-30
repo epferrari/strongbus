@@ -1,15 +1,16 @@
 {
-  "version": "4.7.4",
+  "version": "6.0",
   "compilerOptions": {
     "sourceMap": false,
     "noImplicitAny": true,
-    "moduleResolution": "node",
-    "module": "commonjs",
-    "target": "es2017",
+    "moduleResolution": "nodenext",
+    "module": "nodenext",
+    "target": "es2018",
     "experimentalDecorators": true,
-    "baseUrl": ".",
+    "rootDir": "./src",
     "outDir": "./lib",
-    "declaration": true
+    "declaration": true,
+    "strictNullChecks": false
   },
   "compileOnSave": false
 }

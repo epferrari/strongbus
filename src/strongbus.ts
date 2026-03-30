@@ -15,6 +15,7 @@ import {over} from './utils/over';
 import {generateSubscription} from './utils/generateSubscription';
 import {randomId} from './utils/randomId';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
+import { normalizeError } from './utils/normalizeError';
 
 
 @autobind
@@ -206,7 +207,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
 
     const resolutionSub = this.on(resolutionTrigger, ((...args: any[]) => {
       if(resolutionTrigger === Events.WILDCARD || Array.isArray(resolutionTrigger)) {
-        resolve(undefined);
+        resolve(undefined as any);
       } else {
         resolve(args[0]);
       }
@@ -254,7 +255,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     });
 
     // handle cancelation
-    p.catch(e => null).finally(settle);
+    p.catch((e: unknown): void => undefined).finally(settle);
 
     willDestroyListener = this.hook('willDestroy', () => p.cancel(`${this.name} destroyed`));
 
@@ -262,7 +263,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   }
 
   private readonly scannerPools = new WeakMap<Scanner.Evaluator<any, TEventMap>, Map<'eager'|'lazy', {
-    wildcard: Promise<any>;
+    wildcard: Promise<any>|undefined;
     event: (Map<Promise<any>, Set<EventKeys<TEventMap>>>[]);
   }>>();
   private readonly scannerPoolConstituencies = new WeakMap<Promise<any>, {
@@ -329,7 +330,8 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     - is the trigger a subset of an existing trigger?
     */
     const lazyOrEager: 'eager'|'lazy' = (params.eager === false) ? 'lazy' : 'eager';
-    let promise: Promise<TReturnType> = (() => {
+
+    const getExisting = (): Promise<TReturnType>|undefined => {
       const pools = this.scannerPools.get(params.evaluator)?.get(lazyOrEager);
       if(pools) {
         if(pools.wildcard) {
@@ -351,9 +353,8 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
           }
         }
       }
-    })();
-
-    if(!promise) {
+    }
+    const createNew = (): Promise<TReturnType> => {
       const scanner = new Scanner<TReturnType>(params);
       scanner.scan<TEventMap>(this, params.trigger);
 
@@ -365,13 +366,13 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
       let pools = byEvaluator.get(lazyOrEager);
       if(!pools) {
         pools = {
-          wildcard: null,
+          wildcard: undefined,
           event: []
         };
         byEvaluator.set(lazyOrEager, pools);
       }
 
-      promise = new Promise<TReturnType>(
+      const promise = new Promise<TReturnType>(
         async (resolve, reject) => {
           try {
             resolve(await scanner);
@@ -405,9 +406,10 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
         }
         byEventCount.set(promise, events);
       }
+      return promise;
     }
-
-
+    
+    const promise = getExisting() || createNew();
     const c = cancelable(() => promise);
     const cancel = c.cancel.bind(c);
     this.scannerPoolConstituencies.get(promise).constituentCount++;
@@ -717,9 +719,9 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
             (execution as Promise<any>)?.catch?.((e) => {
               this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
             });
-          } catch(e) {
+          } catch(e: unknown) {
             // emit errors if callback fails synchronously
-            this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
+            this.emitLifecycleEvent(Lifecycle.error, {error: normalizeError(e), event});
           }
         }
         return true;
@@ -759,7 +761,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
                 eventHandlerError: errorPayload.error
             });
           } else {
-            this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
+            this.emitLifecycleEvent(Lifecycle.error, {error: normalizeError(e), event});
           }
         }
       }

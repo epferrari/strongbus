@@ -28,10 +28,10 @@
   resolved "https://registry.npmjs.org/@types/jasmine/-/jasmine-3.10.6.tgz"
   integrity sha512-twY9adK/vz72oWxCWxzXaxoDtF9TpfEEsxvbc1ibjF3gMD/RThSuSud/GKUTR3aJnfbivAbC/vLqhY+gdWCHfA==
 
-"@types/node@^10.17.3":
-  version "10.17.60"
-  resolved "https://registry.npmjs.org/@types/node/-/node-10.17.60.tgz"
-  integrity sha512-F0KIgDJfy2nA3zMLmWGKxcH2ZVEtCZXHHdOQs2gSaQ27+lNeEfGxzkIw90aXswATX7AZ33tahPbzy6KAfUreVw==
+"@types/node@^16.0.0":
+  version "16.18.126"
+  resolved "https://nexus.drwholdings.com/repository/npm/@types/node/-/node-16.18.126.tgz#27875faa2926c0f475b39a8bb1e546c0176f8d4b"
+  integrity sha512-OTcgaiwfGFBKacvfwuHzzn1KLxH/er8mluiy8/uM3sGXHaRe73RrSIj01jow9t4kJEW633Ov+cOexXeiApTyAw==
 
 ansi-styles@^3.2.1:
   version "3.2.1"
@@ -361,10 +361,10 @@ typedoc@0.23.0-beta.5:
     minimatch "^5.1.0"
     shiki "^0.10.1"
 
-typescript@^4.7.4:
-  version "4.7.4"
-  resolved "https://registry.yarnpkg.com/typescript/-/typescript-4.7.4.tgz#1a88596d1cf47d59507a1bcdfb5b9dfe4d488235"
-  integrity sha512-C0WQT0gezHuw6AdY1M2jxUO83Rjf0HP7Sk1DtXj6j1EwkQNZrHAg2XPWlq62oqEhYvONq5pkC2Y9oPljWToLmQ==
+typescript@6.0:
+  version "6.0.2"
+  resolved "https://nexus.drwholdings.com/repository/npm/typescript/-/typescript-6.0.2.tgz#0b1bfb15f68c64b97032f3d78abbf98bdbba501f"
+  integrity sha512-bGdAIrZ0wiGDo5l8c++HWtbaNCWTS4UTv7RaTH/ThVIgjkveJt83m74bBHMJkuCbslY8ixgLBVZJIOiQlQTjfQ==
 
 vscode-oniguruma@^1.6.1:
   version "1.6.2"
