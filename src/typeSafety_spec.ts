@@ -126,6 +126,36 @@ describe('type safety', () => {
       // @ts-expect-error 'qux' is not a key of TestEventMap
       bus.scan({evaluator, trigger: 'qux'});
     });
+
+    typeChecks.push(function resultTypeDrivesEvaluatorAndPromise(): void {
+      const bus = new Bus<TestEventMap>();
+      // the type argument is the resolved result type, and flows into the resolver
+      const result = bus.scan<number>({
+        evaluator: resolve => {
+          resolve(1);
+          resolve.resolve(2);
+        },
+        trigger: 'foo'
+      });
+      result.then(value => expectType<number>(value));
+    });
+
+    typeChecks.push(function inferredResultTypeFromTypedEvaluator(): void {
+      const bus = new Bus<TestEventMap>();
+      // result type is inferred from a pre-typed evaluator
+      bus.scan({evaluator, trigger: 'foo'}).then(value => expectType<boolean>(value));
+    });
+
+    typeChecks.push(function rejectsMismatchedResolveValue(): void {
+      const bus = new Bus<TestEventMap>();
+      bus.scan<number>({
+        evaluator: resolve => {
+          // @ts-expect-error result type is number, not string
+          resolve('nope');
+        },
+        trigger: 'foo'
+      });
+    });
   });
 
   describe('variance', () => {

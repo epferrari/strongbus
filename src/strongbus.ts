@@ -280,19 +280,17 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
    * }
    * ```
    */
-  public scan<TEvaluator extends Scanner.Evaluator<any, TEventMap>>(
+  public scan<T = any>(
     params: {
-      evaluator: TEvaluator;
+      evaluator: Scanner.Evaluator<T, TEventMap>;
       trigger: Listenable<EventKeys<TEventMap>>;
       eager?: boolean;
       pool?: boolean;
       timeout?: number;
-  }): CancelablePromise<TEvaluator extends Scanner.Evaluator<infer U, TEventMap> ? U : any> {
-
-    type TReturnType = TEvaluator extends Scanner.Evaluator<infer U, TEventMap> ? U : any;
+  }): CancelablePromise<T> {
 
     if(params.timeout && params.timeout > 0) {
-      const scanner = new Scanner<TReturnType>(params);
+      const scanner = new Scanner<T>(params);
       scanner.scan<TEventMap>(this, params.trigger);
       // tslint:disable-next-line:prefer-object-spread
       return Object.assign(
@@ -303,7 +301,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
         }
       );
     } else if(params.pool === false) {
-      const scanner = new Scanner<TReturnType>(params);
+      const scanner = new Scanner<T>(params);
       scanner.scan<TEventMap>(this, params.trigger);
       // tslint:disable-next-line:prefer-object-spread
       return Object.assign(
@@ -321,7 +319,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
     */
     const lazyOrEager: 'eager'|'lazy' = (params.eager === false) ? 'lazy' : 'eager';
 
-    const getExisting = (): Promise<TReturnType>|undefined => {
+    const getExisting = (): Promise<T>|undefined => {
       const pools = this.scannerPools.get(params.evaluator)?.get(lazyOrEager);
       if(pools) {
         if(pools.wildcard) {
@@ -344,8 +342,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
         }
       }
     };
-    const createNew = (): Promise<TReturnType> => {
-      const scanner = new Scanner<TReturnType>(params);
+    const createNew = (): Promise<T> => {
+      const scanner = new Scanner<T>(params);
       scanner.scan<TEventMap>(this, params.trigger);
 
       let byEvaluator = this.scannerPools.get(params.evaluator);
@@ -362,7 +360,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
         byEvaluator.set(lazyOrEager, pools);
       }
 
-      const _promise = new Promise<TReturnType>(
+      const _promise = new Promise<T>(
         async (resolve, reject) => {
           try {
             resolve(await scanner);
