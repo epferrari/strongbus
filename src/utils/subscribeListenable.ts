@@ -11,7 +11,7 @@ export interface ListenableSubscriber<TEventMap extends EventMap> {
 export function subscribeListenable<TEventMap extends EventMap>(
   target: ListenableSubscriber<TEventMap>,
   listenable: Listenable<EventKeys<TEventMap>>,
-  handler: (event: EventKeys<TEventMap>, payload: TEventMap[EventKeys<TEventMap>]) => void
+  handler: EventSink<TEventMap>
 ): Subscription {
   if(Array.isArray(listenable)) {
     return target.any(listenable, handler);

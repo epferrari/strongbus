@@ -10,7 +10,7 @@ import {Lifecycle} from './types/lifecycle';
 import type {Logger} from './types/logger';
 import type {Options, ListenerThresholds} from './types/options';
 import type {Scannable} from './types/scannable';
-import type {EventKeys, ElementType, EventPayload} from './types/utility';
+import type {EventKeys, EventPayload} from './types/utility';
 import {over} from './utils/over';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {randomId} from './utils/randomId';
@@ -70,9 +70,9 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
   }
 
   private _active = false;
-  private readonly _delegates = new Map<Bus<TEventMap>, Subscription[]>();
-  private readonly _delegateListenerCountsByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
-  private _delegateListenerTotalCount: number = 0;
+  private readonly pipeTargets = new Map<Bus<TEventMap>, Subscription[]>();
+  private readonly _pipeTargetListenerCountsByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
+  private _pipeTargetListenerTotalCount: number = 0;
   private readonly _eventSinks = new WeakMap<EventSink<TEventMap>, Subscription>();
   private readonly subscriptionCache = new Map<string, Subscription>();
   private readonly options: Required<Options> & {thresholds: Required<ListenerThresholds>};
@@ -167,10 +167,13 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
    * Handle multiple events with the same handler.
    * [[EventSink]] receives raised event as first argument, payload as second argument
    */
-  public any<TEvents extends EventKeys<TEventMap>[]>(events: TEvents, handler: EventSink<TEventMap>): Subscription {
+  public any<
+    TMap extends AnyEventMap<TEventMap>,
+    TEvents extends EventKeys<TMap>[] & EventKeys<TEventMap>[]
+  >(events: TEvents, handler: EventSink<TMap>): Subscription {
     return subscriptionWrapper(over(
-      (events as any).map(<TEvent extends ElementType<TEvents>>(e: TEvent) => {
-        const anyHandler = (payload: TEventMap[TEvent]) => handler(e, payload);
+      (events as EventKeys<TEventMap>[]).map((e) => {
+        const anyHandler = (payload: TEventMap[typeof e]) => handler(e as EventKeys<TMap>, payload as any);
         return this.addListener(e, anyHandler);
       })
     ));
@@ -467,18 +470,18 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
    * Pipe events into another bus, or into a function sink.
    * Function sinks receive the raised event as the first argument and payload as the second.
    */
-  public pipe(sink: EventSink<TEventMap>): Subscription;
-  public pipe<TDelegate extends Bus<TEventMap>>(delegate: TDelegate): TDelegate & Bus<TEventMap>;
-  public pipe(delegate: EventSink<TEventMap> | Bus<TEventMap>): Subscription | Bus<TEventMap> {
-    if(typeof delegate === 'function') {
-      const sink = delegate as EventSink<TEventMap>;
+  public pipe<TMap extends PipeEventMap<TEventMap>>(sink: EventSink<TMap>): Subscription;
+  public pipe<TDelegate extends PipeTarget<TEventMap>>(delegate: TDelegate): TDelegate & Bus<TEventMap>;
+  public pipe(dest: EventSink<TEventMap> | PipeTarget<TEventMap>): Subscription | Bus<TEventMap> {
+    if(typeof dest === 'function') {
+      const sink = dest as EventSink<TEventMap>;
       this._eventSinks.set(sink, this.addListener(WILDCARD, sink));
       return subscriptionWrapper(() => this.unpipe(sink));
     } else {
-      const bus = delegate as Bus<TEventMap>;
+      const bus = dest as Bus<TEventMap>;
       if(bus !== this as any) {
-        if(!this._delegates.has(bus)) {
-          this._delegates.set(bus, [
+        if(!this.pipeTargets.has(bus)) {
+          this.pipeTargets.set(bus, [
             bus.hook(Lifecycle.willAddListener, this.willAddListener),
             bus.hook(Lifecycle.didAddListener, event => this.didAddListener(event, bus)),
             bus.hook(Lifecycle.willRemoveListener, this.willRemoveListener),
@@ -490,13 +493,13 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
     }
   }
 
-  public unpipe<TDelegate extends (Bus<TEventMap>|EventSink<TEventMap>)>(delegate: TDelegate): void {
-    if(typeof delegate === 'function') {
-      this._eventSinks.get(delegate)?.();
-      this._eventSinks.delete(delegate);
+  public unpipe<TDelegate extends (PipeTarget<TEventMap>|EventSink<TEventMap>)>(dest: TDelegate): void {
+    if(typeof dest === 'function') {
+      this._eventSinks.get(dest)?.();
+      this._eventSinks.delete(dest);
     } else {
-      over(this._delegates.get(delegate) || [])();
-      this._delegates.delete(delegate);
+      over(this.pipeTargets.get(dest) || [])();
+      this.pipeTargets.delete(dest);
     }
   }
 
@@ -553,14 +556,14 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
    * @getter `boolean`
    */
   public get hasDelegateListeners(): boolean {
-    return this._delegateListenerTotalCount > 0;
+    return this._pipeTargetListenerTotalCount > 0;
   }
 
   private _cachedGetListersValue: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
   public get listeners(): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
     if(!this._cachedGetListersValue) {
       const listenerCache = new Map(this.ownListeners);
-      for(const delegate of this._delegates.keys()) {
+      for(const delegate of this.pipeTargets.keys()) {
         for(const [event, delegateListeners] of delegate.listeners) {
           if(!delegateListeners.size) {
             continue;
@@ -607,7 +610,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
   }
 
   public get listenerCount(): number {
-    return this.bus.size + this._delegateListenerTotalCount;
+    return this.bus.size + this._pipeTargetListenerTotalCount;
   }
 
   public getListenerCountFor(event: EventKeys<TEventMap>|WILDCARD): number {
@@ -619,7 +622,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
   }
 
   public getDelegateListenerCountFor(event: EventKeys<TEventMap>|WILDCARD): number {
-    return (this._delegateListenerCountsByEvent.get(event) ?? 0);
+    return (this._pipeTargetListenerCountsByEvent.get(event) ?? 0);
   }
 
   /**
@@ -644,12 +647,12 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
   }
 
   private releaseDelegates(): void {
-    for(const subs of Object.values(this._delegates)) {
+    for(const subs of Object.values(this.pipeTargets)) {
       for(const sub of subs()) {
         sub();
       }
     }
-    this._delegates.clear();
+    this.pipeTargets.clear();
   }
 
   private addListener(event: EventKeys<TEventMap>|WILDCARD, handler: GenericHandler): Subscription {
@@ -771,7 +774,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
   }
 
   private forward<T extends EventKeys<TEventMap>>(event: T, ...payload: EventPayload<TEventMap, T>): boolean {
-    const {_delegates} = this;
+    const {pipeTargets: _delegates} = this;
     if(_delegates.size) {
       return Array.from(_delegates.keys())
         .reduce((acc, d) => (d.emit(event as any, ...payload) || acc), false);
@@ -793,9 +796,9 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
     if(bus === this) {
       this._cachedGetOwnListenersValue = null;
     } else {
-      const currCount = this._delegateListenerCountsByEvent.get(event) ?? 0;
-      this._delegateListenerCountsByEvent.set(event, Math.max(currCount + 1, 0));
-      this._delegateListenerTotalCount = Math.max(this._delegateListenerTotalCount + 1, 0);
+      const currCount = this._pipeTargetListenerCountsByEvent.get(event) ?? 0;
+      this._pipeTargetListenerCountsByEvent.set(event, Math.max(currCount + 1, 0));
+      this._pipeTargetListenerTotalCount = Math.max(this._pipeTargetListenerTotalCount + 1, 0);
     }
 
     this.emitLifecycleEvent(Lifecycle.didAddListener, event);
@@ -822,9 +825,9 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
     if(bus === this) {
       this._cachedGetOwnListenersValue = null;
     } else {
-      const currCount = this._delegateListenerCountsByEvent.get(event) ?? 0;
-      this._delegateListenerCountsByEvent.set(event, Math.max(currCount - 1, 0));
-      this._delegateListenerTotalCount = Math.max(this._delegateListenerTotalCount - 1, 0);
+      const currCount = this._pipeTargetListenerCountsByEvent.get(event) ?? 0;
+      this._pipeTargetListenerCountsByEvent.set(event, Math.max(currCount - 1, 0));
+      this._pipeTargetListenerTotalCount = Math.max(this._pipeTargetListenerTotalCount - 1, 0);
     }
 
     this.emitLifecycleEvent(Lifecycle.didRemoveListener, event);
@@ -834,6 +837,15 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
     }
   }
 }
+
+
+type AnyEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
+
+type PipeEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
+
+type PipeTarget<TEventMap extends EventMap> = {
+  bivarianceHack: Bus<TEventMap>;
+}['bivarianceHack'];
 
 
 /**

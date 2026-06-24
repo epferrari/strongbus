@@ -1,0 +1,187 @@
+import {Bus} from './strongbus';
+import {Scanner} from './scanner';
+
+/**
+ * These specs are primarily *compile-time* assertions. The test pipeline runs
+ * `tsc` before jasmine, so every `// @ts-expect-error` below doubles as an
+ * assertion: if the following line were to compile, tsc would report the
+ * directive as unused (TS2578) and fail the build. The runtime `it` block
+ * exists so jasmine has something to execute.
+ */
+describe('type safety', () => {
+  interface TestEventMap {
+    foo: number;
+    bar: string;
+    baz: void;
+  }
+
+  // asserts at compile time that `value` is assignable to `T`
+  function expectType<T>(_value: T): void {
+    // type-level assertion only; no runtime behavior
+  }
+
+  // referenced (but never invoked) so the type-checks run without side effects
+  const typeChecks: (() => void)[] = [];
+
+  describe('#on', () => {
+    typeChecks.push(function validEventAndPayload(): void {
+      const bus = new Bus<TestEventMap>();
+      bus.on('foo', payload => expectType<number>(payload));
+      bus.on('baz', payload => expectType<void>(payload));
+    });
+
+    typeChecks.push(function rejectsUnknownEvent(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'qux' is not a key of TestEventMap
+      bus.on('qux', () => undefined);
+    });
+
+    typeChecks.push(function rejectsMismatchedPayload(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'foo' carries a number payload, not a string
+      bus.on('foo', (payload: string) => undefined);
+    });
+  });
+
+  describe('#once', () => {
+    typeChecks.push(function validEventAndPayload(): void {
+      const bus = new Bus<TestEventMap>();
+      bus.once('bar', payload => expectType<string>(payload));
+    });
+
+    typeChecks.push(function rejectsUnknownEvent(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'qux' is not a key of TestEventMap
+      bus.once('qux', () => undefined);
+    });
+
+    typeChecks.push(function rejectsMismatchedPayload(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'bar' carries a string payload, not a number
+      bus.once('bar', (payload: number) => undefined);
+    });
+  });
+
+  describe('#any', () => {
+    typeChecks.push(function validEventSubset(): void {
+      const bus = new Bus<TestEventMap>();
+      bus.any(['foo', 'bar'], (event, payload) => {
+        expectType<keyof TestEventMap>(event);
+        expectType<TestEventMap[keyof TestEventMap]>(payload);
+      });
+    });
+
+    typeChecks.push(function rejectsUnknownEvent(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'qux' is not a key of TestEventMap
+      bus.any(['foo', 'qux'], () => undefined);
+    });
+  });
+
+  describe('#next', () => {
+    typeChecks.push(function validTriggers(): void {
+      const bus = new Bus<TestEventMap>();
+      // single event resolves with that event's payload
+      bus.next('foo').then(payload => expectType<number>(payload));
+      // disjoint resolution/rejection triggers are allowed
+      bus.next('foo', 'bar');
+      // array + wildcard triggers are allowed
+      bus.next(['foo', 'bar']);
+      bus.next('*');
+    });
+
+    typeChecks.push(function rejectsUnknownResolutionTrigger(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'qux' is not a key of TestEventMap
+      bus.next('qux');
+    });
+
+    typeChecks.push(function rejectsUnknownRejectionTrigger(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'qux' is not a key of TestEventMap
+      bus.next('foo', 'qux');
+    });
+
+    typeChecks.push(function rejectsOverlappingTriggers(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error resolution and rejection triggers must be disjoint
+      bus.next('foo', 'foo');
+    });
+  });
+
+  describe('#scan', () => {
+    const evaluator: Scanner.Evaluator<boolean, TestEventMap> = resolve => {
+      resolve(true);
+    };
+
+    typeChecks.push(function validTrigger(): void {
+      const bus = new Bus<TestEventMap>();
+      bus.scan({evaluator, trigger: 'foo'});
+      bus.scan({evaluator, trigger: ['foo', 'bar']});
+      bus.scan({evaluator, trigger: '*'});
+    });
+
+    typeChecks.push(function rejectsUnknownTrigger(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'qux' is not a key of TestEventMap
+      bus.scan({evaluator, trigger: 'qux'});
+    });
+  });
+
+  describe('variance', () => {
+    interface Narrow {
+      foo: number;
+      bar: string;
+    }
+    interface Wide {
+      foo: number;
+      bar: string;
+      baz: boolean;
+    }
+
+    // a view of the publicly-consumed subscription surface
+    interface BusView<T extends object> extends Pick<Bus<T>, 'on'|'once'|'any'|'pipe'> {}
+
+    // a subclass of Bus over the wider map
+    class WideBus extends Bus<Wide> {}
+
+    // the contravariant payoff: a Bus over a wider map satisfies a view over a
+    // narrower one, so a subclass can declare it `implements` the narrow view.
+    // a broken variance would make this class declaration fail to compile.
+    class NarrowableBus extends WideBus implements BusView<Narrow> {}
+
+    typeChecks.push(function wideBusSatisfiesNarrowView(): void {
+      // a Bus over a wider event map is assignable to a view over a narrower one
+      const view: BusView<Narrow> = new Bus<Wide>();
+      view.on('foo', payload => expectType<number>(payload));
+
+      // ...and so is a subclass instance
+      const subclassView: BusView<Narrow> = new WideBus();
+      subclassView.on('bar', payload => expectType<string>(payload));
+
+      const narrowable = new NarrowableBus();
+      expectType<BusView<Narrow>>(narrowable);
+      // the concrete type still exposes its full (wide) event map
+      narrowable.on('baz', payload => expectType<boolean>(payload));
+    });
+
+    typeChecks.push(function narrowViewRejectsUnknownEvent(): void {
+      const view: BusView<Narrow> = new Bus<Wide>();
+      // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
+      view.on('baz', () => undefined);
+    });
+
+    typeChecks.push(function pipeAcceptsCompatibleSink(): void {
+      const bus = new Bus<Wide>();
+      bus.pipe((event, payload) => {
+        expectType<keyof Wide>(event);
+        expectType<Wide[keyof Wide]>(payload);
+      });
+    });
+  });
+
+  it('enforces event and payload types at compile time', () => {
+    expect(typeChecks.length).toBeGreaterThan(0);
+    expect(typeChecks.every(check => typeof check === 'function')).toBe(true);
+  });
+});
