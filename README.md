@@ -189,13 +189,14 @@ const ready = await bus.scan<boolean>({
 });
 ```
 
-`scan` options:
+`scan` options (only `trigger` is required; see the
+[`scan` API docs](https://epferrari.github.io/strongbus/classes/Bus.html#scan) for canonical defaults):
 
 - `trigger` — the event, array of events, or `'*'` that re-runs the evaluator.
-- `eager` (default `true`) — run the evaluator immediately, so an already-satisfied condition resolves without
-  waiting for an event. This avoids the `if (!condition) { await scan(...) }` anti-pattern.
-- `pool` (default `true`) — reuse an in-flight scan that shares the same evaluator, eagerness, and a
-  superset trigger, instead of subscribing redundantly.
+- `eager` — run the evaluator immediately, so an already-satisfied condition resolves without waiting for an
+  event. This avoids the `if (!condition) { await scan(...) }` anti-pattern.
+- `pool` — reuse an in-flight scan that shares the same evaluator, eagerness, and a superset trigger, instead of
+  subscribing redundantly.
 - `timeout` — cancel the scan after N milliseconds. Configuring a timeout disables pooling.
 
 The `<T>` type argument is the resolved value's type and flows into the resolver:
@@ -259,19 +260,27 @@ bus.destroy();
 
 ## Options
 
+`new Bus<Events>(options)` accepts:
+
+- `name` — included in logs and unhandled-event errors.
+- `allowUnhandledEvents` — when `false`, unhandled events route to `handleUnexpectedEvent` instead of being a
+  no-op.
+- `thresholds` — per-event listener-count thresholds (`info`/`warn`/`error`) for memory-leak logging.
+- `logger` — a `Logger`, or a `() => Logger` provider.
+- `verbose` — log on every listener past a threshold, or only at threshold boundaries.
+
 ```typescript
 const bus = new Bus<Events>({
-  name: 'MyBus',               // included in logs and unhandled-event errors
-  allowUnhandledEvents: true,  // default true; false routes to handleUnexpectedEvent
-  thresholds: {                // per-event listener-count thresholds
-    info: 100,                 // default 100
-    warn: 500,                 // default 500
-    error: Infinity            // default Infinity
-  },
-  logger: console,             // a Logger, or a () => Logger provider
-  verbose: true                // log on every listener past a threshold vs. at intervals
+  name: 'MyBus',
+  allowUnhandledEvents: false,
+  thresholds: {warn: 50},
+  logger: console
 });
 ```
+
+See the [`Options`](https://epferrari.github.io/strongbus/interfaces/Options.html) and
+[`ListenerThresholds`](https://epferrari.github.io/strongbus/interfaces/ListenerThresholds.html) API docs for the
+canonical defaults and types.
 
 Defaults can be set globally for all instances via static setters:
 
