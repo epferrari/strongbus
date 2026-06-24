@@ -27,7 +27,7 @@ interface Pool<TEventMap extends EventMap> {
 }
 
 /**
- * Pools [[Scanner]]s that share an `evaluator` and eagerness so that overlapping
+ * Pools {@link Scanner}s that share an `evaluator` and eagerness so that overlapping
  * triggers can reuse an in-flight scan instead of subscribing redundantly.
  * Each pooled scan tracks a `constituentCount`; the underlying scanner is only
  * canceled once every constituent has been canceled.

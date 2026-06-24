@@ -36,7 +36,6 @@ export namespace Scanner {
 
 /**
  * @typeParam TResult - Scanner is resolved with value of this type
- * @implements CancelablePromise<TResult>
  */
 @autobind
 export class Scanner<TResult> implements CancelablePromise<TResult> {

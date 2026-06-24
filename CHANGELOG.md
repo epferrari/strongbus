@@ -24,6 +24,8 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   array and wildcard awaits can tell which event fired.
 - **`EventSink<TEventMap>`** handler type — the `(event, payload)` handler shape
   used by `any` and the function-sink form of `pipe`.
+- **`Logger` and `LoggerProvider`** types are now exported, for typing a custom
+  `options.logger`.
 
 ### Changed (breaking)
 
