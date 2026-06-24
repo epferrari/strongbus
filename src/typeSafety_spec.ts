@@ -214,7 +214,7 @@ describe('type safety', () => {
     }
 
     // a view of the publicly-consumed subscription surface
-    interface BusView<T extends object> extends Pick<Bus<T>, 'on'|'once'|'any'|'pipe'> {}
+    interface BusView<T extends object> extends Pick<Bus<T>, 'on'|'once'|'any'|'pipe'|'scan'|'next'> {}
 
     // a subclass of Bus over the wider map
     class WideBus extends Bus<Wide> {}
@@ -225,9 +225,23 @@ describe('type safety', () => {
     class NarrowableBus extends WideBus implements BusView<Narrow> {}
 
     typeChecks.push(function wideBusSatisfiesNarrowView(): void {
+      const evaluator: Scanner.Evaluator<boolean, Narrow> = resolve => {
+        resolve(true);
+      };
+
       // a Bus over a wider event map is assignable to a view over a narrower one
       const view: BusView<Narrow> = new Bus<Wide>();
       view.on('foo', payload => expectType<number>(payload));
+      view.once('bar', payload => expectType<string>(payload));
+      view.any(['foo', 'bar'], (event, payload) => {
+        expectType<keyof Narrow>(event);
+        expectType<Narrow[keyof Narrow]>(payload);
+      });
+      view.scan({evaluator, trigger: 'foo'});
+      view.next('foo').then(result => {
+        expectType<'foo'>(result.event);
+        expectType<number>(result.payload);
+      });
 
       // ...and so is a subclass instance
       const subclassView: BusView<Narrow> = new WideBus();
@@ -237,17 +251,33 @@ describe('type safety', () => {
       expectType<BusView<Narrow>>(narrowable);
       // the concrete type still exposes its full (wide) event map
       narrowable.on('baz', payload => expectType<boolean>(payload));
+      narrowable.scan({
+        evaluator: resolve => resolve(true),
+        trigger: 'baz'
+      });
     });
 
     typeChecks.push(function narrowViewRejectsUnknownEvent(): void {
       const view: BusView<Narrow> = new Bus<Wide>();
+      const evaluator: Scanner.Evaluator<boolean, Narrow> = resolve => {
+        resolve(true);
+      };
+
       // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
       view.on('baz', () => undefined);
+      // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
+      view.once('baz', () => undefined);
+      // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
+      view.any(['baz'], () => undefined);
+      // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
+      view.scan({evaluator, trigger: 'baz'});
+      // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
+      view.next('baz');
     });
 
     typeChecks.push(function pipeAcceptsCompatibleSink(): void {
       const bus = new Bus<Wide>();
-      bus.pipe((event, payload) => {
+      bus.pipe(<T extends keyof Narrow>(event: T, payload: Narrow[T]) => {
         expectType<keyof Wide>(event);
         expectType<Wide[keyof Wide]>(payload);
       });

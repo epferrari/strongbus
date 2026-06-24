@@ -3,7 +3,7 @@ import {autobind} from 'core-decorators';
 import {type CancelablePromise, cancelable, timeout} from 'jaasync';
 
 import {Scanner} from './scanner';
-import {ScannerPools} from './scannerPools';
+import {ScannerPools, type ScanParams} from './scannerPools';
 import {StrongbusLogger} from './strongbusLogger';
 import {type Subscription, type EventMap, type Listenable, WILDCARD} from './types/events';
 import type {SingleEventHandler, EventSink, GenericHandler} from './types/eventHandlers';
@@ -266,17 +266,21 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
    * }
    * ```
    */
-  public scan<T = any>(
+  public scan<
+    T = any,
+    TMap extends ScanEventMap<TEventMap> = TEventMap
+  >(
     params: {
-      evaluator: Scanner.Evaluator<T, TEventMap>;
-      trigger: Listenable<EventKeys<TEventMap>>;
+      evaluator: Scanner.Evaluator<T, TMap>;
+      trigger: Listenable<EventKeys<TMap>> & Listenable<EventKeys<TEventMap>>;
       eager?: boolean;
       pool?: boolean;
       timeout?: number;
   }): CancelablePromise<T> {
+    const scanParams = params as unknown as ScanParams<T, TEventMap>;
 
     if(params.timeout && params.timeout > 0) {
-      const scanner = new Scanner<T>(params);
+      const scanner = new Scanner<T>(scanParams);
       scanner.scan<TEventMap>(this, params.trigger);
       // tslint:disable-next-line:prefer-object-spread
       return Object.assign(
@@ -287,7 +291,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
         }
       );
     } else if(params.pool === false) {
-      const scanner = new Scanner<T>(params);
+      const scanner = new Scanner<T>(scanParams);
       scanner.scan<TEventMap>(this, params.trigger);
       // tslint:disable-next-line:prefer-object-spread
       return Object.assign(
@@ -297,7 +301,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
 
     }
 
-    return this.scannerPools.scan<T>(this, params);
+    return this.scannerPools.scan<T>(this, scanParams);
   }
 
   /**
@@ -683,6 +687,8 @@ type NextResult<TEventMap extends EventMap, T> =
 type AnyEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
 
 type PipeEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
+
+type ScanEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
 
 type PipeTarget<TEventMap extends EventMap> = {
   bivarianceHack: Bus<TEventMap>;
