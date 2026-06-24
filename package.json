@@ -23,7 +23,7 @@
     "test": "npm run dev && jasmine --config=./jasmine.json",
     "validate": "npm run test && npm run lint",
     "install": "([ -d ./src ] && [ ! -d ./lib ] && mkdir lib && npm install . &&  npm run dist) || echo ''",
-    "docs": "./node_modules/.bin/typedoc",
+    "docs": "./node_modules/.bin/typedoc --out docs/$(node -p \"require('./package.json').version\")",
     "prepare": "rm -rf ./lib && npm run dist",
     "version": "git add -A src",
     "postversion": "git push && git push --tags"

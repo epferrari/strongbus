@@ -1,6 +1,5 @@
 {
   "tsconfig": "./tsconfig.dist.json",
-  "out": "./docs",
   "excludePrivate": true,
   "includeVersion": true,
   "readme": "none",
