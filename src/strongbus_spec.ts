@@ -411,6 +411,39 @@ describe('Strongbus.Bus', () => {
         bus.emit('foo', 'eagle'); // attempt to remove the second arg, and observe a type error
       });
     });
+
+    describe('return value', () => {
+      it('returns false when the event has no listeners', () => {
+        expect(bus.emit('foo', 'eagle')).toBeFalse();
+      });
+
+      it('returns true when an own listener handles the event', () => {
+        bus.on('foo', singleEventHandler);
+        expect(bus.emit('foo', 'eagle')).toBeTrue();
+      });
+
+      it('returns true when only a wildcard (piped sink) listener handles the event', () => {
+        bus.pipe(eventSink);
+        expect(bus.emit('foo', 'eagle')).toBeTrue();
+      });
+
+      it('returns true when only a delegate handles the event', () => {
+        const delegate = new Strongbus.Bus<TestEventMap>();
+        delegate.on('foo', singleEventHandler);
+        bus.pipe(delegate);
+
+        expect(bus.emit('foo', 'eagle')).toBeTrue();
+        expect(singleEventHandler).toHaveBeenCalledWith('eagle');
+      });
+
+      it('returns false when a delegate exists but has no listener for the event', () => {
+        const delegate = new Strongbus.Bus<TestEventMap>();
+        delegate.on('bar', singleEventHandler);
+        bus.pipe(delegate);
+
+        expect(bus.emit('foo', 'eagle')).toBeFalse();
+      });
+    });
   });
 
   describe('#on', () => {
@@ -904,6 +937,57 @@ describe('Strongbus.Bus', () => {
         expect(onError).toHaveBeenCalledWith({
           error,
           event: 'active'
+        });
+      });
+
+      describe('given the "error" handler itself fails', () => {
+        let logger: jasmine.SpyObj<Logger>;
+        let loggingBus: Strongbus.Bus<TestEventMap>;
+        const originalError = new Error('error in listener');
+
+        beforeEach(() => {
+          logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error']);
+          loggingBus = new Strongbus.Bus<TestEventMap>({logger});
+          loggingBus.on('bar', () => {
+            throw originalError;
+          });
+        });
+
+        it('logs (rather than re-emitting "error") when the handler throws synchronously', () => {
+          const handlerError = new Error('error handler exploded');
+          loggingBus.hook('error', () => {
+            throw handlerError;
+          });
+
+          loggingBus.emit('bar', true);
+
+          expect(logger.error).toHaveBeenCalledWith(
+            'Error thrown in error handler',
+            jasmine.objectContaining({
+              errorHandlerError: handlerError,
+              originalEvent: 'bar',
+              eventHandlerError: originalError
+            })
+          );
+        });
+
+        it('logs (rather than re-emitting "error") when the handler returns a rejecting promise', async () => {
+          const handlerError = new Error('async error handler exploded');
+          loggingBus.hook('error', () => Promise.reject(handlerError));
+
+          loggingBus.emit('bar', true);
+
+          // wait for the rejected promise to be processed
+          await sleep(1);
+
+          expect(logger.error).toHaveBeenCalledWith(
+            'Error thrown in async error handler',
+            jasmine.objectContaining({
+              errorHandlerError: handlerError,
+              originalEvent: 'bar',
+              eventHandlerError: originalError
+            })
+          );
         });
       });
     });
