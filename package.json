@@ -1,6 +1,6 @@
 {
   "name": "strongbus",
-  "version": "3.0.0",
+  "version": "3.0.0-beta.0",
   "description": "Strongly typed, battle-tested event emitter",
   "keywords": [
     "bus",
