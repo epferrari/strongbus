@@ -12,19 +12,19 @@ import type {Logger} from './types/logger';
 import type {Options, ListenerThresholds} from './types/options';
 import type {
   AnyEventMap,
-  EventProducer,
-  EventProducerAny,
-  EventProducerListenerCheck,
-  EventProducerListenerCount,
-  EventProducerNext,
-  EventProducerPipe,
-  EventProducerScan,
-  EventProducerUnpipe,
+  SubscriptionSurface,
+  SubscriptionSurfaceAny,
+  SubscriptionSurfaceListenerCheck,
+  SubscriptionSurfaceListenerCount,
+  SubscriptionSurfaceNext,
+  SubscriptionSurfacePipe,
+  SubscriptionSurfaceScan,
+  SubscriptionSurfaceUnpipe,
   NextResult,
   PipeTarget,
   ScanEventMap,
   ScanParams
-} from './types/eventProducer';
+} from './types/subscriptionSurface';
 import type {ScannableHook} from './types/scannable';
 import type {EventKeys, EventPayload, SubscribableEventKeys} from './types/utility';
 import {over} from './utils/over';
@@ -36,7 +36,7 @@ import {normalizeError} from './utils/normalizeError';
 
 
 @autobind
-export class Bus<TEventMap extends EventMap = EventMap> implements EventProducer<TEventMap> {
+export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionSurface<TEventMap> {
 
   private static defaultOptions: Required<Options> & {thresholds: Required<ListenerThresholds>} = {
     name: 'Anonymous',
@@ -180,7 +180,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements EventProducer
    * Handle multiple events with the same handler.
    * {@link EventSink} receives raised event as first argument, payload as second argument
    */
-  public any: EventProducerAny<TEventMap> = ((
+  public any: SubscriptionSurfaceAny<TEventMap> = ((
     events,
     handler
   ) => {
@@ -190,7 +190,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements EventProducer
         return this.addListener(e, anyHandler);
       })
     ));
-  }) as EventProducerAny<TEventMap>;
+  }) as SubscriptionSurfaceAny<TEventMap>;
 
   /**
    * Utility for resolving/rejecting a promise based on the reception of an event.
@@ -198,7 +198,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements EventProducer
    * @param resolutionTrigger - what event/events should resolve the promise
    * @param rejectionTrigger - what event/events should reject the promise. Must be mutually disjoint with `resolvingEvent`
    */
-  public next: EventProducerNext<TEventMap> = ((
+  public next: SubscriptionSurfaceNext<TEventMap> = ((
     resolutionTrigger,
     rejectionTrigger
   ) => {
@@ -254,7 +254,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements EventProducer
     willDestroyListener = this.hook('willDestroy', () => p.cancel(`${this.name} destroyed`));
 
     return p;
-  }) as EventProducerNext<TEventMap>;
+  }) as SubscriptionSurfaceNext<TEventMap>;
 
   /**
    * Utility for resolving/rejecting a promise based on an evaluation done when an event is triggered.
@@ -275,7 +275,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements EventProducer
    * }
    * ```
    */
-  public scan: EventProducerScan<TEventMap> = (<
+  public scan: SubscriptionSurfaceScan<TEventMap> = (<
     T = any,
     TMap extends ScanEventMap<TEventMap> = TEventMap
   >(
@@ -306,15 +306,15 @@ export class Bus<TEventMap extends EventMap = EventMap> implements EventProducer
     }
 
     return this.scannerPools.scan<T>(this, scanParams);
-  }) as EventProducerScan<TEventMap>;
+  }) as SubscriptionSurfaceScan<TEventMap>;
 
   /**
    * Pipe events into another bus, or into a function sink.
    * Function sinks receive the raised event as the first argument and payload as the second.
    */
-  public pipe: EventProducerPipe<TEventMap> = ((
+  public pipe: SubscriptionSurfacePipe<TEventMap> = ((
     dest: EventSink<TEventMap> | PipeTarget<TEventMap>
-  ): Subscription | EventProducer<TEventMap> => {
+  ): Subscription | SubscriptionSurface<TEventMap> => {
     if(typeof dest === 'function') {
       const sink = dest as EventSink<TEventMap>;
       this._eventSinks.set(sink, this.addListener(WILDCARD, sink));
@@ -333,9 +333,9 @@ export class Bus<TEventMap extends EventMap = EventMap> implements EventProducer
       }
       return bus;
     }
-  }) as EventProducerPipe<TEventMap>;
+  }) as SubscriptionSurfacePipe<TEventMap>;
 
-  public unpipe: EventProducerUnpipe<TEventMap> = ((
+  public unpipe: SubscriptionSurfaceUnpipe<TEventMap> = ((
     dest
   ) => {
     if(typeof dest === 'function') {
@@ -346,7 +346,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements EventProducer
       over(this.pipeTargets.get(bus) || [])();
       this.pipeTargets.delete(bus);
     }
-  }) as EventProducerUnpipe<TEventMap>;
+  }) as SubscriptionSurfaceUnpipe<TEventMap>;
 
   /**
    * Subscribe to meta changes to the {@link Bus} with {@link Lifecycle} events
@@ -444,45 +444,45 @@ export class Bus<TEventMap extends EventMap = EventMap> implements EventProducer
     return this._cachedGetOwnListenersValue;
   }
 
-  public hasListenersFor: EventProducerListenerCheck<TEventMap> = ((
+  public hasListenersFor: SubscriptionSurfaceListenerCheck<TEventMap> = ((
     event
   ) => {
     return this.getListenerCountFor(event) > 0;
-  }) as EventProducerListenerCheck<TEventMap>;
+  }) as SubscriptionSurfaceListenerCheck<TEventMap>;
 
-  public hasOwnListenersFor: EventProducerListenerCheck<TEventMap> = ((
+  public hasOwnListenersFor: SubscriptionSurfaceListenerCheck<TEventMap> = ((
     event
   ) => {
     return this.getOwnListenerCountFor(event) > 0;
-  }) as EventProducerListenerCheck<TEventMap>;
+  }) as SubscriptionSurfaceListenerCheck<TEventMap>;
 
-  public hasDelegateListenersFor: EventProducerListenerCheck<TEventMap> = ((
+  public hasDelegateListenersFor: SubscriptionSurfaceListenerCheck<TEventMap> = ((
     event
   ) => {
     return this.getDelegateListenerCountFor(event) > 0;
-  }) as EventProducerListenerCheck<TEventMap>;
+  }) as SubscriptionSurfaceListenerCheck<TEventMap>;
 
   public get listenerCount(): number {
     return this.bus.size + this._pipeTargetListenerTotalCount;
   }
 
-  public getListenerCountFor: EventProducerListenerCount<TEventMap> = ((
+  public getListenerCountFor: SubscriptionSurfaceListenerCount<TEventMap> = ((
     event
   ) => {
     return this.getOwnListenerCountFor(event) + this.getDelegateListenerCountFor(event);
-  }) as EventProducerListenerCount<TEventMap>;
+  }) as SubscriptionSurfaceListenerCount<TEventMap>;
 
-  public getOwnListenerCountFor: EventProducerListenerCount<TEventMap> = ((
+  public getOwnListenerCountFor: SubscriptionSurfaceListenerCount<TEventMap> = ((
     event
   ) => {
     return this.bus.get(event)?.size ?? 0;
-  }) as EventProducerListenerCount<TEventMap>;
+  }) as SubscriptionSurfaceListenerCount<TEventMap>;
 
-  public getDelegateListenerCountFor: EventProducerListenerCount<TEventMap> = ((
+  public getDelegateListenerCountFor: SubscriptionSurfaceListenerCount<TEventMap> = ((
     event
   ) => {
     return (this._pipeTargetListenerCountsByEvent.get(event) ?? 0);
-  }) as EventProducerListenerCount<TEventMap>;
+  }) as SubscriptionSurfaceListenerCount<TEventMap>;
 
   /**
    * Remove all event subscribers, lifecycle subscribers, and delegates.
@@ -697,7 +697,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements EventProducer
 }
 
 
-export interface Bus<TEventMap extends EventMap = EventMap> extends EventProducer<TEventMap> {
+export interface Bus<TEventMap extends EventMap = EventMap> extends SubscriptionSurface<TEventMap> {
   emit<T extends EventKeys<TEventMap>>(event: T, ...payload: EventPayload<TEventMap, T>): boolean;
 
   listeners: ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;

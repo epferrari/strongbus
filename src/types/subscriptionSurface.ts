@@ -25,37 +25,37 @@ interface ScanParamsObject<T, in out TEventMap extends EventMap, in out TMap ext
 export type ScanParams<T, TEventMap extends EventMap, TMap extends ScanEventMap<TEventMap>> =
   ScanParamsObject<T, TEventMap, TMap>['bivarianceHack'];
 
-interface EventProducerScanObject<in out TEventMap extends EventMap> {
+interface SubscriptionSurfaceScanObject<in out TEventMap extends EventMap> {
   bivarianceHack<
     T = any,
     TMap extends ScanEventMap<TEventMap> = TEventMap
   >(params: ScanParams<T, TEventMap, TMap>): CancelablePromise<T>;
 }
 
-export type EventProducerScan<TEventMap extends EventMap> =
-  EventProducerScanObject<TEventMap>['bivarianceHack'];
+export type SubscriptionSurfaceScan<TEventMap extends EventMap> =
+  SubscriptionSurfaceScanObject<TEventMap>['bivarianceHack'];
 
-interface EventProducerAnyObject<in out TEventMap extends EventMap> {
+interface SubscriptionSurfaceAnyObject<in out TEventMap extends EventMap> {
   bivarianceHack<
     TMap extends AnyEventMap<TEventMap>,
     TEvents extends SubscribableEventKeys<TMap>[] & SubscribableEventKeys<TEventMap>[]
   >(events: TEvents, handler: EventSink<TMap>): Subscription;
 }
 
-export type EventProducerAny<TEventMap extends EventMap> =
-  EventProducerAnyObject<TEventMap>['bivarianceHack'];
+export type SubscriptionSurfaceAny<TEventMap extends EventMap> =
+  SubscriptionSurfaceAnyObject<TEventMap>['bivarianceHack'];
 
-interface EventProducerPipeObject<in out TEventMap extends EventMap> {
+interface SubscriptionSurfacePipeObject<in out TEventMap extends EventMap> {
   bivarianceHack: {
     <TMap extends PipeEventMap<TEventMap>>(sink: EventSink<TMap>): Subscription;
-    <TDelegate extends PipeTarget<TEventMap>>(delegate: TDelegate): TDelegate & EventProducer<TEventMap>;
+    <TDelegate extends PipeTarget<TEventMap>>(delegate: TDelegate): TDelegate & SubscriptionSurface<TEventMap>;
   };
 }
 
-export type EventProducerPipe<TEventMap extends EventMap> =
-  EventProducerPipeObject<TEventMap>['bivarianceHack'];
+export type SubscriptionSurfacePipe<TEventMap extends EventMap> =
+  SubscriptionSurfacePipeObject<TEventMap>['bivarianceHack'];
 
-interface EventProducerNextObject<in out TEventMap extends EventMap> {
+interface SubscriptionSurfaceNextObject<in out TEventMap extends EventMap> {
   bivarianceHack<T extends Listenable<EventKeys<TEventMap>>>(
     resolutionTrigger: T,
     rejectionTrigger?: T extends WILDCARD
@@ -68,15 +68,15 @@ interface EventProducerNextObject<in out TEventMap extends EventMap> {
   ): CancelablePromise<NextResult<TEventMap, T>>;
 }
 
-export type EventProducerNext<TEventMap extends EventMap> =
-  EventProducerNextObject<TEventMap>['bivarianceHack'];
+export type SubscriptionSurfaceNext<TEventMap extends EventMap> =
+  SubscriptionSurfaceNextObject<TEventMap>['bivarianceHack'];
 
-interface EventProducerUnpipeObject<in out TEventMap extends EventMap> {
+interface SubscriptionSurfaceUnpipeObject<in out TEventMap extends EventMap> {
   bivarianceHack<TDelegate extends (PipeTarget<TEventMap>|EventSink<TEventMap>)>(dest: TDelegate): void;
 }
 
-export type EventProducerUnpipe<TEventMap extends EventMap> =
-  EventProducerUnpipeObject<TEventMap>['bivarianceHack'];
+export type SubscriptionSurfaceUnpipe<TEventMap extends EventMap> =
+  SubscriptionSurfaceUnpipeObject<TEventMap>['bivarianceHack'];
 
 interface EventListenerMapKeyObject<in out TEventMap extends EventMap> {
   bivarianceHack: EventKeys<TEventMap>|WILDCARD;
@@ -85,19 +85,19 @@ interface EventListenerMapKeyObject<in out TEventMap extends EventMap> {
 export type EventListenerMapKey<TEventMap extends EventMap> =
   EventListenerMapKeyObject<TEventMap>['bivarianceHack'];
 
-interface EventProducerListenerCheckObject<in out TEventMap extends EventMap> {
+interface SubscriptionSurfaceListenerCheckObject<in out TEventMap extends EventMap> {
   bivarianceHack(event: EventListenerMapKey<TEventMap>): boolean;
 }
 
-export type EventProducerListenerCheck<TEventMap extends EventMap> =
-  EventProducerListenerCheckObject<TEventMap>['bivarianceHack'];
+export type SubscriptionSurfaceListenerCheck<TEventMap extends EventMap> =
+  SubscriptionSurfaceListenerCheckObject<TEventMap>['bivarianceHack'];
 
-interface EventProducerListenerCountObject<in out TEventMap extends EventMap> {
+interface SubscriptionSurfaceListenerCountObject<in out TEventMap extends EventMap> {
   bivarianceHack(event: EventListenerMapKey<TEventMap>): number;
 }
 
-export type EventProducerListenerCount<TEventMap extends EventMap> =
-  EventProducerListenerCountObject<TEventMap>['bivarianceHack'];
+export type SubscriptionSurfaceListenerCount<TEventMap extends EventMap> =
+  SubscriptionSurfaceListenerCountObject<TEventMap>['bivarianceHack'];
 
 export type NextResult<TEventMap extends EventMap, T> =
   T extends WILDCARD
@@ -114,18 +114,18 @@ export type NextResult<TEventMap extends EventMap, T> =
  * on {@link Bus} only, since {@link ReadonlyMap} keys are invariant in
  * {@link TEventMap} and would break contravariant views.
  */
-export interface EventProducer<in out TEventMap extends EventMap = EventMap> extends Scannable<TEventMap> {
+export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMap> extends Scannable<TEventMap> {
   once<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription;
 
-  any: EventProducerAny<TEventMap>;
+  any: SubscriptionSurfaceAny<TEventMap>;
 
-  next: EventProducerNext<TEventMap>;
+  next: SubscriptionSurfaceNext<TEventMap>;
 
-  scan: EventProducerScan<TEventMap>;
+  scan: SubscriptionSurfaceScan<TEventMap>;
 
-  pipe: EventProducerPipe<TEventMap>;
+  pipe: SubscriptionSurfacePipe<TEventMap>;
 
-  unpipe: EventProducerUnpipe<TEventMap>;
+  unpipe: SubscriptionSurfaceUnpipe<TEventMap>;
 
   monitor(handler: (activeState: boolean) => void): Subscription;
 
@@ -137,20 +137,20 @@ export interface EventProducer<in out TEventMap extends EventMap = EventMap> ext
 
   readonly listenerCount: number;
 
-  hasListenersFor: EventProducerListenerCheck<TEventMap>;
-  hasOwnListenersFor: EventProducerListenerCheck<TEventMap>;
-  hasDelegateListenersFor: EventProducerListenerCheck<TEventMap>;
+  hasListenersFor: SubscriptionSurfaceListenerCheck<TEventMap>;
+  hasOwnListenersFor: SubscriptionSurfaceListenerCheck<TEventMap>;
+  hasDelegateListenersFor: SubscriptionSurfaceListenerCheck<TEventMap>;
 
-  getListenerCountFor: EventProducerListenerCount<TEventMap>;
-  getOwnListenerCountFor: EventProducerListenerCount<TEventMap>;
-  getDelegateListenerCountFor: EventProducerListenerCount<TEventMap>;
+  getListenerCountFor: SubscriptionSurfaceListenerCount<TEventMap>;
+  getOwnListenerCountFor: SubscriptionSurfaceListenerCount<TEventMap>;
+  getDelegateListenerCountFor: SubscriptionSurfaceListenerCount<TEventMap>;
 
   destroy(): void;
 }
 
 /** A delegate that can receive piped events via {@link Bus.emit}. */
 export type PipeTarget<TEventMap extends EventMap> = {
-  bivarianceHack: EventProducer<TEventMap> & {
+  bivarianceHack: SubscriptionSurface<TEventMap> & {
     emit<T extends EventKeys<TEventMap>>(event: T, ...payload: EventPayload<TEventMap, T>): boolean;
   };
 }['bivarianceHack'];

@@ -1,7 +1,7 @@
 import {Bus} from './strongbus';
 import {Scanner} from './scanner';
 import {WILDCARD} from './types/events';
-import type {EventProducer} from './types/eventProducer';
+import type {SubscriptionSurface} from './types/subscriptionSurface';
 
 /**
  * These specs are primarily *compile-time* assertions. The test pipeline runs
@@ -256,12 +256,12 @@ describe('type safety', () => {
       bus.getDelegateListenerCountFor('qux');
     });
 
-    typeChecks.push(function eventProducerViewAcceptsKnownEvents(): void {
-      const producer: EventProducer<TestEventMap> = new Bus<TestEventMap>();
+    typeChecks.push(function subscriptionSurfaceViewAcceptsKnownEvents(): void {
+      const surface: SubscriptionSurface<TestEventMap> = new Bus<TestEventMap>();
 
-      producer.hasListenersFor('foo');
-      producer.getOwnListenerCountFor('bar');
-      producer.getDelegateListenerCountFor(WILDCARD);
+      surface.hasListenersFor('foo');
+      surface.getOwnListenerCountFor('bar');
+      surface.getDelegateListenerCountFor(WILDCARD);
     });
   });
 
@@ -346,13 +346,13 @@ describe('type safety', () => {
       });
     });
 
-    typeChecks.push(function wideBusSatisfiesNarrowEventProducer(): void {
+    typeChecks.push(function wideBusSatisfiesNarrowSubscriptionSurface(): void {
       const evaluator: Scanner.Evaluator<boolean, Narrow> = resolve => {
         resolve(true);
       };
 
       const wide = new Bus<Wide>();
-      const narrow: EventProducer<Narrow> = wide;
+      const narrow: SubscriptionSurface<Narrow> = wide;
 
       narrow.scan({evaluator, trigger: 'foo'});
       expectType<boolean>(narrow.hasListenersFor('foo'));
