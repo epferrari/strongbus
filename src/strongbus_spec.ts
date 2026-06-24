@@ -662,9 +662,9 @@ describe('Strongbus.Bus', () => {
           expect(bus2.emit).toHaveBeenCalledWith('foo', 'woot');
           expect(bus3.emit).toHaveBeenCalledWith('foo', 'woot');
 
-          bus2.emit('bar', null);
-          expect(bus.emit).not.toHaveBeenCalledWith('bar', null);
-          expect(bus3.emit).toHaveBeenCalledWith('bar', null);
+          bus2.emit('bar', false);
+          expect((bus.emit as jasmine.Spy)).not.toHaveBeenCalledWith('bar', false);
+          expect(bus3.emit).toHaveBeenCalledWith('bar', false);
         });
       });
 

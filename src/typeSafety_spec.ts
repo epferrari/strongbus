@@ -1,6 +1,7 @@
 import {Bus} from './strongbus';
 import {Scanner} from './scanner';
 import {WILDCARD} from './types/events';
+import type {EventProducer} from './types/eventProducer';
 
 /**
  * These specs are primarily *compile-time* assertions. The test pipeline runs
@@ -281,6 +282,20 @@ describe('type safety', () => {
         expectType<keyof Wide>(event);
         expectType<Wide[keyof Wide]>(payload);
       });
+    });
+
+    typeChecks.push(function wideBusSatisfiesNarrowEventProducer(): void {
+      const evaluator: Scanner.Evaluator<boolean, Narrow> = resolve => {
+        resolve(true);
+      };
+
+      const wide = new Bus<Wide>();
+      const narrow: EventProducer<Narrow> = wide;
+
+      narrow.scan({evaluator, trigger: 'foo'});
+
+      // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
+      narrow.scan({evaluator, trigger: 'baz'});
     });
   });
 

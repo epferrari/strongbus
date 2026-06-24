@@ -3,15 +3,28 @@ import {autobind} from 'core-decorators';
 import {type CancelablePromise, cancelable, timeout} from 'jaasync';
 
 import {Scanner} from './scanner';
-import {ScannerPools, type ScanParams} from './scannerPools';
+import {ScannerPools, type ScanParams as InternalScanParams} from './scannerPools';
 import {StrongbusLogger} from './strongbusLogger';
-import {type Subscription, type EventMap, type Listenable, WILDCARD} from './types/events';
+import {type Subscription, type EventMap, WILDCARD} from './types/events';
 import type {SingleEventHandler, EventSink, GenericHandler} from './types/eventHandlers';
 import {Lifecycle} from './types/lifecycle';
 import type {Logger} from './types/logger';
 import type {Options, ListenerThresholds} from './types/options';
-import type {Scannable} from './types/scannable';
-import type {EventKeys, EventPayload, EventPayloadPair, SubscribableEventKeys} from './types/utility';
+import type {
+  AnyEventMap,
+  EventProducer,
+  EventProducerAny,
+  EventProducerNext,
+  EventProducerPipe,
+  EventProducerScan,
+  EventProducerUnpipe,
+  NextResult,
+  PipeTarget,
+  ScanEventMap,
+  ScanParams
+} from './types/eventProducer';
+import type {ScannableHook} from './types/scannable';
+import type {EventKeys, EventPayload, SubscribableEventKeys} from './types/utility';
 import {over} from './utils/over';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {randomId} from './utils/randomId';
@@ -21,7 +34,7 @@ import {normalizeError} from './utils/normalizeError';
 
 
 @autobind
-export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEventMap> {
+export class Bus<TEventMap extends EventMap = EventMap> implements EventProducer<TEventMap> {
 
   private static defaultOptions: Required<Options> & {thresholds: Required<ListenerThresholds>} = {
     name: 'Anonymous',
@@ -165,17 +178,17 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
    * Handle multiple events with the same handler.
    * {@link EventSink} receives raised event as first argument, payload as second argument
    */
-  public any<
-    TMap extends AnyEventMap<TEventMap>,
-    TEvents extends SubscribableEventKeys<TMap>[] & SubscribableEventKeys<TEventMap>[]
-  >(events: TEvents, handler: EventSink<TMap>): Subscription {
+  public any: EventProducerAny<TEventMap> = ((
+    events,
+    handler
+  ) => {
     return subscriptionWrapper(over(
       (events as EventKeys<TEventMap>[]).map((e) => {
-        const anyHandler = (payload: TEventMap[typeof e]) => handler(e as EventKeys<TMap>, payload as any);
+        const anyHandler = (payload: TEventMap[typeof e]) => handler(e as EventKeys<AnyEventMap<TEventMap>>, payload as any);
         return this.addListener(e, anyHandler);
       })
     ));
-  }
+  }) as EventProducerAny<TEventMap>;
 
   /**
    * Utility for resolving/rejecting a promise based on the reception of an event.
@@ -183,17 +196,11 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
    * @param resolutionTrigger - what event/events should resolve the promise
    * @param rejectionTrigger - what event/events should reject the promise. Must be mutually disjoint with `resolvingEvent`
    */
-  public next<T extends Listenable<EventKeys<TEventMap>>>(
-    resolutionTrigger: T,
-    // this ensures the resolving and rejecting events are disjoint sets
-    rejectionTrigger?: T extends WILDCARD
-      ? never
-      : T extends EventKeys<TEventMap>[]
-        ? EventKeys<Omit<TEventMap, T[number]>>|EventKeys<Omit<TEventMap, T[number]>>[]
-        : T extends EventKeys<TEventMap>
-          ? EventKeys<Omit<TEventMap, T>>|EventKeys<Omit<TEventMap, T>>[]
-          : never
-  ): CancelablePromise<NextResult<TEventMap, T>> {
+  public next: EventProducerNext<TEventMap> = ((
+    resolutionTrigger,
+    rejectionTrigger
+  ) => {
+    type T = typeof resolutionTrigger;
     type TResult = NextResult<TEventMap, T>;
     let settled: boolean = false;
     let resolveInternalPromise: (value: TResult) => void;
@@ -245,7 +252,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
     willDestroyListener = this.hook('willDestroy', () => p.cancel(`${this.name} destroyed`));
 
     return p;
-  }
+  }) as EventProducerNext<TEventMap>;
 
   /**
    * Utility for resolving/rejecting a promise based on an evaluation done when an event is triggered.
@@ -266,18 +273,13 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
    * }
    * ```
    */
-  public scan<
+  public scan: EventProducerScan<TEventMap> = (<
     T = any,
     TMap extends ScanEventMap<TEventMap> = TEventMap
   >(
-    params: {
-      evaluator: Scanner.Evaluator<T, TMap>;
-      trigger: Listenable<EventKeys<TMap>> & Listenable<EventKeys<TEventMap>>;
-      eager?: boolean;
-      pool?: boolean;
-      timeout?: number;
-  }): CancelablePromise<T> {
-    const scanParams = params as unknown as ScanParams<T, TEventMap>;
+    params: ScanParams<T, TEventMap, TMap>
+  ): CancelablePromise<T> => {
+    const scanParams = params as unknown as InternalScanParams<T, TEventMap>;
 
     if(params.timeout && params.timeout > 0) {
       const scanner = new Scanner<T>(scanParams);
@@ -302,15 +304,15 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
     }
 
     return this.scannerPools.scan<T>(this, scanParams);
-  }
+  }) as EventProducerScan<TEventMap>;
 
   /**
    * Pipe events into another bus, or into a function sink.
    * Function sinks receive the raised event as the first argument and payload as the second.
    */
-  public pipe<TMap extends PipeEventMap<TEventMap>>(sink: EventSink<TMap>): Subscription;
-  public pipe<TDelegate extends PipeTarget<TEventMap>>(delegate: TDelegate): TDelegate & Bus<TEventMap>;
-  public pipe(dest: EventSink<TEventMap> | PipeTarget<TEventMap>): Subscription | Bus<TEventMap> {
+  public pipe: EventProducerPipe<TEventMap> = ((
+    dest: EventSink<TEventMap> | PipeTarget<TEventMap>
+  ): Subscription | EventProducer<TEventMap> => {
     if(typeof dest === 'function') {
       const sink = dest as EventSink<TEventMap>;
       this._eventSinks.set(sink, this.addListener(WILDCARD, sink));
@@ -329,25 +331,31 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
       }
       return bus;
     }
-  }
+  }) as EventProducerPipe<TEventMap>;
 
-  public unpipe<TDelegate extends (PipeTarget<TEventMap>|EventSink<TEventMap>)>(dest: TDelegate): void {
+  public unpipe: EventProducerUnpipe<TEventMap> = ((
+    dest
+  ) => {
     if(typeof dest === 'function') {
       this._eventSinks.get(dest)?.();
       this._eventSinks.delete(dest);
     } else {
-      over(this.pipeTargets.get(dest) || [])();
-      this.pipeTargets.delete(dest);
+      const bus = dest as Bus<TEventMap>;
+      over(this.pipeTargets.get(bus) || [])();
+      this.pipeTargets.delete(bus);
     }
-  }
+  }) as EventProducerUnpipe<TEventMap>;
 
   /**
    * Subscribe to meta changes to the {@link Bus} with {@link Lifecycle} events
    */
-  public hook<L extends Lifecycle>(event: L, handler: (payload: Lifecycle.EventMap<TEventMap>[L]) => void): Subscription {
+  public hook: ScannableHook<TEventMap> = ((
+    event,
+    handler
+  ) => {
     addListener(this.lifecycle, event, handler);
     return subscriptionWrapper(() => removeListener(this.lifecycle, event, handler));
-  }
+  }) as ScannableHook<TEventMap>;
 
   /**
    * Subscribe to meta states of the {@link Bus}, `idle` and `active`.
@@ -675,24 +683,20 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
 }
 
 
-type NextResult<TEventMap extends EventMap, T> =
-  T extends WILDCARD
-    ? EventPayloadPair<TEventMap, EventKeys<TEventMap>>
-    : T extends EventKeys<TEventMap>[]
-      ? EventPayloadPair<TEventMap, T[number]>
-      : T extends EventKeys<TEventMap>
-        ? EventPayloadPair<TEventMap, T>
-        : never;
+export interface Bus<TEventMap extends EventMap = EventMap> extends EventProducer<TEventMap> {
+  emit<T extends EventKeys<TEventMap>>(event: T, ...payload: EventPayload<TEventMap, T>): boolean;
 
-type AnyEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
+  listeners: ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
+  ownListeners: ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
 
-type PipeEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
+  hasListenersFor(event: EventKeys<TEventMap>|WILDCARD): boolean;
+  hasOwnListenersFor(event: EventKeys<TEventMap>|WILDCARD): boolean;
+  hasDelegateListenersFor(event: EventKeys<TEventMap>|WILDCARD): boolean;
 
-type ScanEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
-
-type PipeTarget<TEventMap extends EventMap> = {
-  bivarianceHack: Bus<TEventMap>;
-}['bivarianceHack'];
+  getListenerCountFor(event: EventKeys<TEventMap>|WILDCARD): number;
+  getOwnListenerCountFor(event: EventKeys<TEventMap>|WILDCARD): number;
+  getDelegateListenerCountFor(event: EventKeys<TEventMap>|WILDCARD): number;
+}
 
 
 /**
