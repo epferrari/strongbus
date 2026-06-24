@@ -9,6 +9,8 @@ memory-leak detection.
 
 [API Documentation](https://epferrari.github.io/strongbus)
 
+[Migrating from v2 -> v3](./CHANGELOG.md#migrating-from-v2-to-v3)
+
 ## Features
 
 - **Type-safe by construction** — payloads are inferred from your event map; unknown events and mismatched
