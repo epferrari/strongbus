@@ -10,7 +10,8 @@
     "rootDir": "./src",
     "outDir": "./lib",
     "declaration": true,
-    "strictNullChecks": false
+    "strictNullChecks": false,
+    "strictFunctionTypes": true
   },
   "compileOnSave": false
 }
