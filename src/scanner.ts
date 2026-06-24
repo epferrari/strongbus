@@ -1,12 +1,12 @@
 import {autobind} from 'core-decorators';
-import {CancelablePromise, Deferred} from 'jaasync';
+import {type CancelablePromise, Deferred} from 'jaasync';
 
-import {EventMap, Subscription} from './types/events';
+import type {EventMap, Subscription, Listenable} from './types/events';
 import {Lifecycle} from './types/lifecycle';
 import {Scannable} from './types/scannable';
-import {EventKeys} from './types/utility';
+import type {EventKeys} from './types/utility';
 import {over} from './utils/over';
-import {ListenableSubscriber, subscribeListenable} from './utils/subscribeListenable';
+import {type ListenableSubscriber, subscribeListenable} from './utils/subscribeListenable';
 
 
 export namespace Scanner {

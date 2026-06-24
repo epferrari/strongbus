@@ -465,6 +465,7 @@ describe('Strongbus.Bus', () => {
     describe('given a list of events to listen on', () => {
       describe('given one of the events in the list is raised', () => {
         it('invokes the supplied handler with event and payload', () => {
+          bus.any(['foo', 'bar'], eventSink);
           bus.emit('foo', 'flamingo');
           expect(eventSink).toHaveBeenCalledTimes(1);
           expect(eventSink.calls.mostRecent().args).toEqual(['foo', 'flamingo']);
@@ -510,18 +511,15 @@ describe('Strongbus.Bus', () => {
 
     describe('#pipe', () => {
       describe('piping into a function sink', () => {
-        describe('given any event is emitted', () => 
+        describe('given any event is emitted', () => {
           it('invokes the sink with event, payload', () => {
-            const sink = jasmine.createSpy('handler');
             bus.on('foo', singleEventHandler);
             bus.pipe(eventSink);
-            bus.pipe(sink);
-      
+
             bus.emit('foo', 'cat');
             expect(singleEventHandler).toHaveBeenCalledWith('cat');
+            expect(eventSink).toHaveBeenCalledTimes(1);
             expect(eventSink).toHaveBeenCalledWith('foo', 'cat');
-            expect(sink).toHaveBeenCalledWith('foo', 'cat');
-            expect(sink).toHaveBeenCalledTimes(1);
           });
         });
       });

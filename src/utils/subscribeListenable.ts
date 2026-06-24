@@ -1,4 +1,4 @@
-import {type EventMap, type Subscription, WILDCARD} from '../types/events';
+import {type EventMap, type Subscription, WILDCARD, type Listenable} from '../types/events';
 import type {SingleEventHandler, EventSink} from '../types/eventHandlers';
 import type {EventKeys} from '../types/utility';
 

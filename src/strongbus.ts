@@ -4,9 +4,9 @@ import {type CancelablePromise, cancelable, timeout} from 'jaasync';
 
 import {Scanner} from './scanner';
 import {StrongbusLogger} from './strongbusLogger';
-import {type Subscription, type EventMap, WILDCARD} from './types/events';
+import {type Subscription, type EventMap, type Listenable, WILDCARD} from './types/events';
 import type {SingleEventHandler, EventSink, GenericHandler} from './types/eventHandlers';
-import type {Lifecycle} from './types/lifecycle';
+import {Lifecycle} from './types/lifecycle';
 import type {Logger} from './types/logger';
 import type {Options, ListenerThresholds} from './types/options';
 import type {Scannable} from './types/scannable';
@@ -454,24 +454,26 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
    * Pipe events into another bus, or into a function sink.
    * Function sinks receive the raised event as the first argument and payload as the second.
    */
-  public pipe<TDelegate extends (Bus<TEventMap>|EventSink<TEventMap>)>(delegate: TDelegate): TDelegate extends EventSink<TEventMap> ? Subscription : TDelegate & Bus<TEventMap> {
+  public pipe(sink: EventSink<TEventMap>): Subscription;
+  public pipe<TDelegate extends Bus<TEventMap>>(delegate: TDelegate): TDelegate & Bus<TEventMap>;
+  public pipe(delegate: EventSink<TEventMap> | Bus<TEventMap>): Subscription | Bus<TEventMap> {
     if(typeof delegate === 'function') {
-      delegate satisfies EventSink<TEventMap>;
-      this._eventSinks.set(delegate, this.addListener(WILDCARD, delegate));
-      return subscriptionWrapper(() => this.unpipe(delegate));
+      const sink = delegate as EventSink<TEventMap>;
+      this._eventSinks.set(sink, this.addListener(WILDCARD, sink));
+      return subscriptionWrapper(() => this.unpipe(sink));
     } else {
-      delegate satisfies Bus<TEventMap>;
-      if(delegate !== this as any) {
-        if(!this._delegates.has(delegate)) {
-          this._delegates.set(delegate, [
-            delegate.hook(Lifecycle.willAddListener, this.willAddListener),
-            delegate.hook(Lifecycle.didAddListener, event => this.didAddListener(event, delegate)),
-            delegate.hook(Lifecycle.willRemoveListener, this.willRemoveListener),
-            delegate.hook(Lifecycle.didRemoveListener, event => this.didRemoveListener(event, delegate))
+      const bus = delegate as Bus<TEventMap>;
+      if(bus !== this as any) {
+        if(!this._delegates.has(bus)) {
+          this._delegates.set(bus, [
+            bus.hook(Lifecycle.willAddListener, this.willAddListener),
+            bus.hook(Lifecycle.didAddListener, event => this.didAddListener(event, bus)),
+            bus.hook(Lifecycle.willRemoveListener, this.willRemoveListener),
+            bus.hook(Lifecycle.didRemoveListener, event => this.didRemoveListener(event, bus))
           ]);
         }
       }
-      return delegate as TDelegate & Bus<TEventMap>;
+      return bus;
     }
   }
 
