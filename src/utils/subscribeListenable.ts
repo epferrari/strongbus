@@ -1,10 +1,10 @@
 import {type EventMap, type Subscription, WILDCARD, type Listenable} from '../types/events';
 import type {SingleEventHandler, EventSink} from '../types/eventHandlers';
-import type {EventKeys} from '../types/utility';
+import type {EventKeys, SubscribableEventKeys} from '../types/utility';
 
 export interface ListenableSubscriber<TEventMap extends EventMap> {
-  on<T extends EventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription;
-  any<TEvents extends EventKeys<TEventMap>[]>(events: TEvents, handler: EventSink<TEventMap>): Subscription;
+  on<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription;
+  any<TEvents extends SubscribableEventKeys<TEventMap>[]>(events: TEvents, handler: EventSink<TEventMap>): Subscription;
   pipe(handler: EventSink<TEventMap>): Subscription;
 }
 
@@ -14,10 +14,10 @@ export function subscribeListenable<TEventMap extends EventMap>(
   handler: EventSink<TEventMap>
 ): Subscription {
   if(Array.isArray(listenable)) {
-    return target.any(listenable, handler);
+    return target.any(listenable as SubscribableEventKeys<TEventMap>[], handler);
   }
   if(listenable === WILDCARD) {
     return target.pipe(handler);
   }
-  return target.on(listenable, (payload) => handler(listenable, payload));
+  return target.on(listenable as SubscribableEventKeys<TEventMap>, (payload) => handler(listenable, payload));
 }

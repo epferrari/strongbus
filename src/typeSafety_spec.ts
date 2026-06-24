@@ -1,5 +1,6 @@
 import {Bus} from './strongbus';
 import {Scanner} from './scanner';
+import {WILDCARD} from './types/events';
 
 /**
  * These specs are primarily *compile-time* assertions. The test pipeline runs
@@ -13,6 +14,10 @@ describe('type safety', () => {
     foo: number;
     bar: string;
     baz: void;
+  }
+
+  interface WildcardEventMap extends TestEventMap {
+    '*': unknown;
   }
 
   // asserts at compile time that `value` is assignable to `T`
@@ -41,6 +46,14 @@ describe('type safety', () => {
       // @ts-expect-error 'foo' carries a number payload, not a string
       bus.on('foo', (payload: string) => undefined);
     });
+
+    typeChecks.push(function rejectsWildcard(): void {
+      const bus = new Bus<WildcardEventMap>();
+      // @ts-expect-error WILDCARD is reserved for internal use
+      bus.on(WILDCARD, () => undefined);
+      // @ts-expect-error WILDCARD is reserved for internal use
+      bus.on('*', () => undefined);
+    });
   });
 
   describe('#once', () => {
@@ -60,6 +73,14 @@ describe('type safety', () => {
       // @ts-expect-error 'bar' carries a string payload, not a number
       bus.once('bar', (payload: number) => undefined);
     });
+
+    typeChecks.push(function rejectsWildcard(): void {
+      const bus = new Bus<WildcardEventMap>();
+      // @ts-expect-error WILDCARD is reserved for internal use
+      bus.once(WILDCARD, () => undefined);
+      // @ts-expect-error WILDCARD is reserved for internal use
+      bus.once('*', () => undefined);
+    });
   });
 
   describe('#any', () => {
@@ -75,6 +96,16 @@ describe('type safety', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'qux' is not a key of TestEventMap
       bus.any(['foo', 'qux'], () => undefined);
+    });
+
+    typeChecks.push(function rejectsWildcard(): void {
+      const bus = new Bus<WildcardEventMap>();
+      // @ts-expect-error WILDCARD is reserved for internal use
+      bus.any([WILDCARD], () => undefined);
+      // @ts-expect-error WILDCARD is reserved for internal use
+      bus.any(['*'], () => undefined);
+      // @ts-expect-error WILDCARD is reserved for internal use
+      bus.any(['foo', '*'], () => undefined);
     });
   });
 

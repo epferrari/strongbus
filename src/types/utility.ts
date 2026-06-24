@@ -1,6 +1,9 @@
-import type {EventMap} from './events';
+import type {EventMap, WILDCARD} from './events';
 
 export type EventKeys<T extends EventMap> = keyof T;
+
+/** Event keys that may be passed to {@link Bus.on}, {@link Bus.once}, and {@link Bus.any}. */
+export type SubscribableEventKeys<T extends EventMap> = Exclude<EventKeys<T>, WILDCARD>;
 
 export type ElementType<ArrayType> = ArrayType extends (infer E)[] ? E : never;
 

@@ -8,4 +8,4 @@ export * from './types/lifecycle';
 export type {Logger, LoggerProvider} from './types/logger';
 export * from './types/options';
 export * from './types/scannable';
-export type {EventKeys} from './types/utility';
+export type {EventKeys, SubscribableEventKeys} from './types/utility';

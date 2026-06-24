@@ -11,7 +11,7 @@ import {Lifecycle} from './types/lifecycle';
 import type {Logger} from './types/logger';
 import type {Options, ListenerThresholds} from './types/options';
 import type {Scannable} from './types/scannable';
-import type {EventKeys, EventPayload, EventPayloadPair} from './types/utility';
+import type {EventKeys, EventPayload, EventPayloadPair, SubscribableEventKeys} from './types/utility';
 import {over} from './utils/over';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {randomId} from './utils/randomId';
@@ -127,14 +127,14 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
   /**
    * Subscribe a callback to an event.
    */
-  public on<T extends EventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription {
+  public on<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription {
     return this.addListener(event, handler);
   }
 
   /**
    * Subscribe a callback to an event. Automatically unsubscribes after the first invocation.
    */
-  public once<T extends EventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription {
+  public once<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription {
     let sub: Subscription;
     const wrapper = ((payload: TEventMap[T]) => {
       sub();
@@ -167,7 +167,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
    */
   public any<
     TMap extends AnyEventMap<TEventMap>,
-    TEvents extends EventKeys<TMap>[] & EventKeys<TEventMap>[]
+    TEvents extends SubscribableEventKeys<TMap>[] & SubscribableEventKeys<TEventMap>[]
   >(events: TEvents, handler: EventSink<TMap>): Subscription {
     return subscriptionWrapper(over(
       (events as EventKeys<TEventMap>[]).map((e) => {
