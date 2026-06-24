@@ -2703,8 +2703,8 @@ describe('Strongbus.Bus', () => {
 
             expect((p1 as any)[INTERNAL_PROMISE] === (p2 as any)[INTERNAL_PROMISE]).toBeFalse();
 
-            p1.catch(e => null);
-            p2.catch(e => null);
+            p1.catch((e: unknown): void => null);
+            p2.catch((e: unknown): void => null);
 
             p1.cancel();
             p2.cancel();

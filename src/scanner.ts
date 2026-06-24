@@ -126,29 +126,28 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
     if(this.settled) {
       return this;
     }
-    (<T extends EventKeys<TEventMap>>() => {
-      const handler: EventHandler<TEventMap, T> = (Array.isArray(listenable) || listenable === Events.WILDCARD)
-      ? ((event: T, payload: TEventMap[T]) => {
+
+    const listener = Array.isArray(listenable) || listenable === Events.WILDCARD
+      ? scannable.on(listenable, ((event, payload) => {
           this.evaluate({
             type: 'event',
             event,
             payload
           });
-        }) as any
-      : ((payload: TEventMap[T]) => {
-        this.evaluate({
-          type: 'event',
-          event: listenable,
-          payload
-        });
-      }) as any;
-    const listener = scannable.on(listenable, handler);
+        }) as EventHandler<TEventMap, typeof listenable>)
+      : scannable.on(listenable, ((payload: TEventMap[typeof listenable]) => {
+          this.evaluate({
+            type: 'event',
+            event: listenable,
+            payload
+          });
+        }) as EventHandler<TEventMap, typeof listenable>);
 
     const willDestroyListener = scannable.hook(Lifecycle.willDestroy, async () => {
       willDestroyListener();
       this.willDestroyListeners.delete(willDestroyListener);
       if(this.willDestroyListeners.size === 0) {
-        await this.evaluate<TEventMap, T>({
+        await this.evaluate<any, any>({
           type: 'destroy',
           event: null,
           payload: null
@@ -160,7 +159,6 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
     });
     this.triggerListeners.add(listener);
     this.willDestroyListeners.add(willDestroyListener);
-    })();
 
     return this;
   }
