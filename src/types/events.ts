@@ -1,7 +1,7 @@
 export type Event = string|number|symbol;
 
 /**
- * {[event: [[Event]]]: Payload}
+ * `{[event: Event]: Payload}`
  */
  export type EventMap = object;
 

@@ -1,10 +1,12 @@
 {
   "tsconfig": "./tsconfig.dist.json",
-  "out": "./docs",
   "excludePrivate": true,
   "includeVersion": true,
   "readme": "none",
   "sort": ["required-first"],
+  "validation": {
+    "notExported": false
+  },
   "exclude": [
     "**/*/utils/*",
     "**/*/utility.ts",

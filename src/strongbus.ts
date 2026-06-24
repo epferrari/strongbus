@@ -34,16 +34,14 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   };
 
   /**
-   * Set the default for Bus.options.allowUnhandledEvents for all instances
-   * @setter `boolean`
+   * Set the default for `Bus.options.allowUnhandledEvents` for all instances.
    */
   public static set defaultAllowUnhandledEvents(allow: boolean) {
     Bus.defaultOptions.allowUnhandledEvents = allow;
   }
 
   /**
-   * Set the default Bus.options.thresholds for all instances
-   * @setter Partial<[[ListenerThresholds]]>
+   * Set the default `Bus.options.thresholds` for all instances.
    */
   public static set defaultThresholds(thresholds: Partial<ListenerThresholds>) {
     Bus.defaultOptions.thresholds = {
@@ -53,16 +51,14 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   }
 
   /**
-   * Set the default Bus.options.verbose for all instances
-   * @setter Partial<[[ListenerThresholds]]>
+   * Set the default `Bus.options.verbose` for all instances.
    */
    public static set verbose(verbose: boolean) {
     Bus.defaultOptions.verbose = verbose;
   }
 
   /**
-   * Set the default logger for all instances to an object that implements [[Logger]] interface
-   * @setter [[Logger]]
+   * Set the default logger for all instances to an object that implements the {@link Logger} interface.
    */
   public static set defaultLogger(logger: Logger) {
     Bus.defaultOptions.logger = logger;
@@ -126,8 +122,8 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
 
   /**
    * Subscribe a callback to event(s).
-   * alias of [[Bus.proxy]] when invoked with [[WILDCARD]],
-   * alias of [[Bus.any]] when invoked with an array of events
+   * alias of {@link Bus.proxy} when invoked with {@link WILDCARD},
+   * alias of {@link Bus.any} when invoked with an array of events
    */
   public on<T extends Events.Listenable<EventKeys<TEventMap>>>(event: T, handler: EventHandlers.EventHandler<TEventMap, T>): Events.Subscription {
     if(Array.isArray(event)) {
@@ -158,7 +154,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
 
   /**
    * Handle multiple events with the same handler.
-   * [[EventHandlers.MultiEventHandler]] receives raised event as first argument, payload as second argument
+   * {@link MultiEventHandler} receives raised event as first argument, payload as second argument
    */
   public any<TEvents extends EventKeys<TEventMap>[]>(events: TEvents, handler: EventHandlers.MultiEventHandler<TEventMap, TEvents>): Events.Subscription {
     return generateSubscription(over(
@@ -170,14 +166,14 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   }
 
   /**
-   * Create a proxy for all events raised. Like [[Bus.any]], handlers receive the raised event as first argument and payload as second argument.
+   * Create a proxy for all events raised. Like {@link Bus.any}, handlers receive the raised event as first argument and payload as second argument.
    */
   public proxy(handler: EventHandlers.WildcardEventHandler<TEventMap>): Events.Subscription {
     return this.addListener(Events.WILDCARD, handler);
   }
 
   /**
-   * @alias [[Bus.proxy]]
+   * Alias of {@link Bus.proxy}.
    */
   public every(handler: EventHandlers.WildcardEventHandler<TEventMap>): Events.Subscription {
     return this.proxy(handler);
@@ -499,7 +495,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   }
 
   /**
-   * Subscribe to meta changes to the [[Bus]] with [[Lifecycle]] events
+   * Subscribe to meta changes to the {@link Bus} with {@link Lifecycle} events
    */
   public hook<L extends Lifecycle>(event: L, handler: (payload: Lifecycle.EventMap<TEventMap>[L]) => void): Events.Subscription {
     addListener(this.lifecycle, event, handler);
@@ -507,7 +503,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   }
 
   /**
-   * Subscribe to meta states of the [[Bus]], `idle` and `active`.
+   * Subscribe to meta states of the {@link Bus}, `idle` and `active`.
    * Bus becomes idle when it goes from 1 to 0 subscribers, and active when it goes from 0 to 1.
    * The handler receives a `boolean` indicating if the bus is active (`true`) or idle (`false`)
    */
@@ -519,36 +515,35 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   }
 
   /**
-   * The active state of the bus, i.e. does it have any subscribers. Subscribers include delegates and scanners
-   * @getter `boolean`
+   * The active state of the bus, i.e. does it have any subscribers. Subscribers include delegates and scanners.
    */
   public get active(): boolean {
     return this._active;
   }
 
   /**
-   * @getter `string`
+   * The bus's name, combining the configured `options.name` with the constructor name.
    */
   public get name(): string {
     return `${this.options.name} ${this.constructor.name}`;
   }
 
   /**
-   * @getter `boolean`
+   * Whether the bus has any listeners, including those contributed by delegates.
    */
   public get hasListeners(): boolean {
     return this.hasOwnListeners || this.hasDelegateListeners;
   }
 
   /**
-   * @getter `boolean`
+   * Whether the bus has any listeners registered directly on it (excluding delegates).
    */
   public get hasOwnListeners(): boolean {
     return this.bus.size > 0;
   }
 
   /**
-   * @getter `boolean`
+   * Whether any listeners are contributed by delegate buses.
    */
   public get hasDelegateListeners(): boolean {
     return this._delegateListenerTotalCount > 0;
@@ -621,10 +616,9 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   }
 
   /**
-   * Remove all event subscribers, lifecycle subscribers, and delegates
-   * triggers lifecycle meta events for all subscribed events before removing lifecycle subscribers
-   * @emits [[Lifecycle.willDestroy]]
-   * @event [[Lifecycle.willDestroy]]
+   * Remove all event subscribers, lifecycle subscribers, and delegates.
+   * Triggers lifecycle meta events for all subscribed events before removing
+   * lifecycle subscribers, emitting {@link Lifecycle.willDestroy} during teardown.
    */
   public destroy() {
     this.releaseSubscribers();

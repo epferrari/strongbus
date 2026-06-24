@@ -5,6 +5,7 @@ export {generateSubscription} from './utils/generateSubscription';
 export * from './types/events';
 export * from './types/eventHandlers';
 export * from './types/lifecycle';
+export {Logger, LoggerProvider} from './types/logger';
 export * from './types/options';
 export * from './types/scannable';
 export {EventKeys} from './types/utility';
