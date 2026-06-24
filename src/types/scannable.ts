@@ -1,7 +1,7 @@
-import {Subscription, EventMap} from './events';
-import {SingleEventHandler} from './eventHandlers';
-import {EventKeys} from './utility';
-import {Lifecycle} from './lifecycle';
+import type {Subscription, EventMap} from './events';
+import type {SingleEventHandler} from './eventHandlers';
+import type {EventKeys} from './utility';
+import type {Lifecycle} from './lifecycle';
 
 export interface Scannable<TEventMap extends EventMap> {
   readonly name: string;

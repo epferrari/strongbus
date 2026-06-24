@@ -1,10 +1,10 @@
 export {Bus} from './strongbus';
 export {Scanner} from './scanner';
-export {subscriptionWrapper as generateSubscription} from './utils/subscriptionWrapper';
+export {subscriptionWrapper} from './utils/subscriptionWrapper';
 
 export * from './types/events';
 export * from './types/eventHandlers';
 export * from './types/lifecycle';
 export * from './types/options';
 export * from './types/scannable';
-export {EventKeys} from './types/utility';
+export type {EventKeys} from './types/utility';

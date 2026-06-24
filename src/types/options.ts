@@ -1,5 +1,5 @@
 
-import {LoggerProvider} from './logger';
+import type {LoggerProvider} from './logger';
 
 /**
  * @description notify of possible memory leaks

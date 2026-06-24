@@ -1,4 +1,4 @@
-import {Subscription} from '../types/events';
+import type {Subscription} from '../types/events';
 
 export function subscriptionWrapper(dispose: () => void): Subscription {
     const sub: Subscription = () => dispose() as any;
