@@ -78,6 +78,27 @@ interface EventProducerUnpipeObject<in out TEventMap extends EventMap> {
 export type EventProducerUnpipe<TEventMap extends EventMap> =
   EventProducerUnpipeObject<TEventMap>['bivarianceHack'];
 
+interface EventListenerMapKeyObject<in out TEventMap extends EventMap> {
+  bivarianceHack: EventKeys<TEventMap>|WILDCARD;
+}
+
+export type EventListenerMapKey<TEventMap extends EventMap> =
+  EventListenerMapKeyObject<TEventMap>['bivarianceHack'];
+
+interface EventProducerListenerCheckObject<in out TEventMap extends EventMap> {
+  bivarianceHack(event: EventListenerMapKey<TEventMap>): boolean;
+}
+
+export type EventProducerListenerCheck<TEventMap extends EventMap> =
+  EventProducerListenerCheckObject<TEventMap>['bivarianceHack'];
+
+interface EventProducerListenerCountObject<in out TEventMap extends EventMap> {
+  bivarianceHack(event: EventListenerMapKey<TEventMap>): number;
+}
+
+export type EventProducerListenerCount<TEventMap extends EventMap> =
+  EventProducerListenerCountObject<TEventMap>['bivarianceHack'];
+
 export type NextResult<TEventMap extends EventMap, T> =
   T extends WILDCARD
     ? EventPayloadPair<TEventMap, EventKeys<TEventMap>>
@@ -89,9 +110,9 @@ export type NextResult<TEventMap extends EventMap, T> =
 
 /**
  * The public subscription and introspection surface of {@link Bus}, excluding
- * {@link Bus.emit}. Listener map introspection ({@link Bus.listeners} and related
- * members) lives on {@link Bus} only, since {@link ReadonlyMap} keys are invariant
- * in {@link TEventMap} and would break contravariant views.
+ * {@link Bus.emit}. {@link Bus.listeners} and {@link Bus.ownListeners} remain
+ * on {@link Bus} only, since {@link ReadonlyMap} keys are invariant in
+ * {@link TEventMap} and would break contravariant views.
  */
 export interface EventProducer<in out TEventMap extends EventMap = EventMap> extends Scannable<TEventMap> {
   once<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription;
@@ -115,6 +136,14 @@ export interface EventProducer<in out TEventMap extends EventMap = EventMap> ext
   readonly hasDelegateListeners: boolean;
 
   readonly listenerCount: number;
+
+  hasListenersFor: EventProducerListenerCheck<TEventMap>;
+  hasOwnListenersFor: EventProducerListenerCheck<TEventMap>;
+  hasDelegateListenersFor: EventProducerListenerCheck<TEventMap>;
+
+  getListenerCountFor: EventProducerListenerCount<TEventMap>;
+  getOwnListenerCountFor: EventProducerListenerCount<TEventMap>;
+  getDelegateListenerCountFor: EventProducerListenerCount<TEventMap>;
 
   destroy(): void;
 }

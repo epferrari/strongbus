@@ -203,6 +203,68 @@ describe('type safety', () => {
     });
   });
 
+  describe('listener introspection', () => {
+    typeChecks.push(function validEventKeysAndReturnTypes(): void {
+      const bus = new Bus<TestEventMap>();
+
+      expectType<boolean>(bus.hasListenersFor('foo'));
+      expectType<boolean>(bus.hasOwnListenersFor('bar'));
+      expectType<boolean>(bus.hasDelegateListenersFor('baz'));
+      expectType<boolean>(bus.hasListenersFor(WILDCARD));
+      expectType<boolean>(bus.hasOwnListenersFor('*'));
+
+      expectType<number>(bus.getListenerCountFor('foo'));
+      expectType<number>(bus.getOwnListenerCountFor('bar'));
+      expectType<number>(bus.getDelegateListenerCountFor('baz'));
+      expectType<number>(bus.getListenerCountFor(WILDCARD));
+      expectType<number>(bus.getOwnListenerCountFor('*'));
+    });
+
+    typeChecks.push(function rejectsUnknownEventOnHasListenersFor(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'qux' is not a key of TestEventMap
+      bus.hasListenersFor('qux');
+    });
+
+    typeChecks.push(function rejectsUnknownEventOnHasOwnListenersFor(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'qux' is not a key of TestEventMap
+      bus.hasOwnListenersFor('qux');
+    });
+
+    typeChecks.push(function rejectsUnknownEventOnHasDelegateListenersFor(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'qux' is not a key of TestEventMap
+      bus.hasDelegateListenersFor('qux');
+    });
+
+    typeChecks.push(function rejectsUnknownEventOnGetListenerCountFor(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'qux' is not a key of TestEventMap
+      bus.getListenerCountFor('qux');
+    });
+
+    typeChecks.push(function rejectsUnknownEventOnGetOwnListenerCountFor(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'qux' is not a key of TestEventMap
+      bus.getOwnListenerCountFor('qux');
+    });
+
+    typeChecks.push(function rejectsUnknownEventOnGetDelegateListenerCountFor(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'qux' is not a key of TestEventMap
+      bus.getDelegateListenerCountFor('qux');
+    });
+
+    typeChecks.push(function eventProducerViewAcceptsKnownEvents(): void {
+      const producer: EventProducer<TestEventMap> = new Bus<TestEventMap>();
+
+      producer.hasListenersFor('foo');
+      producer.getOwnListenerCountFor('bar');
+      producer.getDelegateListenerCountFor(WILDCARD);
+    });
+  });
+
   describe('variance', () => {
     interface Narrow {
       foo: number;
@@ -293,9 +355,15 @@ describe('type safety', () => {
       const narrow: EventProducer<Narrow> = wide;
 
       narrow.scan({evaluator, trigger: 'foo'});
+      expectType<boolean>(narrow.hasListenersFor('foo'));
+      expectType<number>(narrow.getOwnListenerCountFor('bar'));
 
       // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
       narrow.scan({evaluator, trigger: 'baz'});
+      // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
+      narrow.hasListenersFor('baz');
+      // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
+      narrow.getListenerCountFor('baz');
     });
   });
 

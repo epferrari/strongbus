@@ -14,6 +14,8 @@ import type {
   AnyEventMap,
   EventProducer,
   EventProducerAny,
+  EventProducerListenerCheck,
+  EventProducerListenerCount,
   EventProducerNext,
   EventProducerPipe,
   EventProducerScan,
@@ -442,33 +444,45 @@ export class Bus<TEventMap extends EventMap = EventMap> implements EventProducer
     return this._cachedGetOwnListenersValue;
   }
 
-  public hasListenersFor(event: EventKeys<TEventMap>|WILDCARD): boolean {
+  public hasListenersFor: EventProducerListenerCheck<TEventMap> = ((
+    event
+  ) => {
     return this.getListenerCountFor(event) > 0;
-  }
+  }) as EventProducerListenerCheck<TEventMap>;
 
-  public hasOwnListenersFor(event: EventKeys<TEventMap>|WILDCARD): boolean {
+  public hasOwnListenersFor: EventProducerListenerCheck<TEventMap> = ((
+    event
+  ) => {
     return this.getOwnListenerCountFor(event) > 0;
-  }
+  }) as EventProducerListenerCheck<TEventMap>;
 
-  public hasDelegateListenersFor(event: EventKeys<TEventMap>|WILDCARD): boolean {
+  public hasDelegateListenersFor: EventProducerListenerCheck<TEventMap> = ((
+    event
+  ) => {
     return this.getDelegateListenerCountFor(event) > 0;
-  }
+  }) as EventProducerListenerCheck<TEventMap>;
 
   public get listenerCount(): number {
     return this.bus.size + this._pipeTargetListenerTotalCount;
   }
 
-  public getListenerCountFor(event: EventKeys<TEventMap>|WILDCARD): number {
+  public getListenerCountFor: EventProducerListenerCount<TEventMap> = ((
+    event
+  ) => {
     return this.getOwnListenerCountFor(event) + this.getDelegateListenerCountFor(event);
-  }
+  }) as EventProducerListenerCount<TEventMap>;
 
-  public getOwnListenerCountFor(event: EventKeys<TEventMap>|WILDCARD): number {
+  public getOwnListenerCountFor: EventProducerListenerCount<TEventMap> = ((
+    event
+  ) => {
     return this.bus.get(event)?.size ?? 0;
-  }
+  }) as EventProducerListenerCount<TEventMap>;
 
-  public getDelegateListenerCountFor(event: EventKeys<TEventMap>|WILDCARD): number {
+  public getDelegateListenerCountFor: EventProducerListenerCount<TEventMap> = ((
+    event
+  ) => {
     return (this._pipeTargetListenerCountsByEvent.get(event) ?? 0);
-  }
+  }) as EventProducerListenerCount<TEventMap>;
 
   /**
    * Remove all event subscribers, lifecycle subscribers, and delegates.
@@ -688,14 +702,6 @@ export interface Bus<TEventMap extends EventMap = EventMap> extends EventProduce
 
   listeners: ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
   ownListeners: ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
-
-  hasListenersFor(event: EventKeys<TEventMap>|WILDCARD): boolean;
-  hasOwnListenersFor(event: EventKeys<TEventMap>|WILDCARD): boolean;
-  hasDelegateListenersFor(event: EventKeys<TEventMap>|WILDCARD): boolean;
-
-  getListenerCountFor(event: EventKeys<TEventMap>|WILDCARD): number;
-  getOwnListenerCountFor(event: EventKeys<TEventMap>|WILDCARD): number;
-  getDelegateListenerCountFor(event: EventKeys<TEventMap>|WILDCARD): number;
 }
 
 
