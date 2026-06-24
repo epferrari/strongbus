@@ -3,7 +3,7 @@ export {Scanner} from './scanner';
 export {subscriptionWrapper} from './utils/subscriptionWrapper';
 
 export * from './types/events';
-export * from './types/eventHandlers';
+export type {SingleEventHandler, EventSink} from './types/eventHandlers';
 export * from './types/lifecycle';
 export * from './types/options';
 export * from './types/scannable';
