@@ -1,7 +1,7 @@
 import {autobind} from 'core-decorators';
 import {CancelablePromise, Deferred} from 'jaasync';
 
-import * as Events from './types/events';
+import {EventMap, Subscription} from './types/events';
 import {Lifecycle} from './types/lifecycle';
 import {Scannable} from './types/scannable';
 import {EventKeys} from './types/utility';
@@ -11,19 +11,19 @@ import {ListenableSubscriber, subscribeListenable} from './utils/subscribeListen
 
 export namespace Scanner {
   export type TriggerType = 'eager'|'event'|'destroy';
-  export interface Trigger<TEventMap extends Events.EventMap, T extends keyof TEventMap> {
+  export interface Trigger<TEventMap extends EventMap, T extends keyof TEventMap> {
     type: TriggerType;
     event: T;
     payload: TEventMap[T];
   }
-  export interface Resolver<TResult, TEventMap extends Events.EventMap = any> {
+  export interface Resolver<TResult, TEventMap extends EventMap = any> {
     (result: TResult): void;
     resolve: (result: TResult) => void;
     reject: (err?: Error) => void;
     trigger: Trigger<TEventMap, keyof TEventMap>;
   }
   export type Rejecter = (err?: Error) => void;
-  export type Evaluator<TResult, TEventMap extends Events.EventMap> = (
+  export type Evaluator<TResult, TEventMap extends EventMap> = (
     resolve: Resolver<TResult, TEventMap>,
     reject: Rejecter
   ) => void|Promise<void>;
@@ -41,8 +41,8 @@ export namespace Scanner {
 @autobind
 export class Scanner<TResult> implements CancelablePromise<TResult> {
   private settled: boolean = false;
-  private readonly triggerListeners = new Set<Events.Subscription>();
-  private readonly willDestroyListeners = new Set<Events.Subscription>();
+  private readonly triggerListeners = new Set<Subscription>();
+  private readonly willDestroyListeners = new Set<Subscription>();
   private readonly evaluator!: Scanner.Evaluator<TResult, any>;
   private readonly _promise = new Deferred<TResult>();
   public readonly [Symbol.toStringTag]: string = 'Promise';
@@ -59,7 +59,7 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
     }
   }
 
-  private evaluate<TEventMap extends Events.EventMap, T extends keyof TEventMap>(trigger: Scanner.Trigger<TEventMap, T>): void|Promise<void> {
+  private evaluate<TEventMap extends EventMap, T extends keyof TEventMap>(trigger: Scanner.Trigger<TEventMap, T>): void|Promise<void> {
     const resolver = (val: TResult) => this.resolve(val);
     (resolver as any).resolve = this.resolve;
     (resolver as any).reject = this.reject;
@@ -119,9 +119,9 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
   /**
    * scan listenable and resolve based on `this.evaluator`
    */
-  public scan<TEventMap extends Events.EventMap>(
+  public scan<TEventMap extends EventMap>(
     scannable: Scannable<TEventMap> & Pick<ListenableSubscriber<TEventMap>, 'any' | 'pipe'>,
-    listenable: Events.Listenable<EventKeys<TEventMap>>
+    listenable: Listenable<EventKeys<TEventMap>>
   ): this {
     if(this.settled) {
       return this;
