@@ -14,6 +14,7 @@ import {EventKeys, ElementType, type EventPayload} from './types/utility';
 import {over} from './utils/over';
 import {generateSubscription} from './utils/generateSubscription';
 import {randomId} from './utils/randomId';
+import {subscribeListenable} from './utils/subscribeListenable';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import { normalizeError } from './utils/normalizeError';
 
@@ -125,19 +126,10 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   }
 
   /**
-   * Subscribe a callback to event(s).
-   * alias of [[Bus.any]] when invoked with an array of events,
-   * functions like [[Bus.proxy]] when invoked with [[WILDCARD]]. Deprecated, use `bus.pipe(handler)`
-   * 
+   * Subscribe a callback to an event.
    */
-  public on<T extends Events.Listenable<EventKeys<TEventMap>>>(event: T, handler: EventHandlers.EventHandler<TEventMap, T>): Events.Subscription {
-    if(Array.isArray(event)) {
-      return this.any(event as (EventKeys<TEventMap>)[], handler as EventHandlers.MultiEventHandler<TEventMap>);
-    } else if(event === Events.WILDCARD) {
-      return this.proxy(handler as EventHandlers.WildcardEventHandler<TEventMap>);
-    } else {
-      return this.addListener(event as EventKeys<TEventMap>, handler);
-    }
+  public on<T extends EventKeys<TEventMap>>(event: T, handler: (payload: TEventMap[T]) => void): Events.Subscription {
+    return this.addListener(event, handler);
   }
 
   public emit<T extends EventKeys<TEventMap>>(event: T, ...payload: EventPayload<TEventMap, T>): boolean {
@@ -208,23 +200,17 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     let rejectInternalPromise: (err?: Error) => void;
     let willDestroyListener: Events.Subscription;
 
-    const resolutionSub = this.on(resolutionTrigger, ((...args: any[]) => {
+    const resolutionSub = subscribeListenable(this, resolutionTrigger, (_event, payload) => {
       if(resolutionTrigger === Events.WILDCARD || Array.isArray(resolutionTrigger)) {
-        resolve(undefined as any);
+        resolve(undefined as T extends EventKeys<TEventMap> ? TEventMap[T] : void);
       } else {
-        resolve(args[0]);
+        resolve(payload as T extends EventKeys<TEventMap> ? TEventMap[T] : void);
       }
-    }) as any);
+    });
     const rejectionSub = rejectionTrigger
-      ? this.on(rejectionTrigger, ((...args: any[]) => {
-          let e: EventKeys<TEventMap>;
-          if(rejectionTrigger === Events.WILDCARD || Array.isArray(rejectionTrigger)) {
-            e = args[0];
-          } else {
-            e = rejectionTrigger as EventKeys<TEventMap>;
-          }
-          reject(new Error(`Rejected with event (${String(e)})`));
-        }) as any)
+      ? subscribeListenable(this, rejectionTrigger, (event) => {
+          reject(new Error(`Rejected with event (${String(event)})`));
+        })
       : null;
 
     function resolve(payload: T extends EventKeys<TEventMap> ? TEventMap[T] : void): void {
@@ -488,6 +474,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     if(typeof delegate === 'function') {
       delegate satisfies EventHandlers.WildcardEventHandler<TEventMap>;
       this.functionDelegates.set(delegate, this.proxy(delegate));
+      // TODO use this.generateListenerSubscription
       return generateSubscription(() => this.unpipe(delegate));
     } else {
       delegate satisfies Bus<TEventMap>;

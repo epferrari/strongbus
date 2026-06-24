@@ -1,12 +1,12 @@
 import {autobind} from 'core-decorators';
 import {CancelablePromise, Deferred} from 'jaasync';
-import {EventHandler} from './types/eventHandlers';
 
 import * as Events from './types/events';
 import {Lifecycle} from './types/lifecycle';
 import {Scannable} from './types/scannable';
 import {EventKeys} from './types/utility';
 import {over} from './utils/over';
+import {ListenableSubscriber, subscribeListenable} from './utils/subscribeListenable';
 
 
 export namespace Scanner {
@@ -120,28 +120,20 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
    * scan listenable and resolve based on `this.evaluator`
    */
   public scan<TEventMap extends Events.EventMap>(
-    scannable: Scannable<TEventMap>,
+    scannable: Scannable<TEventMap> & Pick<ListenableSubscriber<TEventMap>, 'any' | 'pipe'>,
     listenable: Events.Listenable<EventKeys<TEventMap>>
   ): this {
     if(this.settled) {
       return this;
     }
 
-    const listener = Array.isArray(listenable) || listenable === Events.WILDCARD
-      ? scannable.on(listenable, ((event, payload) => {
-          this.evaluate({
-            type: 'event',
-            event,
-            payload
-          });
-        }) as EventHandler<TEventMap, typeof listenable>)
-      : scannable.on(listenable, ((payload: TEventMap[typeof listenable]) => {
-          this.evaluate({
-            type: 'event',
-            event: listenable,
-            payload
-          });
-        }) as EventHandler<TEventMap, typeof listenable>);
+    const listener = subscribeListenable(scannable, listenable, (event, payload) => {
+      this.evaluate({
+        type: 'event',
+        event,
+        payload
+      });
+    });
 
     const willDestroyListener = scannable.hook(Lifecycle.willDestroy, async () => {
       willDestroyListener();

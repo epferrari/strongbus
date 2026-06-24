@@ -48,7 +48,7 @@ describe('Strongbus.Bus', () => {
   describe('#constructor', () => {
     it('overloads the instance\'s internal emitter\'s emit method to invoke * listeners on every event raised', () => {
       bus.on('foo', onTestEvent);
-      bus.on('*', onEveryEvent);
+      bus.pipe(onEveryEvent);
 
       bus.emit('foo', 'eagle');
       expect(onTestEvent).toHaveBeenCalledWith('eagle');
@@ -465,7 +465,7 @@ describe('Strongbus.Bus', () => {
     describe('given the wildcard operator to listen on', () => {
       describe('and given an event is raised', () => {
         it('invokes the supplied handler with event and payload', () => {
-          bus.on('*', onEveryEvent);
+          bus.pipe(onEveryEvent);
           bus.emit('foo', 'raccoon');
           expect(onEveryEvent).toHaveBeenCalledTimes(1);
           expect(onEveryEvent).toHaveBeenCalledWith('foo', 'raccoon');
@@ -481,7 +481,7 @@ describe('Strongbus.Bus', () => {
 
     describe('given a list of events to listen on', () => {
       beforeEach(() => {
-        bus.on(['foo', 'bar'], onAnyEvent);
+        bus.any(['foo', 'bar'], onAnyEvent);
       });
       describe('given one of the events in the list is raised', () => {
         it('invokes the supplied handler with event and payload', () => {
@@ -541,6 +541,21 @@ describe('Strongbus.Bus', () => {
     let bus3: DelegateTestBus;
 
     describe('#pipe', () => {
+      describe('piping into a function sink', () => {
+        it('adds a wildcard handler for raised events that receives the event as well as the payload', () => {
+          const sink = jasmine.createSpy('handler');
+          bus.on('foo', onTestEvent);
+          bus.every(onEveryEvent);
+          bus.pipe(sink);
+    
+          bus.emit('foo', 'cat');
+          expect(onTestEvent).toHaveBeenCalledWith('cat');
+          expect(onEveryEvent).toHaveBeenCalledWith('foo', 'cat');
+          expect(sink).toHaveBeenCalledWith('foo', 'cat');
+          expect(sink).toHaveBeenCalledTimes(1);
+        });
+      });
+
       describe('piping into another bus', () => {
         beforeEach(() => {
           bus2 = new DelegateTestBus({emulateListenerCount: true});
@@ -691,21 +706,6 @@ describe('Strongbus.Bus', () => {
           expect(bus3.emit).toHaveBeenCalledWith('foo', null);
         });
       });
-    });
-  });
-
-  describe('#proxy', () => {
-    it('adds a proxy handler for raised events that receives the event as well as the payload', () => {
-      const proxy = jasmine.createSpy('proxy');
-      bus.on('foo', onTestEvent);
-      bus.every(onEveryEvent);
-      bus.proxy(proxy);
-
-      bus.emit('foo', 'cat');
-      expect(onTestEvent).toHaveBeenCalledWith('cat');
-      expect(onEveryEvent).toHaveBeenCalled();
-      expect(proxy).toHaveBeenCalledWith('foo', 'cat');
-      expect(proxy).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1056,7 +1056,7 @@ describe('Strongbus.Bus', () => {
           expect(bus.listeners).toEqual(new Map([[
             'foo', new Set([onTestEvent])
           ]]));
-          bus.on('*', onAnyEvent);
+          bus.pipe(onAnyEvent);
           expect(bus.listeners.get('foo')).toEqual(new Set([onTestEvent]));
           expect(bus.listeners.get('*').size).toEqual(1); // will be an anonymous wrapper around `onAnyEvent`
         });
@@ -1205,7 +1205,7 @@ describe('Strongbus.Bus', () => {
           expect(bus.ownListeners).toEqual(new Map([[
             'foo', new Set([onTestEvent])
           ]]));
-          bus.on('*', onAnyEvent);
+          bus.pipe(onAnyEvent);
           expect(bus.ownListeners.get('foo')).toEqual(new Set([onTestEvent]));
           expect(bus.ownListeners.get('*').size).toEqual(1); // will be an anonymous wrapper around `onAnyEvent`
         });
@@ -1544,7 +1544,7 @@ describe('Strongbus.Bus', () => {
   describe('Reserved events', () => {
     describe('given the wildcard (*) event is manually raised', () => {
       it('raises an error', () => {
-        bus.on('*', onAnyEvent);
+        bus.pipe(onAnyEvent);
         const shouldThrow = () => bus.emit('*' as any, 'eagle');
 
         expect(shouldThrow).toThrow();
