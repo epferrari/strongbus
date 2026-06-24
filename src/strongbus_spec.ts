@@ -1618,7 +1618,7 @@ describe('Strongbus.Bus', () => {
           bus.emit('foo', 'FOO!');
           await sleep(1);
           expect(onReject).not.toHaveBeenCalled();
-          expect(onResolve).toHaveBeenCalledWith('FOO!');
+          expect(onResolve).toHaveBeenCalledWith({event: 'foo', payload: 'FOO!'});
           onResolve.calls.reset();
           bus.emit('foo', 'BAR!');
           expect(onResolve).not.toHaveBeenCalled();
@@ -1672,7 +1672,7 @@ describe('Strongbus.Bus', () => {
           bus.emit('foo', 'FOO!');
           await sleep(1);
           expect(onReject).not.toHaveBeenCalled();
-          expect(onResolve).toHaveBeenCalledWith('FOO!');
+          expect(onResolve).toHaveBeenCalledWith({event: 'foo', payload: 'FOO!'});
           onResolve.calls.reset();
           bus.emit('foo', 'BAR!');
           expect(onResolve).not.toHaveBeenCalled();
@@ -1700,34 +1700,34 @@ describe('Strongbus.Bus', () => {
     });
 
     describe('given the resolving event is the wildcard "*"', () => {
-      it('resolves on any event with an undefined value', async () => {
+      it('resolves on any event with the triggering event and payload', async () => {
         const p1 = bus.next('*');
         p1.then(onResolve);
         bus.emit('baz', 3);
         await sleep(1);
-        expect(onResolve).toHaveBeenCalledWith(undefined);
+        expect(onResolve).toHaveBeenCalledWith({event: 'baz', payload: 3});
         onResolve.calls.reset();
         const p2 = bus.next('*');
         p2.then(onResolve);
         bus.emit('foo', 'FOO!');
         await sleep(1);
-        expect(onResolve).toHaveBeenCalledWith(undefined);
+        expect(onResolve).toHaveBeenCalledWith({event: 'foo', payload: 'FOO!'});
       });
     });
 
     describe('given an array of resolving events', () => {
-      it('resolves on any of the events in the array with an undefined value', async () => {
+      it('resolves on any of the events in the array with the triggering event and payload', async () => {
         const p1 = bus.next(['bar', 'baz']);
         p1.then(onResolve);
         bus.emit('baz', 5);
         await sleep(1);
-        expect(onResolve).toHaveBeenCalledWith(undefined);
+        expect(onResolve).toHaveBeenCalledWith({event: 'baz', payload: 5});
         onResolve.calls.reset();
         const p2 = bus.next(['foo', 'baz']);
         p2.then(onResolve);
         bus.emit('foo', 'FOO!');
         await sleep(1);
-        expect(onResolve).toHaveBeenCalledWith(undefined);
+        expect(onResolve).toHaveBeenCalledWith({event: 'foo', payload: 'FOO!'});
       });
     });
 

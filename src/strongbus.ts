@@ -10,7 +10,7 @@ import {Lifecycle} from './types/lifecycle';
 import type {Logger} from './types/logger';
 import type {Options, ListenerThresholds} from './types/options';
 import type {Scannable} from './types/scannable';
-import type {EventKeys, EventPayload} from './types/utility';
+import type {EventKeys, EventPayload, EventPayloadPair} from './types/utility';
 import {over} from './utils/over';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {randomId} from './utils/randomId';
@@ -181,7 +181,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
 
   /**
    * Utility for resolving/rejecting a promise based on the reception of an event.
-   * Promise will resolve with event payload, if a single event, or undefined if listening to multiple events.
+   * Promise resolves with the triggering event and its payload as `{event, payload}`.
    * @param resolutionTrigger - what event/events should resolve the promise
    * @param rejectionTrigger - what event/events should reject the promise. Must be mutually disjoint with `resolvingEvent`
    */
@@ -195,18 +195,15 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
         : T extends EventKeys<TEventMap>
           ? EventKeys<Omit<TEventMap, T>>|EventKeys<Omit<TEventMap, T>>[]
           : never
-  ): CancelablePromise<T extends EventKeys<TEventMap> ? TEventMap[T] : void> {
+  ): CancelablePromise<NextResult<TEventMap, T>> {
+    type TResult = NextResult<TEventMap, T>;
     let settled: boolean = false;
-    let resolveInternalPromise: (value: T extends EventKeys<TEventMap> ? TEventMap[T] : void) => void;
+    let resolveInternalPromise: (value: TResult) => void;
     let rejectInternalPromise: (err?: Error) => void;
     let willDestroyListener: Subscription;
 
-    const resolutionSub = subscribeListenable(this, resolutionTrigger, (_event, payload) => {
-      if(resolutionTrigger === WILDCARD || Array.isArray(resolutionTrigger)) {
-        resolve(undefined as T extends EventKeys<TEventMap> ? TEventMap[T] : void);
-      } else {
-        resolve(payload as T extends EventKeys<TEventMap> ? TEventMap[T] : void);
-      }
+    const resolutionSub = subscribeListenable(this, resolutionTrigger, (event, payload) => {
+      resolve({event, payload} as TResult);
     });
     const rejectionSub = rejectionTrigger
       ? subscribeListenable(this, rejectionTrigger, (event) => {
@@ -214,9 +211,9 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
         })
       : null;
 
-    function resolve(payload: T extends EventKeys<TEventMap> ? TEventMap[T] : void): void {
+    function resolve(result: TResult): void {
       if(settle()) {
-        resolveInternalPromise?.(payload);
+        resolveInternalPromise?.(result);
       }
     }
 
@@ -237,8 +234,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
       return true;
     }
 
-    const p: CancelablePromise<T extends EventKeys<TEventMap> ? TEventMap[T] : void> = cancelable<T extends EventKeys<TEventMap> ? TEventMap[T] : void>(() => {
-      return new Promise<T extends EventKeys<TEventMap> ? TEventMap[T] : void>(($resolve, $reject) => {
+    const p: CancelablePromise<TResult> = cancelable<TResult>(() => {
+      return new Promise<TResult>(($resolve, $reject) => {
         resolveInternalPromise = $resolve;
         rejectInternalPromise = $reject;
       });
@@ -836,6 +833,15 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
   }
 }
 
+
+type NextResult<TEventMap extends EventMap, T> =
+  T extends WILDCARD
+    ? EventPayloadPair<TEventMap, EventKeys<TEventMap>>
+    : T extends EventKeys<TEventMap>[]
+      ? EventPayloadPair<TEventMap, T[number]>
+      : T extends EventKeys<TEventMap>
+        ? EventPayloadPair<TEventMap, T>
+        : never;
 
 type AnyEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
 

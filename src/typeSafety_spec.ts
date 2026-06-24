@@ -81,13 +81,26 @@ describe('type safety', () => {
   describe('#next', () => {
     typeChecks.push(function validTriggers(): void {
       const bus = new Bus<TestEventMap>();
-      // single event resolves with that event's payload
-      bus.next('foo').then(payload => expectType<number>(payload));
+      // single event resolves with the triggering event and its payload
+      bus.next('foo').then(result => {
+        expectType<'foo'>(result.event);
+        expectType<number>(result.payload);
+      });
       // disjoint resolution/rejection triggers are allowed
       bus.next('foo', 'bar');
-      // array + wildcard triggers are allowed
-      bus.next(['foo', 'bar']);
-      bus.next('*');
+      // an array trigger resolves with a discriminated {event, payload} union
+      bus.next(['foo', 'bar']).then(result => {
+        expectType<'foo' | 'bar'>(result.event);
+        if(result.event === 'foo') {
+          expectType<number>(result.payload);
+        } else {
+          expectType<string>(result.payload);
+        }
+      });
+      // a wildcard trigger resolves with a pair over every event in the map
+      bus.next('*').then(result => {
+        expectType<keyof TestEventMap>(result.event);
+      });
     });
 
     typeChecks.push(function rejectsUnknownResolutionTrigger(): void {
