@@ -541,126 +541,155 @@ describe('Strongbus.Bus', () => {
     let bus3: DelegateTestBus;
 
     describe('#pipe', () => {
-      beforeEach(() => {
-        bus2 = new DelegateTestBus({emulateListenerCount: true});
-      });
+      describe('piping into another bus', () => {
+        beforeEach(() => {
+          bus2 = new DelegateTestBus({emulateListenerCount: true});
+        });
 
-      describe('given an event is raised from the parent bus', () => {
-        it('handles the event on the parent bus AND the delegate bus', () => {
-          spyOn(bus2, 'emit');
+        describe('given an event is raised from the parent bus', () => {
+          it('handles the event on the parent bus AND the delegate bus', () => {
+            spyOn(bus2, 'emit');
+            bus.pipe(bus2);
+
+            bus.on('foo', onTestEvent);
+            bus.emit('foo', 'wow!');
+
+            expect(onTestEvent).toHaveBeenCalledWith('wow!');
+            expect(bus2.emit).toHaveBeenCalledWith('foo', 'wow!');
+          });
+        });
+
+        it('counts piped listeners as handlers when events are raised', () => {
+          bus = new Strongbus.Bus({allowUnhandledEvents: false});
+          spyOn(bus as any, 'handleUnexpectedEvent');
+          bus.emit('foo', null);
+          expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
+          (bus as any).handleUnexpectedEvent.calls.reset();
+
           bus.pipe(bus2);
+          bus.emit('foo', null);
+          expect((bus as any).handleUnexpectedEvent).not.toHaveBeenCalled();
+          bus.unpipe(bus2);
 
-          bus.on('foo', onTestEvent);
-          bus.emit('foo', 'wow!');
+          // removed the delegate, bus has no listeners again
+          bus.emit('foo', null);
+          expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
+          (bus as any).handleUnexpectedEvent.calls.reset();
 
-          expect(onTestEvent).toHaveBeenCalledWith('wow!');
-          expect(bus2.emit).toHaveBeenCalledWith('foo', 'wow!');
+          // emulate a delegate bus with no listeners attached
+          bus3 = new DelegateTestBus({emulateListenerCount: false});
+          bus.pipe(bus3);
+
+          bus.emit('foo', null);
+          expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
+        });
+
+        it('bubbles unhandled events to the parent regardless of whether the delegate allows them', () => {
+          bus = new Strongbus.Bus({allowUnhandledEvents: false});
+          bus2 = new DelegateTestBus({allowUnhandledEvents: true});
+          bus3 = new DelegateTestBus({allowUnhandledEvents: false, emulateListenerCount: false});
+          spyOn(bus as any, 'handleUnexpectedEvent');
+          spyOn(bus2 as any, 'handleUnexpectedEvent');
+          spyOn(bus3 as any, 'handleUnexpectedEvent');
+
+          bus.pipe(bus2);
+          bus.pipe(bus3);
+          bus.emit('foo', null);
+          expect((bus3 as any).handleUnexpectedEvent).toHaveBeenCalled();
+          expect((bus2 as any).handleUnexpectedEvent).not.toHaveBeenCalled();
+          expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
+        });
+
+        it('can be chained', () => {
+          bus2 = new DelegateTestBus({});
+          bus3 = new DelegateTestBus({});
+
+          spyOn(bus, 'emit').and.callThrough();
+          spyOn(bus2, 'emit').and.callThrough();
+          spyOn(bus3, 'emit');
+
+          bus.pipe(bus2).pipe(bus3);
+
+          bus.emit('foo', 'woot');
+          expect(bus2.emit).toHaveBeenCalledWith('foo', 'woot');
+          expect(bus3.emit).toHaveBeenCalledWith('foo', 'woot');
+
+          bus2.emit('bar', null);
+          expect(bus.emit).not.toHaveBeenCalledWith('bar', null);
+          expect(bus3.emit).toHaveBeenCalledWith('bar', null);
         });
       });
 
-      it('counts piped listeners as handlers when events are raised', () => {
-        bus = new Strongbus.Bus({allowUnhandledEvents: false});
-        spyOn(bus as any, 'handleUnexpectedEvent');
-        bus.emit('foo', null);
-        expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
-        (bus as any).handleUnexpectedEvent.calls.reset();
+      describe('piping into a function sink', () => {
+        describe('and given an event is raised', () => {
+          it('invokes the supplied handler with event and payload', () => {
+            bus.pipe(onEveryEvent);
+            bus.emit('foo', 'raccoon');
+            expect(onEveryEvent).toHaveBeenCalledTimes(1);
+            expect(onEveryEvent).toHaveBeenCalledWith('foo', 'raccoon');
+            bus.emit('foo', 'squirrel');
+            expect(onEveryEvent).toHaveBeenCalledTimes(2);
+            expect(onEveryEvent).toHaveBeenCalledWith('foo', 'squirrel');
+            bus.emit('baz', 5);
+            expect(onEveryEvent).toHaveBeenCalledTimes(3);
+            expect(onEveryEvent).toHaveBeenCalledWith('baz', 5);
+          });
+        });
 
-        bus.pipe(bus2);
-        bus.emit('foo', null);
-        expect((bus as any).handleUnexpectedEvent).not.toHaveBeenCalled();
-        bus.unpipe(bus2);
-
-        // removed the delegate, bus has no listeners again
-        bus.emit('foo', null);
-        expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
-        (bus as any).handleUnexpectedEvent.calls.reset();
-
-        // emulate a delegate bus with no listeners attached
-        bus3 = new DelegateTestBus({emulateListenerCount: false});
-        bus.pipe(bus3);
-
-        bus.emit('foo', null);
-        expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
-      });
-
-      it('bubbles unhandled events to the parent regardless of whether the delegate allows them', () => {
-        bus = new Strongbus.Bus({allowUnhandledEvents: false});
-        bus2 = new DelegateTestBus({allowUnhandledEvents: true});
-        bus3 = new DelegateTestBus({allowUnhandledEvents: false, emulateListenerCount: false});
-        spyOn(bus as any, 'handleUnexpectedEvent');
-        spyOn(bus2 as any, 'handleUnexpectedEvent');
-        spyOn(bus3 as any, 'handleUnexpectedEvent');
-
-        bus.pipe(bus2);
-        bus.pipe(bus3);
-        bus.emit('foo', null);
-        expect((bus3 as any).handleUnexpectedEvent).toHaveBeenCalled();
-        expect((bus2 as any).handleUnexpectedEvent).not.toHaveBeenCalled();
-        expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
-      });
-
-      it('can be chained', () => {
-        bus2 = new DelegateTestBus({});
-        bus3 = new DelegateTestBus({});
-
-        spyOn(bus, 'emit').and.callThrough();
-        spyOn(bus2, 'emit').and.callThrough();
-        spyOn(bus3, 'emit');
-
-        bus.pipe(bus2).pipe(bus3);
-
-        bus.emit('foo', 'woot');
-        expect(bus2.emit).toHaveBeenCalledWith('foo', 'woot');
-        expect(bus3.emit).toHaveBeenCalledWith('foo', 'woot');
-
-        bus2.emit('bar', null);
-        expect(bus.emit).not.toHaveBeenCalledWith('bar', null);
-        expect(bus3.emit).toHaveBeenCalledWith('bar', null);
+        it('returns an unsubscribe function', () => {
+          const sub = bus.pipe(onEveryEvent);
+          bus.emit('foo', 'raccoon');
+          expect(onEveryEvent).toHaveBeenCalledTimes(1);
+          sub();
+          bus.emit('foo', 'fox');
+          expect(onEveryEvent).toHaveBeenCalledTimes(1);
+        });
       });
     });
 
     describe('#unpipe', () => {
+      describe('unpiping another bus', () => {
+        beforeEach(() => {
+          bus2 = new DelegateTestBus({emulateListenerCount: true});
+        });
 
-      beforeEach(() => {
-        bus2 = new DelegateTestBus({emulateListenerCount: true});
-      });
+        it('removes a piped msg bus', () => {
+          spyOn(bus2, 'emit');
+          bus.pipe(bus2);
 
-      it('removes a piped msg bus', () => {
-        spyOn(bus2, 'emit');
-        bus.pipe(bus2);
+          bus.emit('foo', 'wow!');
 
-        bus.emit('foo', 'wow!');
+          expect(bus2.emit).toHaveBeenCalledWith('foo', 'wow!');
+          (bus2.emit as any).calls.reset();
 
-        expect(bus2.emit).toHaveBeenCalledWith('foo', 'wow!');
-        (bus2.emit as any).calls.reset();
+          bus.unpipe(bus2);
 
-        bus.unpipe(bus2);
+          bus.emit('foo', 'wow!');
+          expect(bus2.emit).not.toHaveBeenCalled();
+        });
 
-        bus.emit('foo', 'wow!');
-        expect(bus2.emit).not.toHaveBeenCalled();
-      });
+        it('breaks the a chain of piped buses', () => {
+          bus3 = new DelegateTestBus({});
+          spyOn(bus2, 'emit').and.callThrough();
+          spyOn(bus3, 'emit').and.callThrough();
 
-      it('breaks the a chain of piped buses', () => {
-        bus3 = new DelegateTestBus({});
-        spyOn(bus2, 'emit').and.callThrough();
-        spyOn(bus3, 'emit').and.callThrough();
+          bus.pipe(bus2).pipe(bus3);
+          bus.emit('foo', null);
 
-        bus.pipe(bus2).pipe(bus3);
-        bus.emit('foo', null);
+          expect(bus2.emit).toHaveBeenCalledWith('foo', null);
+          expect(bus3.emit).toHaveBeenCalledWith('foo', null);
+          (bus2.emit as jasmine.Spy).calls.reset();
+          (bus3.emit as jasmine.Spy).calls.reset();
 
-        expect(bus2.emit).toHaveBeenCalledWith('foo', null);
-        expect(bus3.emit).toHaveBeenCalledWith('foo', null);
-        (bus2.emit as jasmine.Spy).calls.reset();
-        (bus3.emit as jasmine.Spy).calls.reset();
+          bus.unpipe(bus2);
+          bus.emit('foo', null);
+          expect(bus2.emit).not.toHaveBeenCalled();
+          expect(bus3.emit).not.toHaveBeenCalled();
 
-        bus.unpipe(bus2);
-        bus.emit('foo', null);
-        expect(bus2.emit).not.toHaveBeenCalled();
-        expect(bus3.emit).not.toHaveBeenCalled();
-
-        // bus2 is still delegating to bus3 via the chain
-        bus2.emit('foo', null);
-        expect(bus3.emit).toHaveBeenCalledWith('foo', null);
+          // bus2 is still delegating to bus3 via the chain
+          bus2.emit('foo', null);
+          expect(bus3.emit).toHaveBeenCalledWith('foo', null);
+        });
       });
     });
   });

@@ -126,8 +126,9 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
 
   /**
    * Subscribe a callback to event(s).
-   * alias of [[Bus.proxy]] when invoked with [[WILDCARD]],
-   * alias of [[Bus.any]] when invoked with an array of events
+   * alias of [[Bus.any]] when invoked with an array of events,
+   * functions like [[Bus.proxy]] when invoked with [[WILDCARD]]. Deprecated, use `bus.pipe(handler)`
+   * 
    */
   public on<T extends Events.Listenable<EventKeys<TEventMap>>>(event: T, handler: EventHandlers.EventHandler<TEventMap, T>): Events.Subscription {
     if(Array.isArray(event)) {
@@ -171,6 +172,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
 
   /**
    * Create a proxy for all events raised. Like [[Bus.any]], handlers receive the raised event as first argument and payload as second argument.
+   * @deprecated Use `bus.pipe(handler)`
    */
   public proxy(handler: EventHandlers.WildcardEventHandler<TEventMap>): Events.Subscription {
     return this.addListener(Events.WILDCARD, handler);
@@ -178,6 +180,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
 
   /**
    * @alias [[Bus.proxy]]
+   * @deprecated Use `bus.pipe(handler)`
    */
   public every(handler: EventHandlers.WildcardEventHandler<TEventMap>): Events.Subscription {
     return this.proxy(handler);
@@ -476,26 +479,41 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     }
   }
 
+
+  private functionDelegates = new WeakMap<EventHandlers.WildcardEventHandler<TEventMap>, Events.Subscription>();
   /**
    * Pipe one bus's events into another bus's subscribers
    */
-  public pipe<TDelegate extends Bus<TEventMap>>(delegate: TDelegate): TDelegate {
-    if(delegate !== this as any) {
-      if(!this._delegates.has(delegate)) {
-        this._delegates.set(delegate, [
-          delegate.hook(Lifecycle.willAddListener, this.willAddListener),
-          delegate.hook(Lifecycle.didAddListener, event => this.didAddListener(event, delegate)),
-          delegate.hook(Lifecycle.willRemoveListener, this.willRemoveListener),
-          delegate.hook(Lifecycle.didRemoveListener, event => this.didRemoveListener(event, delegate))
-        ]);
+  public pipe<TDelegate extends (Bus<TEventMap>|EventHandlers.WildcardEventHandler<TEventMap>)>(delegate: TDelegate): TDelegate extends EventHandlers.WildcardEventHandler<TEventMap> ? Events.Subscription : TDelegate & Bus<TEventMap> {
+    if(typeof delegate === 'function') {
+      delegate satisfies EventHandlers.WildcardEventHandler<TEventMap>;
+      const sub = this.proxy(delegate);
+      this.functionDelegates.set(delegate, sub);
+      return sub as Events.Subscription;
+    } else {
+      delegate satisfies Bus<TEventMap>;
+      if(delegate !== this as any) {
+        if(!this._delegates.has(delegate)) {
+          this._delegates.set(delegate, [
+            delegate.hook(Lifecycle.willAddListener, this.willAddListener),
+            delegate.hook(Lifecycle.didAddListener, event => this.didAddListener(event, delegate)),
+            delegate.hook(Lifecycle.willRemoveListener, this.willRemoveListener),
+            delegate.hook(Lifecycle.didRemoveListener, event => this.didRemoveListener(event, delegate))
+          ]);
+        }
       }
+      return delegate as TDelegate & Bus<TEventMap>;
     }
-    return delegate;
   }
 
-  public unpipe<TDelegate extends Bus<TEventMap>>(delegate: TDelegate): void {
-    over(this._delegates.get(delegate) || [])();
-    this._delegates.delete(delegate);
+  public unpipe<TDelegate extends (Bus<TEventMap>|EventHandlers.WildcardEventHandler<TEventMap>)>(delegate: TDelegate): void {
+    if(typeof delegate === 'function') {
+      this.functionDelegates.get(delegate)?.();
+      this.functionDelegates.delete(delegate);
+    } else {
+      over(this._delegates.get(delegate) || [])();
+      this._delegates.delete(delegate);
+    }
   }
 
   /**
