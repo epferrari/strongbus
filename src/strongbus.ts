@@ -133,6 +133,19 @@ export class Bus<TEventMap extends EventMap = EventMap> implements Scannable<TEv
     return this.addListener(event, handler);
   }
 
+  /**
+   * Subscribe a callback to an event. Automatically unsubscribes after the first invocation.
+   */
+  public once<T extends EventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription {
+    let sub: Subscription;
+    const wrapper = ((payload: TEventMap[T]) => {
+      sub();
+      handler(payload);
+    }) as GenericHandler;
+    sub = this.addListener(event, wrapper);
+    return sub;
+  }
+
   public emit<T extends EventKeys<TEventMap>>(event: T, ...payload: EventPayload<TEventMap, T>): boolean {
     if(event === WILDCARD) {
       throw new Error(`Do not emit "${String(event)}" manually. Reserved for internal use.`);

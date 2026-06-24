@@ -461,6 +461,38 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('#once', () => {
+    it('subscribes handler to an event and unsubscribes after the first invocation', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+      bus.once('foo', handleFoo);
+
+      bus.emit('foo', 'elephant');
+      expect(handleFoo).toHaveBeenCalledWith('elephant');
+
+      bus.emit('foo', 'giraffe');
+      expect(handleFoo).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not invoke the handler if unsubscribed before the event is raised', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+      const sub = bus.once('foo', handleFoo);
+
+      sub();
+      bus.emit('foo', 'elephant');
+      expect(handleFoo).not.toHaveBeenCalled();
+    });
+
+    it('does not invoke subscribers added during callbacks', () => {
+      const barSpy = jasmine.createSpy();
+      bus.once('bar', () => {
+        bus.once('bar', barSpy);
+      });
+      bus.emit('bar', true);
+
+      expect(barSpy).not.toHaveBeenCalled();
+    });
+  });
+
   describe('#any', () => {
     describe('given a list of events to listen on', () => {
       describe('given one of the events in the list is raised', () => {
