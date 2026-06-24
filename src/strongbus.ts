@@ -480,16 +480,15 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
   }
 
 
-  private functionDelegates = new WeakMap<EventHandlers.WildcardEventHandler<TEventMap>, Events.Subscription>();
+  private readonly functionDelegates = new WeakMap<EventHandlers.WildcardEventHandler<TEventMap>, Events.Subscription>();
   /**
    * Pipe one bus's events into another bus's subscribers
    */
   public pipe<TDelegate extends (Bus<TEventMap>|EventHandlers.WildcardEventHandler<TEventMap>)>(delegate: TDelegate): TDelegate extends EventHandlers.WildcardEventHandler<TEventMap> ? Events.Subscription : TDelegate & Bus<TEventMap> {
     if(typeof delegate === 'function') {
       delegate satisfies EventHandlers.WildcardEventHandler<TEventMap>;
-      const sub = this.proxy(delegate);
-      this.functionDelegates.set(delegate, sub);
-      return sub as Events.Subscription;
+      this.functionDelegates.set(delegate, this.proxy(delegate));
+      return generateSubscription(() => this.unpipe(delegate));
     } else {
       delegate satisfies Bus<TEventMap>;
       if(delegate !== this as any) {
