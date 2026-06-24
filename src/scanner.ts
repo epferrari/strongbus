@@ -126,7 +126,7 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
     if(this.settled) {
       return this;
     }
-    
+
     const listener = Array.isArray(listenable) || listenable === Events.WILDCARD
       ? scannable.on(listenable, ((event, payload) => {
           this.evaluate({

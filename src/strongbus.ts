@@ -353,7 +353,7 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
           }
         }
       }
-    }
+    };
     const createNew = (): Promise<TReturnType> => {
       const scanner = new Scanner<TReturnType>(params);
       scanner.scan<TEventMap>(this, params.trigger);
@@ -372,30 +372,30 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
         byEvaluator.set(lazyOrEager, pools);
       }
 
-      const promise = new Promise<TReturnType>(
+      const _promise = new Promise<TReturnType>(
         async (resolve, reject) => {
           try {
             resolve(await scanner);
           } catch(e) {
             reject(e);
           } finally {
-            this.scannerPoolConstituencies.delete(promise);
+            this.scannerPoolConstituencies.delete(_promise);
             this.cleanupPooledScanner({
               ...params,
               lazyOrEager,
-              promise
+              promise: _promise
             });
           }
         }
       );
 
-      this.scannerPoolConstituencies.set(promise, {
+      this.scannerPoolConstituencies.set(_promise, {
         scanner,
         constituentCount: 0
       });
 
       if(params.trigger === Events.WILDCARD) {
-        pools.wildcard = promise;
+        pools.wildcard = _promise;
       } else {
         const events: Set<EventKeys<TEventMap>> = new Set(Array.isArray(params.trigger) ? params.trigger : [params.trigger]);
         const index = events.size - 1;
@@ -404,11 +404,11 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
           byEventCount = new Map<Promise<any>, Set<EventKeys<TEventMap>>>();
           pools.event[index] = byEventCount;
         }
-        byEventCount.set(promise, events);
+        byEventCount.set(_promise, events);
       }
-      return promise;
-    }
-    
+      return _promise;
+    };
+
     const promise = getExisting() || createNew();
     const c = cancelable(() => promise);
     const cancel = c.cancel.bind(c);
