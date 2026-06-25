@@ -238,6 +238,41 @@ Shorthand for observing the active/idle transition. The handler receives `true` 
 bus.monitor((isActive) => console.log(isActive ? 'active' : 'idle'));
 ```
 
+## SubscriptionSurface
+
+`SubscriptionSurface<TEventMap>` is the subscribe-and-introspect API of `Bus` — everything in the sections above
+except `emit`. Type a dependency as `SubscriptionSurface<Events>` when it may listen, await, pipe, or inspect
+listener state but must not raise events.
+
+```typescript
+import {Bus, type SubscriptionSurface} from 'strongbus';
+
+interface AppEvents {
+  message: string;
+  count: number;
+}
+
+interface FeatureEvents {
+  message: string;
+}
+
+function wireFeature(source: SubscriptionSurface<FeatureEvents>) {
+  source.on('message', handle);   // ok
+  source.on('count', handle);     // compile error: 'count' is not in FeatureEvents
+}
+
+const app = new Bus<AppEvents>();
+wireFeature(app);                 // Bus<AppEvents> is a SubscriptionSurface<FeatureEvents>
+```
+
+Because event-map typing is contravariant on the subscription surface, a bus that emits a wider map can be passed
+where only a subset of events is relevant. Methods such as `scan`, `any`, `next`, `pipe`, and the per-event
+listener queries respect the declared map — unknown event keys are compile errors on the narrowed view.
+
+`listeners` and `ownListeners` are intentionally **not** on `SubscriptionSurface`; their `ReadonlyMap` keys are
+invariant in the event-map type parameter, which would break narrowing. Use those maps on `Bus` when you need raw
+handler sets.
+
 ## Introspection
 
 ```typescript
@@ -247,9 +282,13 @@ bus.hasOwnListeners;                // listeners registered directly on this bus
 bus.hasDelegateListeners;           // listeners contributed by piped buses
 bus.listenerCount;                  // total
 bus.hasListenersFor('message');
+bus.hasOwnListenersFor('message');
+bus.hasDelegateListenersFor('message');
 bus.getListenerCountFor('message');
-bus.listeners;                      // ReadonlyMap<event, ReadonlySet<handler>>
-bus.ownListeners;
+bus.getOwnListenerCountFor('message');
+bus.getDelegateListenerCountFor('message');
+bus.listeners;                      // ReadonlyMap<event, ReadonlySet<handler>> — Bus only
+bus.ownListeners;                   // Bus only
 ```
 
 ## Teardown

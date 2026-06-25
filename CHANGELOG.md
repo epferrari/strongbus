@@ -26,6 +26,11 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   used by `any` and the function-sink form of `pipe`.
 - **`Logger` and `LoggerProvider`** types are now exported, for typing a custom
   `options.logger`.
+- **`SubscriptionSurface<TEventMap>`** — the public subscribe-and-introspect API
+  of `Bus`, excluding `emit`. Use it when a component should subscribe, await,
+  pipe, or inspect listener state but must not raise events. `Bus` implements
+  `SubscriptionSurface`; `listeners` and `ownListeners` remain on `Bus` only
+  (their `ReadonlyMap` keys are invariant and would break contravariant views).
 
 ### Changed (breaking)
 
@@ -50,9 +55,10 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Fixed
 
-- **Variance:** a `Bus<Wide>` is now assignable to a consumer view over a
-  narrower event map (e.g. `Pick<Bus<Narrow>, 'on' | 'once' | 'any' | 'pipe'>`),
-  while still preventing subscription to events outside the declared map.
+- **Variance:** a `Bus<Wide>` is assignable to `SubscriptionSurface<Narrow>`
+  (and other contravariant views), so consumers can declare a narrower event map
+  while still preventing subscription to events outside it. `scan`, `any`,
+  `next`, `pipe`, and per-event listener queries participate in this narrowing.
 
 ### Internal
 
@@ -146,4 +152,19 @@ import {generateSubscription} from 'strongbus';
 
 // v3
 import {subscriptionWrapper} from 'strongbus';
+```
+
+### Narrower consumer views
+
+Prefer `SubscriptionSurface<Narrow>` over ad-hoc `Pick<Bus<Narrow>, ...>` when a
+component should subscribe but not emit. A `Bus<Wide>` remains assignable to
+`SubscriptionSurface<Narrow>`.
+
+```typescript
+// v3
+import type {SubscriptionSurface} from 'strongbus';
+
+function consume(source: SubscriptionSurface<Pick<MyEvents, 'foo' | 'bar'>>) {
+  source.on('foo', handler);
+}
 ```
