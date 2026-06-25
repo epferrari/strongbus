@@ -111,8 +111,8 @@ export type NextResult<TEventMap extends EventMap, T> =
 /**
  * The public subscription and introspection surface of {@link Bus}, excluding
  * {@link Bus.emit}. {@link Bus.listeners} and {@link Bus.ownListeners} remain
- * on {@link Bus} only, since {@link ReadonlyMap} keys are invariant in
- * {@link TEventMap} and would break contravariant views.
+ * on {@link Bus} only, since `ReadonlyMap` keys are invariant in the event map
+ * type parameter and would break contravariant views.
  */
 export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMap> extends Scannable<TEventMap> {
   once<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription;
