@@ -2,8 +2,7 @@ import {Bus} from './strongbus';
 import {Scanner} from './scanner';
 import {WILDCARD} from './types/events';
 import {ListenerScope} from './types/listenerScope';
-import type {ListenerSet} from './types/subscriptionSurface';
-import type {SubscriptionSurface} from './types/subscriptionSurface';
+import type {ListenerSet, SubscriptionSurface} from './types/subscriptionSurface';
 import type {EventKeys} from './types/utility';
 
 /**

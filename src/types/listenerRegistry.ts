@@ -61,9 +61,13 @@ export interface ListenerRegistry<TEventMap extends EventMap = EventMap> {
 }
 
 export class ListenerRegistryView<TEventMap extends EventMap> implements ListenerRegistry<TEventMap> {
+  private readonly source: () => ReadonlyMap<EventKeys<TEventMap> | WILDCARD, ListenerSet>;
+
   public constructor(
-    private readonly source: () => ReadonlyMap<EventKeys<TEventMap> | WILDCARD, ListenerSet>
-  ) {}
+    source: () => ReadonlyMap<EventKeys<TEventMap> | WILDCARD, ListenerSet>
+  ) {
+    this.source = source;
+  }
 
   public static create<TEventMap extends EventMap>(
     source: () => ReadonlyMap<EventKeys<TEventMap> | WILDCARD, ListenerSet>

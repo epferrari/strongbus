@@ -405,8 +405,6 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
     return this.getListenerCount(scope) > 0;
   }
 
-  
-
   /**
    * Total handler registrations in `scope`. For `ListenerScope.ANY`, sums own and
    * delegate counts (the same handler on both still counts twice).
@@ -491,8 +489,6 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
     }
     return Bus._emptyListenersRegistry;
   }
-
-  
 
   private getCombinedListenersMap(): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
     if(!this._cachedCombinedListenersMap) {
