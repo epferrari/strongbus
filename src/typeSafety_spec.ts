@@ -2,6 +2,7 @@ import {Bus} from './strongbus';
 import {Scanner} from './scanner';
 import {WILDCARD} from './types/events';
 import {ListenerScope} from './types/listenerScope';
+import type {EventSink} from './types/eventHandlers';
 import type {ListenerSet, SubscriptionSurface} from './types/subscriptionSurface';
 import type {EventKeys} from './types/utility';
 
@@ -337,7 +338,57 @@ describe('type safety', () => {
       narrow.getListenerCountFor('baz', ListenerScope.ANY);
     });
 
-    typeChecks.push(function pipeAcceptsCompatibleSink(): void {
+    typeChecks.push(function narrowPipeAcceptsWideBus(): void {
+      const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
+      const wideBus = new Bus<Wide>();
+
+      const delegate = narrow.pipe(wideBus);
+      expectType<Bus<Wide> & SubscriptionSurface<Narrow>>(delegate);
+      delegate.on('foo', payload => expectType<number>(payload));
+      delegate.emit('baz', true);
+    });
+
+    typeChecks.push(function narrowPipeAcceptsWideSink(): void {
+      const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
+      const wideSink: EventSink<Wide> = (event, payload) => {
+        expectType<keyof Wide>(event);
+        expectType<Wide[keyof Wide]>(payload);
+      };
+
+      narrow.pipe(wideSink);
+      narrow.pipe((event, payload) => {
+        expectType<keyof Wide>(event);
+        expectType<Wide[keyof Wide]>(payload);
+      });
+    });
+
+    typeChecks.push(function narrowPipeRejectsIncompatibleDelegate(): void {
+      const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
+
+      interface Incompatible {
+        foo: string;
+        bar: string;
+      }
+
+      // @ts-expect-error delegate emit signatures must accept Narrow payloads
+      narrow.pipe(new Bus<Incompatible>());
+    });
+
+    typeChecks.push(function narrowPipeRejectsIncompatibleSink(): void {
+      const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
+
+      interface WrongPayload {
+        foo: string;
+        bar: string;
+      }
+
+      const wrongSink: EventSink<WrongPayload> = () => undefined;
+
+      // @ts-expect-error sink must accept Narrow event keys and payloads
+      narrow.pipe(wrongSink);
+    });
+
+    typeChecks.push(function widePipeAcceptsNarrowSink(): void {
       const bus = new Bus<Wide>();
       bus.pipe(<T extends keyof Narrow>(event: T, payload: Narrow[T]) => {
         expectType<keyof Wide>(event);
