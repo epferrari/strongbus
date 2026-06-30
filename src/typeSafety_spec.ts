@@ -274,22 +274,64 @@ describe('type safety', () => {
       baz: boolean;
     }
 
-    // a subclass of Bus over the wider map
-    class WideBus extends Bus<Wide> {}
-
-    // the contravariant payoff: a Bus over a wider map satisfies a view over a
-    // narrower one, so a subclass can declare it `implements` the narrow surface.
-    // a broken variance would make this class declaration fail to compile.
-    class NarrowBus extends WideBus implements SubscriptionSurface<Narrow> {}
-
     typeChecks.push(function wideBusSatisfiesNarrowSubscriptionSurface(): void {
       const evaluator: Scanner.Evaluator<boolean, Narrow> = resolve => {
         resolve(true);
       };
 
       const wide = new Bus<Wide>();
-      const narrow: SubscriptionSurface<Narrow> = wide;
+      const narrowed: SubscriptionSurface<Narrow> = wide;
 
+      narrowed.on('foo', payload => expectType<number>(payload));
+      narrowed.once('bar', payload => expectType<string>(payload));
+      narrowed.any(['foo', 'bar'], (event, payload) => {
+        expectType<keyof Narrow>(event);
+        expectType<Narrow[keyof Narrow]>(payload);
+      });
+      narrowed.scan({evaluator, trigger: 'foo'});
+      narrowed.next('foo').then(result => {
+        expectType<'foo'>(result.event);
+        expectType<number>(result.payload);
+      });
+      expectType<number>(narrowed.getListenerCountFor('foo', ListenerScope.ANY));
+      expectType<ListenerSet>(narrowed.getListenersFor('bar', ListenerScope.OWN));
+    });
+
+    typeChecks.push(function wideBusCompositionSatisfiesNarrowSubscriptionSurface(): void {
+      // a wrapper that implements the narrow subscription surface via composition
+      class NarrowSurface implements SubscriptionSurface<Narrow> {
+        private readonly bus = new Bus<Wide>();
+
+        public get name() {
+          return this.bus.name;
+        }
+        public on: SubscriptionSurface<Narrow>['on'] = this.bus.on;
+        public hook = this.bus.hook;
+        public once: SubscriptionSurface<Narrow>['once'] = this.bus.once;
+        public any: SubscriptionSurface<Narrow>['any'] = this.bus.any;
+        public next: SubscriptionSurface<Narrow>['next'] = this.bus.next;
+        public scan: SubscriptionSurface<Narrow>['scan'] = this.bus.scan;
+        public pipe: SubscriptionSurface<Narrow>['pipe'] = this.bus.pipe;
+        public unpipe = this.bus.unpipe;
+        public monitor = this.bus.monitor;
+        public get active() { return this.bus.active; }
+        public hasListeners = this.bus.hasListeners;
+        public getListenerCount = this.bus.getListenerCount;
+        public getListeners = this.bus.getListeners;
+        public getEventCount = this.bus.getEventCount;
+        public hasListenersFor = this.bus.hasListenersFor;
+        public getListenerCountFor = this.bus.getListenerCountFor;
+        public getListenersFor = this.bus.getListenersFor;
+        public forEach = this.bus.forEach;
+        public destroy = this.bus.destroy;
+      }
+
+      const evaluator: Scanner.Evaluator<boolean, Narrow> = resolve => {
+        resolve(true);
+      };
+
+      const narrow = new NarrowSurface();
+      expectType<SubscriptionSurface<Narrow>>(narrow);
       narrow.on('foo', payload => expectType<number>(payload));
       narrow.once('bar', payload => expectType<string>(payload));
       narrow.any(['foo', 'bar'], (event, payload) => {
@@ -303,17 +345,6 @@ describe('type safety', () => {
       });
       expectType<number>(narrow.getListenerCountFor('foo', ListenerScope.ANY));
       expectType<ListenerSet>(narrow.getListenersFor('bar', ListenerScope.OWN));
-
-      const subclassView: SubscriptionSurface<Narrow> = new WideBus();
-      subclassView.on('bar', payload => expectType<string>(payload));
-
-      const narrowable = new NarrowBus();
-      expectType<SubscriptionSurface<Narrow>>(narrowable);
-      narrowable.on('baz', payload => expectType<boolean>(payload));
-      narrowable.scan({
-        evaluator: resolve => resolve(true),
-        trigger: 'baz'
-      });
     });
 
     typeChecks.push(function narrowSubscriptionSurfaceRejectsUnknownEvent(): void {
