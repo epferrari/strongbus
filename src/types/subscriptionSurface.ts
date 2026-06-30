@@ -4,12 +4,13 @@ import type {Scanner} from '../scanner';
 import type {Subscription, EventMap, Listenable, WILDCARD} from './events';
 import type {SingleEventHandler, EventSink} from './eventHandlers';
 import type {EventListenerMapKey, ListenerSet} from './listenerRegistry';
-import type {ListenerScope} from './listenerScope';
+import type {IntrospectionOptions} from './listenerScope';
 import type {Scannable} from './scannable';
 import type {EventKeys, EventPayload, EventPayloadPair, SubscribableEventKeys} from './utility';
 
 export type {EventListenerMapKey, ListenerSet} from './listenerRegistry';
 export {ListenerScope} from './listenerScope';
+export type {IntrospectionOptions} from './listenerScope';
 
 export type AnyEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
 
@@ -84,21 +85,21 @@ export type SubscriptionSurfaceUnpipe<TEventMap extends EventMap> =
   SubscriptionSurfaceUnpipeObject<TEventMap>['bivarianceHack'];
 
 interface SubscriptionSurfaceHasListenersForEventObject<in out TEventMap extends EventMap> {
-  bivarianceHack(event: EventListenerMapKey<TEventMap>, scope?: ListenerScope): boolean;
+  bivarianceHack(event: EventListenerMapKey<TEventMap>, options?: IntrospectionOptions): boolean;
 }
 
 export type SubscriptionSurfaceHasListenersForEvent<TEventMap extends EventMap> =
   SubscriptionSurfaceHasListenersForEventObject<TEventMap>['bivarianceHack'];
 
 interface SubscriptionSurfaceListenerForEventObject<in out TEventMap extends EventMap> {
-  bivarianceHack(event: EventListenerMapKey<TEventMap>, scope?: ListenerScope): ListenerSet;
+  bivarianceHack(event: EventListenerMapKey<TEventMap>, options?: IntrospectionOptions): ListenerSet;
 }
 
 export type SubscriptionSurfaceListenerForEvent<TEventMap extends EventMap> =
   SubscriptionSurfaceListenerForEventObject<TEventMap>['bivarianceHack'];
 
 interface SubscriptionSurfaceListenerCountForEventObject<in out TEventMap extends EventMap> {
-  bivarianceHack(event: EventListenerMapKey<TEventMap>, scope?: ListenerScope): number;
+  bivarianceHack(event: EventListenerMapKey<TEventMap>, options?: IntrospectionOptions): number;
 }
 
 export type SubscriptionSurfaceListenerCountForEvent<TEventMap extends EventMap> =
@@ -109,7 +110,7 @@ interface SubscriptionSurfaceListenerForEachObject<in out TEventMap extends Even
     TMap extends AnyEventMap<TEventMap>
   >(
     fn: (event: EventListenerMapKey<TMap>, handlers: ListenerSet) => void,
-    scope?: ListenerScope
+    options?: IntrospectionOptions
   ): void;
 }
 
@@ -146,13 +147,13 @@ export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMa
 
   readonly active: boolean;
 
-  hasListeners(scope?: ListenerScope): boolean;
+  hasListeners(options?: IntrospectionOptions): boolean;
 
-  getListenerCount(scope?: ListenerScope): number;
+  getListenerCount(options?: IntrospectionOptions): number;
 
-  getListeners(scope?: ListenerScope): ListenerSet;
+  getListeners(options?: IntrospectionOptions): ListenerSet;
 
-  getEventCount(scope?: ListenerScope): number;
+  getEventCount(options?: IntrospectionOptions): number;
 
   hasListenersFor: SubscriptionSurfaceHasListenersForEvent<TEventMap>;
 

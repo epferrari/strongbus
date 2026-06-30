@@ -163,7 +163,7 @@ describe('Strongbus.Bus', () => {
 
             // 11th listener triggers info
             addListeners(1);
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(11);
+            expect(bus.getListenersFor('bar').size).toEqual(11);
             expect(logger.info).toHaveBeenCalledWith(
               StrongbusLogMessages.infoThresholdExceeded('Foo Bus', 10, 11, 'bar')
             );
@@ -173,20 +173,20 @@ describe('Strongbus.Bus', () => {
 
             // 12th listener triggers no logging
             addListeners(1);
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(12);
+            expect(bus.getListenersFor('bar').size).toEqual(12);
             expect(logger.info).not.toHaveBeenCalled();
             expect(logger.warn).not.toHaveBeenCalled();
             expect(logger.error).not.toHaveBeenCalled();
 
             addListeners(7);
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(19);
+            expect(bus.getListenersFor('bar').size).toEqual(19);
             expect(logger.info).not.toHaveBeenCalled();
             expect(logger.warn).not.toHaveBeenCalled();
             expect(logger.error).not.toHaveBeenCalled();
 
             // multiple of info threshold
             addListeners(1);
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(20);
+            expect(bus.getListenersFor('bar').size).toEqual(20);
             expect(logger.info).toHaveBeenCalledWith(
               StrongbusLogMessages.infoThresholdExceeded('Foo Bus', 10, 20, 'bar')
             );
@@ -196,7 +196,7 @@ describe('Strongbus.Bus', () => {
 
             addListeners(5);
             // 25th triggers info about reaching threshold
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(25);
+            expect(bus.getListenersFor('bar').size).toEqual(25);
             expect(logger.info).toHaveBeenCalledWith(
               StrongbusLogMessages.warnThresholdReached('Foo Bus', 25, 'bar')
             );
@@ -206,7 +206,7 @@ describe('Strongbus.Bus', () => {
 
             addListeners(1);
             // 26th triggers warning
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(26);
+            expect(bus.getListenersFor('bar').size).toEqual(26);
             expect(logger.info).not.toHaveBeenCalled();
             expect(logger.warn).toHaveBeenCalledWith(
               StrongbusLogMessages.warnThresholdExceeded('Foo Bus', 25, 26, 'bar')
@@ -216,7 +216,7 @@ describe('Strongbus.Bus', () => {
 
             addListeners(4);
             // 30th triggers warning (as multiple of info threshold, but over warning limit)
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(30);
+            expect(bus.getListenersFor('bar').size).toEqual(30);
             expect(logger.info).not.toHaveBeenCalled();
             expect(logger.warn).toHaveBeenCalledWith(
               StrongbusLogMessages.warnThresholdExceeded('Foo Bus', 25, 30, 'bar')
@@ -226,7 +226,7 @@ describe('Strongbus.Bus', () => {
 
             addListeners(20);
             // 40th and 50th trigger warnings
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(50);
+            expect(bus.getListenersFor('bar').size).toEqual(50);
             expect(logger.info).not.toHaveBeenCalled();
             expect(logger.warn).toHaveBeenCalledTimes(2);
             expect(logger.error).not.toHaveBeenCalled();
@@ -234,7 +234,7 @@ describe('Strongbus.Bus', () => {
 
             addListeners(10);
             // 60th triggers info about reaching threshold
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(60);
+            expect(bus.getListenersFor('bar').size).toEqual(60);
             expect(logger.info).toHaveBeenCalledWith(
               StrongbusLogMessages.errorThresholdReached('Foo Bus', 60, 'bar')
             );
@@ -244,7 +244,7 @@ describe('Strongbus.Bus', () => {
 
             addListeners(1);
             // 61st triggers an error
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(61);
+            expect(bus.getListenersFor('bar').size).toEqual(61);
             expect(logger.info).not.toHaveBeenCalled();
             expect(logger.warn).not.toHaveBeenCalled();
             expect(logger.error).toHaveBeenCalledWith(
@@ -254,7 +254,7 @@ describe('Strongbus.Bus', () => {
 
             addListeners(9);
             // 70th triggers error (as a multiple of info threshold, but over error limit)
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(70);
+            expect(bus.getListenersFor('bar').size).toEqual(70);
             expect(logger.info).not.toHaveBeenCalled();
             expect(logger.warn).not.toHaveBeenCalled();
             expect(logger.error).toHaveBeenCalledWith(
@@ -281,7 +281,7 @@ describe('Strongbus.Bus', () => {
 
             // 11th listener triggers info
             addListeners(1);
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(11);
+            expect(bus.getListenersFor('bar').size).toEqual(11);
             expect(logger.info).withContext('crossed info threshold').toHaveBeenCalledTimes(1);
             expect(logger.warn).withContext('crossed info threshold').not.toHaveBeenCalled();
             expect(logger.error).withContext('crossed info threshold').not.toHaveBeenCalled();
@@ -344,34 +344,34 @@ describe('Strongbus.Bus', () => {
             logger.info.calls.reset();
 
             over(unsubs.splice(60))();
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(60);
+            expect(bus.getListenersFor('bar').size).toEqual(60);
             expect(logger.info).not.toHaveBeenCalled();
 
             over(unsubs.splice(59))();
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(59);
+            expect(bus.getListenersFor('bar').size).toEqual(59);
             // logs crossing the error threshold
             expect(logger.info).toHaveBeenCalledTimes(1);
 
             over(unsubs.splice(25))();
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(25);
+            expect(bus.getListenersFor('bar').size).toEqual(25);
             expect(logger.info).toHaveBeenCalledTimes(1);
 
             over(unsubs.splice(24))();
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(24);
+            expect(bus.getListenersFor('bar').size).toEqual(24);
             // logs crossing the warning threshold
             expect(logger.info).toHaveBeenCalledTimes(2);
 
             over(unsubs.splice(10))();
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(10);
+            expect(bus.getListenersFor('bar').size).toEqual(10);
             expect(logger.info).toHaveBeenCalledTimes(2);
 
             over(unsubs.splice(9))();
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toEqual(9);
+            expect(bus.getListenersFor('bar').size).toEqual(9);
             // logs crossing the info threshold
             expect(logger.info).toHaveBeenCalledTimes(3);
 
             over(unsubs)();
-            expect(bus.getListenersFor('bar', Strongbus.ListenerScope.ANY).size).toBe(0);
+            expect(bus.getListenersFor('bar').size).toBe(0);
             expect(logger.info).toHaveBeenCalledTimes(3);
           });
         });
@@ -477,18 +477,18 @@ describe('Strongbus.Bus', () => {
     describe('returns a Subscription', () => {
       it('which can be disposed by direct invocation', () => {
         const unsub = bus.on('foo', () => { return; });
-        expect(bus.hasListeners(Strongbus.ListenerScope.ANY)).toBeTruthy();
+        expect(bus.hasListeners()).toBeTruthy();
 
         unsub();
-        expect(bus.hasListeners(Strongbus.ListenerScope.ANY)).toBeFalsy();
+        expect(bus.hasListeners()).toBeFalsy();
       });
 
       it('which can be disposed by calling .unsubscribe on the Subscription reference', () => {
         const unsub2 = bus.on('foo', () => { return; });
-        expect(bus.hasListeners(Strongbus.ListenerScope.ANY)).toBeTruthy();
+        expect(bus.hasListeners()).toBeTruthy();
 
         unsub2.unsubscribe();
-        expect(bus.hasListeners(Strongbus.ListenerScope.ANY)).toBeFalsy();
+        expect(bus.hasListeners()).toBeFalsy();
       });
     });
   });
@@ -765,10 +765,10 @@ describe('Strongbus.Bus', () => {
     });
 
     it('allows subscription to meta events', () => {
-      onWillActivate.and.callFake(() => expect(bus.hasListeners(Strongbus.ListenerScope.ANY)).toBeFalse());
-      onActive.and.callFake(() => expect(bus.hasListeners(Strongbus.ListenerScope.ANY)).toBeTrue());
-      onWillIdle.and.callFake(() => expect(bus.hasListeners(Strongbus.ListenerScope.ANY)).toBeTrue());
-      onIdle.and.callFake(() => expect(bus.hasListeners(Strongbus.ListenerScope.ANY)).toBeFalse());
+      onWillActivate.and.callFake(() => expect(bus.hasListeners()).toBeFalse());
+      onActive.and.callFake(() => expect(bus.hasListeners()).toBeTrue());
+      onWillIdle.and.callFake(() => expect(bus.hasListeners()).toBeTrue());
+      onIdle.and.callFake(() => expect(bus.hasListeners()).toBeFalse());
 
       const foosub = bus.on('foo', singleEventHandler);
       expect(onWillAddListener).toHaveBeenCalledWith('foo');
@@ -800,11 +800,11 @@ describe('Strongbus.Bus', () => {
     });
 
     it('only raises "willActivate" and "active" events when the bus goes from 0 to 1 listeners', () => {
-      expect(bus.hasListeners(Strongbus.ListenerScope.ANY)).toBeFalsy();
+      expect(bus.hasListeners()).toBeFalsy();
       bus.on('foo', singleEventHandler);
       expect(onWillActivate).toHaveBeenCalled();
       expect(onActive).toHaveBeenCalledTimes(1);
-      expect(bus.hasListeners(Strongbus.ListenerScope.ANY)).toBeTruthy();
+      expect(bus.hasListeners()).toBeTruthy();
 
       bus.on('bar', singleEventHandler);
       expect(onWillActivate).toHaveBeenCalledTimes(1);
@@ -812,7 +812,7 @@ describe('Strongbus.Bus', () => {
     });
 
     it('only raises "willIdle" and "idle" events when the bus goes from 1 to 0 listeners', () => {
-      expect(bus.hasListeners(Strongbus.ListenerScope.ANY)).toBeFalsy();
+      expect(bus.hasListeners()).toBeFalsy();
       const foosub = bus.on('foo', singleEventHandler);
       const barsub = bus.on('bar', singleEventHandler);
       expect(onWillIdle).toHaveBeenCalledTimes(0);
@@ -839,7 +839,7 @@ describe('Strongbus.Bus', () => {
     });
 
     it('can distinguish between diffierent subscriptions to the same event', () => {
-      expect(bus.hasListeners(Strongbus.ListenerScope.ANY)).toBeFalsy();
+      expect(bus.hasListeners()).toBeFalsy();
       const foosub1 = bus.on('foo', singleEventHandler);
       const foosub2 = bus.on('foo', () => true);
       expect(onWillIdle).toHaveBeenCalledTimes(0);
@@ -867,12 +867,12 @@ describe('Strongbus.Bus', () => {
 
     // if subscriptions are the same, then they are grouped
     it('allows duplicate subscriptions', () => {
-      expect(bus.hasListeners(Strongbus.ListenerScope.ANY)).toBeFalse();
+      expect(bus.hasListeners()).toBeFalse();
       const sub1 = bus.on('foo', singleEventHandler);
       const sub2 = bus.on('foo', singleEventHandler);
 
       sub1();
-      expect(bus.hasListeners(Strongbus.ListenerScope.ANY)).toBeFalse();
+      expect(bus.hasListeners()).toBeFalse();
       expect(onWillRemoveListener).toHaveBeenCalled();
       expect(onRemoveListener).toHaveBeenCalled();
       expect(onWillIdle).toHaveBeenCalled();
@@ -1111,13 +1111,13 @@ describe('Strongbus.Bus', () => {
     describe('given there are any event listeners on the instance', () => {
       it('returns true', () => {
         bus.pipe(eventSink);
-        expect(bus.hasListeners(Strongbus.ListenerScope.ANY)).toBeTruthy();
+        expect(bus.hasListeners()).toBeTruthy();
       });
     });
 
     describe('given there are no listeners registered with the instance', () => {
       it('returns false', () => {
-        expect(bus.hasListeners(Strongbus.ListenerScope.ANY)).toBeFalsy();
+        expect(bus.hasListeners()).toBeFalsy();
       });
     });
   });
@@ -1140,8 +1140,8 @@ describe('Strongbus.Bus', () => {
             'foo', new Set([singleEventHandler])
           ]]));
           bus.pipe(eventSink);
-          expect(bus.getListenersFor('foo', Strongbus.ListenerScope.ANY)).toEqual(new Set([singleEventHandler]));
-          expect(bus.getListenersFor('*', Strongbus.ListenerScope.ANY).size).toEqual(1); // will be an anonymous wrapper around `onEveryEvent`
+          expect(bus.getListenersFor('foo')).toEqual(new Set([singleEventHandler]));
+          expect(bus.getListenersFor('*').size).toEqual(1); // will be an anonymous wrapper around `onEveryEvent`
         });
       });
 
@@ -1179,13 +1179,13 @@ describe('Strongbus.Bus', () => {
       describe('and the instance has delegates with no listeners', () => {
         it('lists no listeners', () => {
           bus.pipe(bus2);
-          expect(bus.getEventCount(Strongbus.ListenerScope.ANY)).toEqual(0);
+          expect(bus.getEventCount()).toEqual(0);
         });
       });
 
       describe('and the instance has no delegates', () => {
         it('lists no listeners', () => {
-          expect(bus.getEventCount(Strongbus.ListenerScope.ANY)).toEqual(0);
+          expect(bus.getEventCount()).toEqual(0);
         });
       });
     });
@@ -1193,17 +1193,17 @@ describe('Strongbus.Bus', () => {
     describe('given listeners change between lookups', () => {
       it('reflects listeners added on the instance', () => {
         bus.on('foo', singleEventHandler);
-        expect(bus.getEventCount(Strongbus.ListenerScope.ANY)).toEqual(1);
+        expect(bus.getEventCount()).toEqual(1);
         bus.on('bar', singleEventHandler);
-        expect(bus.getEventCount(Strongbus.ListenerScope.ANY)).toEqual(2);
+        expect(bus.getEventCount()).toEqual(2);
       });
 
       it('reflects listeners removed from the instance', () => {
         bus.on('foo', singleEventHandler);
         const sub = bus.on('bar', singleEventHandler);
-        expect(bus.getEventCount(Strongbus.ListenerScope.ANY)).toEqual(2);
+        expect(bus.getEventCount()).toEqual(2);
         sub.unsubscribe();
-        expect(bus.getEventCount(Strongbus.ListenerScope.ANY)).toEqual(1);
+        expect(bus.getEventCount()).toEqual(1);
       });
 
       describe('given the instance has delegates', () => {
@@ -1213,17 +1213,17 @@ describe('Strongbus.Bus', () => {
 
         it('reflects listeners added on a delegate', () => {
           bus.on('foo', singleEventHandler);
-          expect(bus.getEventCount(Strongbus.ListenerScope.ANY)).toEqual(1);
+          expect(bus.getEventCount()).toEqual(1);
           bus2.on('bar', singleEventHandler);
-          expect(bus.getEventCount(Strongbus.ListenerScope.ANY)).toEqual(2);
+          expect(bus.getEventCount()).toEqual(2);
         });
 
         it('reflects listeners removed from a delegate', () => {
           bus.on('foo', singleEventHandler);
           const sub = bus2.on('bar', singleEventHandler);
-          expect(bus.getEventCount(Strongbus.ListenerScope.ANY)).toEqual(2);
+          expect(bus.getEventCount()).toEqual(2);
           sub.unsubscribe();
-          expect(bus.getEventCount(Strongbus.ListenerScope.ANY)).toEqual(1);
+          expect(bus.getEventCount()).toEqual(1);
         });
       });
     });
@@ -1247,8 +1247,8 @@ describe('Strongbus.Bus', () => {
             'foo', new Set([singleEventHandler])
           ]]));
           bus.pipe(eventSink);
-          expect(bus.getListenersFor('foo', Strongbus.ListenerScope.OWN)).toEqual(new Set([singleEventHandler]));
-          expect(bus.getListenersFor('*', Strongbus.ListenerScope.OWN).size).toEqual(1); // will be an anonymous wrapper around `onEveryEvent`
+          expect(bus.getListenersFor('foo', {scope: Strongbus.ListenerScope.OWN})).toEqual(new Set([singleEventHandler]));
+          expect(bus.getListenersFor('*', {scope: Strongbus.ListenerScope.OWN}).size).toEqual(1); // will be an anonymous wrapper around `onEveryEvent`
         });
       });
 
@@ -1277,20 +1277,20 @@ describe('Strongbus.Bus', () => {
         it('lists no listeners', () => {
           bus.pipe(bus2);
           bus2.on('foo', eventSink);
-          expect(bus.getEventCount(Strongbus.ListenerScope.OWN)).toEqual(0);
+          expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(0);
         });
       });
 
       describe('and the instance has delegates with no listeners', () => {
         it('lists no listeners', () => {
           bus.pipe(bus2);
-          expect(bus.getEventCount(Strongbus.ListenerScope.OWN)).toEqual(0);
+          expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(0);
         });
       });
 
       describe('and the instance has no delegates', () => {
         it('lists no listeners', () => {
-          expect(bus.getEventCount(Strongbus.ListenerScope.OWN)).toEqual(0);
+          expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(0);
         });
       });
     });
@@ -1298,17 +1298,17 @@ describe('Strongbus.Bus', () => {
     describe('given own listeners change between lookups', () => {
       it('reflects listeners added on the instance', () => {
         bus.on('foo', singleEventHandler);
-        expect(bus.getEventCount(Strongbus.ListenerScope.OWN)).toEqual(1);
+        expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(1);
         bus.on('bar', singleEventHandler);
-        expect(bus.getEventCount(Strongbus.ListenerScope.OWN)).toEqual(2);
+        expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(2);
       });
 
       it('is unaffected by delegate listener changes', () => {
         bus.pipe(bus2);
         bus.on('foo', singleEventHandler);
-        expect(bus.getEventCount(Strongbus.ListenerScope.OWN)).toEqual(1);
+        expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(1);
         bus2.on('bar', singleEventHandler);
-        expect(bus.getEventCount(Strongbus.ListenerScope.OWN)).toEqual(1);
+        expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(1);
       });
     });
   });
@@ -1317,7 +1317,7 @@ describe('Strongbus.Bus', () => {
     describe('given an instance has no listeners registered for an event', () => {
       it('returns 0', () => {
         bus.destroy();
-        expect(bus.getListenerCountFor('foo', Strongbus.ListenerScope.ANY)).toBe(0);
+        expect(bus.getListenerCountFor('foo')).toBe(0);
       });
 
       describe('given an instance has delegates registered for an event', () => {
@@ -1326,7 +1326,7 @@ describe('Strongbus.Bus', () => {
           const bus2 = new DelegateTestBus({emulateListenerCount: true});
           bus.pipe(bus2);
           bus2.on('foo', () => {return; });
-          expect(bus.getListenerCountFor('foo', Strongbus.ListenerScope.ANY)).toBeGreaterThan(0);
+          expect(bus.getListenerCountFor('foo')).toBeGreaterThan(0);
         });
       });
     });
@@ -1337,7 +1337,7 @@ describe('Strongbus.Bus', () => {
         const handleFoo = (payload: string) => {return; };
         bus.on('foo', handleFoo);
 
-        expect(bus.getListenerCountFor('foo', Strongbus.ListenerScope.ANY)).toBe(1);
+        expect(bus.getListenerCountFor('foo')).toBe(1);
       });
     });
   });
@@ -1346,7 +1346,7 @@ describe('Strongbus.Bus', () => {
     describe('given an instance has no listeners registered for an event', () => {
       it('returns 0', () => {
         bus.destroy();
-        expect(bus.getListenerCountFor('foo', Strongbus.ListenerScope.OWN)).toBe(0);
+        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.OWN})).toBe(0);
       });
 
       describe('given an instance has delegates registered for an event', () => {
@@ -1355,7 +1355,7 @@ describe('Strongbus.Bus', () => {
           const bus2 = new DelegateTestBus({emulateListenerCount: true});
           bus.pipe(bus2);
           bus2.on('foo', () => {return; });
-          expect(bus.getListenerCountFor('foo', Strongbus.ListenerScope.OWN)).toBe(0);
+          expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.OWN})).toBe(0);
         });
       });
     });
@@ -1366,7 +1366,7 @@ describe('Strongbus.Bus', () => {
         const handleFoo = (payload: string) => {return; };
         bus.on('foo', handleFoo);
 
-        expect(bus.getListenerCountFor('foo', Strongbus.ListenerScope.OWN)).toBe(1);
+        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.OWN})).toBe(1);
       });
     });
   });
@@ -1375,14 +1375,14 @@ describe('Strongbus.Bus', () => {
     describe('given an instance has no delegate listeners for an event', () => {
       it('returns 0', () => {
         bus.destroy();
-        expect(bus.getListenerCountFor('foo', Strongbus.ListenerScope.DELEGATE)).toBe(0);
+        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.DELEGATE})).toBe(0);
       });
 
       describe('given an instance has only own listeners for an event', () => {
         it('returns 0', () => {
           bus.destroy();
           bus.on('foo', () => undefined);
-          expect(bus.getListenerCountFor('foo', Strongbus.ListenerScope.DELEGATE)).toBe(0);
+          expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.DELEGATE})).toBe(0);
         });
       });
     });
@@ -1393,7 +1393,7 @@ describe('Strongbus.Bus', () => {
         const bus2 = new DelegateTestBus({emulateListenerCount: true});
         bus.pipe(bus2);
         bus2.on('foo', () => undefined);
-        expect(bus.getListenerCountFor('foo', Strongbus.ListenerScope.DELEGATE)).toBeGreaterThan(0);
+        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.DELEGATE})).toBeGreaterThan(0);
       });
     });
   });
@@ -1404,7 +1404,7 @@ describe('Strongbus.Bus', () => {
         bus.on('foo', singleEventHandler);
         bus.on('bar', () => ({}));
 
-        expect(bus.getListenerCount(Strongbus.ListenerScope.ANY)).toEqual(2);
+        expect(bus.getListenerCount()).toEqual(2);
       });
     });
 
@@ -1421,7 +1421,7 @@ describe('Strongbus.Bus', () => {
           bus.on('bar', () => ({}));
           bus2.on('foo', singleEventHandler);
 
-          expect(bus.getListenerCount(Strongbus.ListenerScope.ANY)).toEqual(3);
+          expect(bus.getListenerCount()).toEqual(3);
         });
       });
 
@@ -1430,7 +1430,7 @@ describe('Strongbus.Bus', () => {
           bus.on('foo', singleEventHandler);
           bus.on('bar', () => ({}));
 
-          expect(bus.getListenerCount(Strongbus.ListenerScope.ANY)).toEqual(2);
+          expect(bus.getListenerCount()).toEqual(2);
         });
       });
     });
@@ -1442,11 +1442,11 @@ describe('Strongbus.Bus', () => {
         const sub1 = bus.on('foo', singleEventHandler);
         const sub2 = bus.on('bar', () => ({}));
 
-        expect(bus.getListenerCount(Strongbus.ListenerScope.ANY)).toEqual(2);
+        expect(bus.getListenerCount()).toEqual(2);
         sub1.unsubscribe();
-        expect(bus.getListenerCount(Strongbus.ListenerScope.ANY)).toEqual(1);
+        expect(bus.getListenerCount()).toEqual(1);
         sub2.unsubscribe();
-        expect(bus.getListenerCount(Strongbus.ListenerScope.ANY)).toEqual(0);
+        expect(bus.getListenerCount()).toEqual(0);
       });
     });
 
@@ -1463,15 +1463,15 @@ describe('Strongbus.Bus', () => {
           const sub2 = bus.on('bar', () => ({}));
           const sub3 = bus2.on('foo', singleEventHandler);
 
-          expect(bus.getListenerCount(Strongbus.ListenerScope.ANY)).toEqual(3);
+          expect(bus.getListenerCount()).toEqual(3);
           sub1.unsubscribe();
-          expect(bus.getListenerCount(Strongbus.ListenerScope.ANY)).toEqual(2);
+          expect(bus.getListenerCount()).toEqual(2);
           sub2.unsubscribe();
-          expect(bus.getListenerCount(Strongbus.ListenerScope.ANY)).toEqual(1);
+          expect(bus.getListenerCount()).toEqual(1);
           sub3.unsubscribe();
-          expect(bus.getListenerCount(Strongbus.ListenerScope.ANY)).toEqual(0);
+          expect(bus.getListenerCount()).toEqual(0);
           sub1.unsubscribe();
-          expect(bus.getListenerCount(Strongbus.ListenerScope.ANY)).toEqual(0);
+          expect(bus.getListenerCount()).toEqual(0);
         });
       });
 
@@ -1480,7 +1480,7 @@ describe('Strongbus.Bus', () => {
           bus.on('foo', singleEventHandler);
           bus.on('bar', () => ({}));
 
-          expect(bus.getListenerCount(Strongbus.ListenerScope.ANY)).toEqual(2);
+          expect(bus.getListenerCount()).toEqual(2);
         });
       });
     });
@@ -1506,7 +1506,7 @@ describe('Strongbus.Bus', () => {
 
       expect(willRemoveListenerSpy).toHaveBeenCalledWith('foo');
       expect(didRemoveListenerSpy).toHaveBeenCalledWith('foo');
-      expect(bus.getListenerCountFor('foo', Strongbus.ListenerScope.ANY)).toBe(0);
+      expect(bus.getListenerCountFor('foo')).toBe(0);
       bus.emit('foo', null);
       expect(singleEventHandler).not.toHaveBeenCalled();
       expect(eventSink).not.toHaveBeenCalled();
@@ -2706,12 +2706,12 @@ describe('Strongbus.Bus', () => {
             trigger: 'foo',
             timeout: 100
           });
-          expect(bus.getListenerCountFor('foo', Strongbus.ListenerScope.ANY)).toBeGreaterThan(0);
+          expect(bus.getListenerCountFor('foo')).toBeGreaterThan(0);
 
           p1.then(() => done.fail())
           .catch((e) => {
             expect(e).toBeInstanceOf(TimeoutExpiredError);
-            expect(bus.getListenerCountFor('foo', Strongbus.ListenerScope.ANY)).toBe(0);
+            expect(bus.getListenerCountFor('foo')).toBe(0);
             done();
           });
         });
@@ -2752,7 +2752,7 @@ function combinedListenersToMap(bus: Strongbus.Bus<TestEventMap>): Map<string | 
   const map = new Map<string | number | symbol, Set<unknown>>();
   bus.forEach((event, handlers) => {
     map.set(event, new Set(handlers));
-  }, Strongbus.ListenerScope.ANY);
+  });
   return map;
 }
 
@@ -2760,12 +2760,12 @@ function ownListenersToMap(bus: Strongbus.Bus<TestEventMap>): Map<string | numbe
   const map = new Map<string | number | symbol, Set<unknown>>();
   bus.forEach((event, handlers) => {
     map.set(event, new Set(handlers));
-  }, Strongbus.ListenerScope.OWN);
+  }, {scope: Strongbus.ListenerScope.OWN});
   return map;
 }
 
 function combinedListenerEvents(bus: Strongbus.Bus<TestEventMap>): string[] {
   const keys: string[] = [];
-  bus.forEach((event) => keys.push(String(event)), Strongbus.ListenerScope.ANY);
+  bus.forEach((event) => keys.push(String(event)));
   return keys;
 }

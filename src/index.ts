@@ -9,6 +9,7 @@ export type {Logger, LoggerProvider} from './types/logger';
 export * from './types/options';
 export * from './types/scannable';
 export {ListenerScope} from './types/listenerScope';
+export type {IntrospectionOptions} from './types/listenerScope';
 export type {
   SubscriptionSurface,
   SubscriptionSurfaceScan,

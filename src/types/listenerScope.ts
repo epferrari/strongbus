@@ -13,3 +13,12 @@ export enum ListenerScope {
   DELEGATE = 2,
   ANY = 3
 }
+
+/**
+ * Options accepted by the listener-introspection methods on {@link Bus} /
+ * `SubscriptionSurface`. `scope` selects which handlers are included and
+ * defaults to {@link ListenerScope.ANY}.
+ */
+export interface IntrospectionOptions {
+  scope?: ListenerScope;
+}

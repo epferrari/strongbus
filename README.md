@@ -271,25 +271,27 @@ introspection respect the declared map — unknown event keys are compile errors
 
 ## Introspection
 
-`ListenerScope` selects which handlers to include:
+The introspection methods take an optional `{scope?: ListenerScope}` options
+argument. `ListenerScope` selects which handlers to include and defaults to
+`ListenerScope.ANY`:
 
 - `OWN` — registered directly on this bus (including function sinks from `pipe(handler)`)
 - `DELEGATE` — on buses attached with `pipe(bus)` only
-- `ANY` — `OWN | DELEGATE` (equivalent alias)
+- `ANY` — `OWN | DELEGATE` (equivalent alias, the default)
 
 ```typescript
 import {Bus, ListenerScope} from 'strongbus';
 
-bus.active;                                    // boolean: does the SubscriptionSurface have any subscribers
-bus.hasListeners();                            // any scope (default)
-bus.getListenerCount();                        // total handlers in scope
-bus.getListeners();                            // union of all handlers in scope
-bus.getEventCount();                           // events with at least one listener in scope
+bus.active;                                            // boolean: does the SubscriptionSurface have any subscribers
+bus.hasListeners(/* options? */);                                    // any scope (default)
+bus.getListenerCount(/* options? */);                                // total handlers in scope
+bus.getListeners(/* options? */);                                    // union of all handlers in scope
+bus.getEventCount(/* options? */);                                   // events with at least one listener in scope
 
-bus.hasListenersFor('message', ListenerScope.OWN);
-bus.getListenerCountFor('message', ListenerScope.DELEGATE);
-bus.getListenersFor('message');                // empty set when none
-bus.forEach((event, handlers) => { /* ... */ });
+bus.hasListenersFor('message', {scope: ListenerScope.OWN});
+bus.getListenerCountFor('message', {scope: ListenerScope.DELEGATE});
+bus.getListenersFor('message', /* options? */);                        // empty set when none
+bus.forEach((event, handlers) => { /* ... */ }, /* options? */);
 ```
 
 ## Teardown

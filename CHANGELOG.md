@@ -34,17 +34,19 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   handlers for listener introspection. `ANY` is equivalent to
   `ListenerScope.OWN | ListenerScope.DELEGATE`. `DELEGATE` covers listeners on
   buses attached with `pipe(bus)` only, not function sinks from `pipe(handler)`.
+- **`IntrospectionOptions`** — the `{scope?: ListenerScope}` options object
+  accepted by the listener-introspection methods. Exported from the package root.
 
 ### Changed (breaking)
 
 - **Listener introspection** — scoped methods on `Bus` / `SubscriptionSurface`:
   `hasListeners`, `getListenerCount`, `getListeners`, `getEventCount`,
   `hasListenersFor`, `getListenerCountFor`, `getListenersFor`, and `forEach`
-  (event-first callback). Pass a `ListenerScope` to select own, delegate, or
-  combined handlers; the scope argument is optional and defaults to
-  `ListenerScope.ANY`. `getListenersFor` returns an empty set when none are
-  registered. `forEach` callback event keys are compile-time narrowed only; at
-  runtime all registered keys are visited.
+  (event-first callback). Each takes an optional `{scope?: ListenerScope}`
+  options argument to select own, delegate, or combined handlers; `scope`
+  defaults to `ListenerScope.ANY`. `getListenersFor` returns an empty set when
+  none are registered. `forEach` callback event keys are compile-time narrowed
+  only; at runtime all registered keys are visited.
 
 - **`on(event, handler)` only accepts a single event key.** It no longer
   forwards arrays to `any` or `'*'` to `proxy`.
@@ -103,31 +105,31 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | `MultiEventHandler<Map>` | `EventSink<Map>` |
 | `WildcardEventHandler<Map>` | `EventSink<Map>` |
 | `GenericHandler` (exported) | *(internal; not part of the public API)* |
-| `bus.listeners` | `bus.forEach((event, handlers) => ...)` or `bus.forEach((event, handlers) => ..., ListenerScope.ANY)` |
-| `bus.listeners.get('foo')` | `bus.getListenersFor('foo')` or `bus.getListenersFor('foo', ListenerScope.ANY)` |
-| `bus.ownListeners` | `bus.forEach((event, handlers) => ..., ListenerScope.OWN)` |
-| `bus.hasListeners` *(property)* | `bus.hasListeners()` or `bus.hasListeners(ListenerScope.ANY)` |
-| `bus.hasOwnListeners` | `bus.hasListeners(ListenerScope.OWN)` |
-| `bus.hasDelegateListeners` | `bus.hasListeners(ListenerScope.DELEGATE)` |
-| `bus.listenerCount` | `bus.getListenerCount()` or `bus.getListenerCount(ListenerScope.ANY)` |
-| `bus.listenerEventCount` | `bus.getEventCount()` or `bus.getEventCount(ListenerScope.ANY)` |
-| `bus.ownListenerEventCount` | `bus.getEventCount(ListenerScope.OWN)` |
-| `bus.delegateListenerEventCount` | `bus.getEventCount(ListenerScope.DELEGATE)` |
-| `bus.hasListenersFor('foo')` | `bus.hasListenersFor('foo')` or `bus.hasListenersFor('foo', ListenerScope.ANY)` |
-| `bus.hasOwnListenersFor('foo')` | `bus.hasListenersFor('foo', ListenerScope.OWN)` |
-| `bus.hasDelegateListenersFor('foo')` | `bus.hasListenersFor('foo', ListenerScope.DELEGATE)` |
-| `bus.getListenerCountFor('foo')` | `bus.getListenerCountFor('foo')` or `bus.getListenerCountFor('foo', ListenerScope.ANY)` |
-| `bus.getOwnListenerCountFor('foo')` | `bus.getListenerCountFor('foo', ListenerScope.OWN)` |
-| `bus.getDelegateListenerCountFor('foo')` | `bus.getListenerCountFor('foo', ListenerScope.DELEGATE)` |
-| `bus.getListener('foo')` | `bus.getListenersFor('foo')` or `bus.getListenersFor('foo', ListenerScope.ANY)` |
-| `bus.getOwnListener('foo')` | `bus.getListenersFor('foo', ListenerScope.OWN)` |
-| `bus.getDelegateListener('foo')` | `bus.getListenersFor('foo', ListenerScope.DELEGATE)` |
-| `bus.getListenerCount('foo')` | `bus.getListenerCountFor('foo')` or `bus.getListenerCountFor('foo', ListenerScope.ANY)` |
-| `bus.getOwnListenerCount('foo')` | `bus.getListenerCountFor('foo', ListenerScope.OWN)` |
-| `bus.getDelegateListenerCount('foo')` | `bus.getListenerCountFor('foo', ListenerScope.DELEGATE)` |
-| `bus.forEachListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ...)` or `bus.forEach((event, handlers) => ..., ListenerScope.ANY)` |
-| `bus.forEachOwnListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., ListenerScope.OWN)` |
-| `bus.forEachDelegateListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., ListenerScope.DELEGATE)` |
+| `bus.listeners` | `bus.forEach((event, handlers) => ...)` or `bus.forEach((event, handlers) => ..., {scope: ListenerScope.ANY})` |
+| `bus.listeners.get('foo')` | `bus.getListenersFor('foo')` or `bus.getListenersFor('foo', {scope: ListenerScope.ANY})` |
+| `bus.ownListeners` | `bus.forEach((event, handlers) => ..., {scope: ListenerScope.OWN})` |
+| `bus.hasListeners` *(property)* | `bus.hasListeners()` or `bus.hasListeners({scope: ListenerScope.ANY})` |
+| `bus.hasOwnListeners` | `bus.hasListeners({scope: ListenerScope.OWN})` |
+| `bus.hasDelegateListeners` | `bus.hasListeners({scope: ListenerScope.DELEGATE})` |
+| `bus.listenerCount` | `bus.getListenerCount()` or `bus.getListenerCount({scope: ListenerScope.ANY})` |
+| `bus.listenerEventCount` | `bus.getEventCount()` or `bus.getEventCount({scope: ListenerScope.ANY})` |
+| `bus.ownListenerEventCount` | `bus.getEventCount({scope: ListenerScope.OWN})` |
+| `bus.delegateListenerEventCount` | `bus.getEventCount({scope: ListenerScope.DELEGATE})` |
+| `bus.hasListenersFor('foo')` | `bus.hasListenersFor('foo')` or `bus.hasListenersFor('foo', {scope: ListenerScope.ANY})` |
+| `bus.hasOwnListenersFor('foo')` | `bus.hasListenersFor('foo', {scope: ListenerScope.OWN})` |
+| `bus.hasDelegateListenersFor('foo')` | `bus.hasListenersFor('foo', {scope: ListenerScope.DELEGATE})` |
+| `bus.getListenerCountFor('foo')` | `bus.getListenerCountFor('foo')` or `bus.getListenerCountFor('foo', {scope: ListenerScope.ANY})` |
+| `bus.getOwnListenerCountFor('foo')` | `bus.getListenerCountFor('foo', {scope: ListenerScope.OWN})` |
+| `bus.getDelegateListenerCountFor('foo')` | `bus.getListenerCountFor('foo', {scope: ListenerScope.DELEGATE})` |
+| `bus.getListener('foo')` | `bus.getListenersFor('foo')` or `bus.getListenersFor('foo', {scope: ListenerScope.ANY})` |
+| `bus.getOwnListener('foo')` | `bus.getListenersFor('foo', {scope: ListenerScope.OWN})` |
+| `bus.getDelegateListener('foo')` | `bus.getListenersFor('foo', {scope: ListenerScope.DELEGATE})` |
+| `bus.getListenerCount('foo')` | `bus.getListenerCountFor('foo')` or `bus.getListenerCountFor('foo', {scope: ListenerScope.ANY})` |
+| `bus.getOwnListenerCount('foo')` | `bus.getListenerCountFor('foo', {scope: ListenerScope.OWN})` |
+| `bus.getDelegateListenerCount('foo')` | `bus.getListenerCountFor('foo', {scope: ListenerScope.DELEGATE})` |
+| `bus.forEachListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ...)` or `bus.forEach((event, handlers) => ..., {scope: ListenerScope.ANY})` |
+| `bus.forEachOwnListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., {scope: ListenerScope.OWN})` |
+| `bus.forEachDelegateListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., {scope: ListenerScope.DELEGATE})` |
 
 Import `ListenerScope` from `'strongbus'` wherever the v3 column uses it. `ListenerScope.ANY` is equivalent to `ListenerScope.OWN | ListenerScope.DELEGATE`. `ListenerScope.DELEGATE` covers listeners on buses attached with `pipe(bus)` only, not function sinks from `pipe(handler)` (those are `ListenerScope.OWN`).
 
@@ -246,6 +248,6 @@ if (bus.hasListenersFor('foo')) { /* ... */ }
 const count = bus.getListenerCountFor('foo');
 const handlers = bus.getListenersFor('foo');
 bus.forEach((event, set) => { /* ... */ });
-bus.forEach((event, set) => { /* ... */ }, ListenerScope.OWN);
-bus.forEach((event, set) => { /* ... */ }, ListenerScope.DELEGATE);
+bus.forEach((event, set) => { /* ... */ }, {scope: ListenerScope.OWN});
+bus.forEach((event, set) => { /* ... */ }, {scope: ListenerScope.DELEGATE});
 ```

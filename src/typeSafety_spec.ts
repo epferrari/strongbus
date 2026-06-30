@@ -217,18 +217,18 @@ describe('type safety', () => {
       const bus = new Bus<TestEventMap>();
 
       expectType<boolean>(bus.hasListeners());
-      expectType<boolean>(bus.hasListeners(ListenerScope.ANY));
+      expectType<boolean>(bus.hasListeners({scope: ListenerScope.ANY}));
       expectType<number>(bus.getListenerCount());
-      expectType<number>(bus.getListenerCount(ListenerScope.OWN));
+      expectType<number>(bus.getListenerCount({scope: ListenerScope.OWN}));
       expectType<ListenerSet>(bus.getListeners());
-      expectType<ListenerSet>(bus.getListeners(ListenerScope.DELEGATE));
+      expectType<ListenerSet>(bus.getListeners({scope: ListenerScope.DELEGATE}));
       expectType<number>(bus.getEventCount());
 
       expectType<boolean>(bus.hasListenersFor('foo'));
-      expectType<boolean>(bus.hasListenersFor('foo', ListenerScope.ANY));
-      expectType<number>(bus.getListenerCountFor('bar', ListenerScope.OWN));
+      expectType<boolean>(bus.hasListenersFor('foo', {scope: ListenerScope.ANY}));
+      expectType<number>(bus.getListenerCountFor('bar', {scope: ListenerScope.OWN}));
       expectType<ListenerSet>(bus.getListenersFor('baz'));
-      expectType<ListenerSet>(bus.getListenersFor('baz', ListenerScope.DELEGATE));
+      expectType<ListenerSet>(bus.getListenersFor('baz', {scope: ListenerScope.DELEGATE}));
       expectType<ListenerSet>(bus.getListenersFor(WILDCARD));
 
       bus.forEach((event, handlers) => {
@@ -238,33 +238,33 @@ describe('type safety', () => {
       bus.forEach((event, handlers) => {
         expectType<EventKeys<TestEventMap> | typeof WILDCARD>(event);
         expectType<ListenerSet>(handlers);
-      }, ListenerScope.ANY);
+      }, {scope: ListenerScope.ANY});
     });
 
     typeChecks.push(function rejectsUnknownEventOnGetListenersFor(): void {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'qux' is not a key of TestEventMap
-      bus.getListenersFor('qux', ListenerScope.ANY);
+      bus.getListenersFor('qux', {scope: ListenerScope.ANY});
     });
 
     typeChecks.push(function rejectsUnknownEventOnGetListenerCountFor(): void {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'qux' is not a key of TestEventMap
-      bus.getListenerCountFor('qux', ListenerScope.OWN);
+      bus.getListenerCountFor('qux', {scope: ListenerScope.OWN});
     });
 
     typeChecks.push(function rejectsUnknownEventOnHasListenersFor(): void {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'qux' is not a key of TestEventMap
-      bus.hasListenersFor('qux', ListenerScope.DELEGATE);
+      bus.hasListenersFor('qux', {scope: ListenerScope.DELEGATE});
     });
 
     typeChecks.push(function subscriptionSurfaceViewAcceptsKnownEvents(): void {
       const surface: SubscriptionSurface<TestEventMap> = new Bus<TestEventMap>();
 
       surface.getListenersFor('foo');
-      surface.getListenerCountFor('bar', ListenerScope.OWN);
-      surface.hasListenersFor('baz', ListenerScope.DELEGATE);
+      surface.getListenerCountFor('bar', {scope: ListenerScope.OWN});
+      surface.hasListenersFor('baz', {scope: ListenerScope.DELEGATE});
       surface.forEach((event, handlers) => {
         expectType<EventKeys<TestEventMap> | typeof WILDCARD>(event);
         expectType<ListenerSet>(handlers);
@@ -302,8 +302,8 @@ describe('type safety', () => {
         expectType<'foo'>(result.event);
         expectType<number>(result.payload);
       });
-      expectType<number>(narrowed.getListenerCountFor('foo', ListenerScope.ANY));
-      expectType<ListenerSet>(narrowed.getListenersFor('bar', ListenerScope.OWN));
+      expectType<number>(narrowed.getListenerCountFor('foo', {scope: ListenerScope.ANY}));
+      expectType<ListenerSet>(narrowed.getListenersFor('bar', {scope: ListenerScope.OWN}));
     });
 
     typeChecks.push(function wideBusCompositionSatisfiesNarrowSubscriptionSurface(): void {
@@ -352,8 +352,8 @@ describe('type safety', () => {
         expectType<'foo'>(result.event);
         expectType<number>(result.payload);
       });
-      expectType<number>(narrow.getListenerCountFor('foo', ListenerScope.ANY));
-      expectType<ListenerSet>(narrow.getListenersFor('bar', ListenerScope.OWN));
+      expectType<number>(narrow.getListenerCountFor('foo', {scope: ListenerScope.ANY}));
+      expectType<ListenerSet>(narrow.getListenersFor('bar', {scope: ListenerScope.OWN}));
     });
 
     typeChecks.push(function narrowSubscriptionSurfaceRejectsUnknownEvent(): void {
@@ -373,9 +373,9 @@ describe('type safety', () => {
       // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
       narrow.next('baz');
       // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
-      narrow.getListenersFor('baz', ListenerScope.ANY);
+      narrow.getListenersFor('baz', {scope: ListenerScope.ANY});
       // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
-      narrow.getListenerCountFor('baz', ListenerScope.ANY);
+      narrow.getListenerCountFor('baz', {scope: ListenerScope.ANY});
     });
 
     typeChecks.push(function narrowPipeAcceptsWideBus(): void {

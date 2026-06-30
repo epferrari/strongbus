@@ -11,7 +11,7 @@ import {Lifecycle} from './types/lifecycle';
 import type {Logger} from './types/logger';
 import type {Options, ListenerThresholds} from './types/options';
 import {ListenerRegistryView, type ListenerRegistry, EMPTY_LISTENER_SET} from './types/listenerRegistry';
-import {ListenerScope} from './types/listenerScope';
+import {ListenerScope, type IntrospectionOptions} from './types/listenerScope';
 import type {
   AnyEventMap,
   SubscriptionSurface,
@@ -399,21 +399,23 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
   }
 
   /**
-   * Whether the bus has any listeners in `scope`.
+   * Whether the bus has any listeners in `options.scope` (defaults to `ListenerScope.ANY`).
    */
-  public hasListeners(scope: ListenerScope = ListenerScope.ANY): boolean {
-    return this.getListenerCount(scope) > 0;
+  public hasListeners(options: IntrospectionOptions = {}): boolean {
+    return this.getListenerCount(options) > 0;
   }
 
   /**
-   * Total handler registrations in `scope`. For `ListenerScope.ANY`, sums own and
-   * delegate counts (the same handler on both still counts twice).
+   * Total handler registrations in `options.scope` (defaults to `ListenerScope.ANY`).
+   * For `ListenerScope.ANY`, sums own and delegate counts (the same handler on both
+   * still counts twice).
    */
-  public getListenerCount(scope: ListenerScope = ListenerScope.ANY): number {
+  public getListenerCount(options: IntrospectionOptions = {}): number {
+    const {scope = ListenerScope.ANY} = options;
     const includesOwn = (scope & ListenerScope.OWN) !== 0;
     const includesDelegate = (scope & ListenerScope.DELEGATE) !== 0;
     if(includesOwn && includesDelegate) {
-      return this.getListenerCount(ListenerScope.OWN) + this.getListenerCount(ListenerScope.DELEGATE);
+      return this.getListenerCount({scope: ListenerScope.OWN}) + this.getListenerCount({scope: ListenerScope.DELEGATE});
     }
     let total = 0;
     this.registryForScope(scope).forEach(handlers => {
@@ -422,7 +424,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
     return total;
   }
 
-  public getListeners(scope: ListenerScope = ListenerScope.ANY): ReadonlySet<GenericHandler> {
+  public getListeners(options: IntrospectionOptions = {}): ReadonlySet<GenericHandler> {
+    const {scope = ListenerScope.ANY} = options;
     const union = new Set<GenericHandler>();
     this.registryForScope(scope).forEach(handlers => {
       for(const handler of handlers) {
@@ -432,41 +435,45 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
     return union;
   }
 
-  public getEventCount(scope: ListenerScope = ListenerScope.ANY): number {
+  public getEventCount(options: IntrospectionOptions = {}): number {
+    const {scope = ListenerScope.ANY} = options;
     return this.registryForScope(scope).size;
   }
 
   public hasListenersFor: SubscriptionSurfaceHasListenersForEvent<TEventMap> = ((
     event,
-    scope = ListenerScope.ANY
+    options: IntrospectionOptions = {}
   ) => {
-    return this.getListenerCountFor(event, scope) > 0;
+    return this.getListenerCountFor(event, options) > 0;
   }) as SubscriptionSurfaceHasListenersForEvent<TEventMap>;
 
   public getListenerCountFor: SubscriptionSurfaceListenerCountForEvent<TEventMap> = ((
     event,
-    scope = ListenerScope.ANY
+    options: IntrospectionOptions = {}
   ) => {
+    const {scope = ListenerScope.ANY} = options;
     const includesOwn = (scope & ListenerScope.OWN) !== 0;
     const includesDelegate = (scope & ListenerScope.DELEGATE) !== 0;
     if(includesOwn && includesDelegate) {
-      return this.getListenerCountFor(event, ListenerScope.OWN)
-        + this.getListenerCountFor(event, ListenerScope.DELEGATE);
+      return this.getListenerCountFor(event, {scope: ListenerScope.OWN})
+        + this.getListenerCountFor(event, {scope: ListenerScope.DELEGATE});
     }
     return this.registryForScope(scope).getCount(event);
   }) as SubscriptionSurfaceListenerCountForEvent<TEventMap>;
 
   public getListenersFor: SubscriptionSurfaceListenerForEvent<TEventMap> = ((
     event,
-    scope = ListenerScope.ANY
+    options: IntrospectionOptions = {}
   ) => {
+    const {scope = ListenerScope.ANY} = options;
     return this.registryForScope(scope).get(event) ?? EMPTY_LISTENER_SET;
   }) as SubscriptionSurfaceListenerForEvent<TEventMap>;
 
   public forEach: SubscriptionSurfaceListenerForEach<TEventMap> = ((
     fn,
-    scope = ListenerScope.ANY
+    options: IntrospectionOptions = {}
   ) => {
+    const {scope = ListenerScope.ANY} = options;
     this.registryForScope(scope).forEach((handlers, event) => {
       fn(event, handlers);
     });
@@ -732,7 +739,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
     }
 
     this.emitLifecycleEvent(Lifecycle.didAddListener, event);
-    if(!this._active && this.hasListeners(ListenerScope.ANY)) {
+    if(!this._active && this.hasListeners()) {
       this._active = true;
       this.emitLifecycleEvent(Lifecycle.active, null);
     }
@@ -740,10 +747,10 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
 
 
   private willRemoveListener(event: EventKeys<TEventMap>|WILDCARD): void {
-    const eventHandlerCount = this.getListenerCountFor(event, ListenerScope.ANY);
+    const eventHandlerCount = this.getListenerCountFor(event);
     if(eventHandlerCount) {
       this.emitLifecycleEvent(Lifecycle.willRemoveListener, event);
-      if(this._active && this.getListenerCount(ListenerScope.ANY) === 1 && eventHandlerCount === 1) {
+      if(this._active && this.getListenerCount() === 1 && eventHandlerCount === 1) {
         this.emitLifecycleEvent(Lifecycle.willIdle, null);
       }
     }
@@ -761,7 +768,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
     }
 
     this.emitLifecycleEvent(Lifecycle.didRemoveListener, event);
-    if(this._active && !this.hasListeners(ListenerScope.ANY)) {
+    if(this._active && !this.hasListeners()) {
       this._active = false;
       this.emitLifecycleEvent(Lifecycle.idle, null);
     }
