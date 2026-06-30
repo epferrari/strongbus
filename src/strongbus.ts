@@ -401,7 +401,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
   /**
    * Whether the bus has any listeners in `scope`.
    */
-  public hasListeners(scope: ListenerScope): boolean {
+  public hasListeners(scope: ListenerScope = ListenerScope.ANY): boolean {
     return this.getListenerCount(scope) > 0;
   }
 
@@ -409,7 +409,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
    * Total handler registrations in `scope`. For `ListenerScope.ANY`, sums own and
    * delegate counts (the same handler on both still counts twice).
    */
-  public getListenerCount(scope: ListenerScope): number {
+  public getListenerCount(scope: ListenerScope = ListenerScope.ANY): number {
     const includesOwn = (scope & ListenerScope.OWN) !== 0;
     const includesDelegate = (scope & ListenerScope.DELEGATE) !== 0;
     if(includesOwn && includesDelegate) {
@@ -422,7 +422,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
     return total;
   }
 
-  public getListeners(scope: ListenerScope): ReadonlySet<GenericHandler> {
+  public getListeners(scope: ListenerScope = ListenerScope.ANY): ReadonlySet<GenericHandler> {
     const union = new Set<GenericHandler>();
     this.registryForScope(scope).forEach(handlers => {
       for(const handler of handlers) {
@@ -432,20 +432,20 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
     return union;
   }
 
-  public getEventCount(scope: ListenerScope): number {
+  public getEventCount(scope: ListenerScope = ListenerScope.ANY): number {
     return this.registryForScope(scope).size;
   }
 
   public hasListenersFor: SubscriptionSurfaceHasListenersForEvent<TEventMap> = ((
     event,
-    scope
+    scope = ListenerScope.ANY
   ) => {
     return this.getListenerCountFor(event, scope) > 0;
   }) as SubscriptionSurfaceHasListenersForEvent<TEventMap>;
 
   public getListenerCountFor: SubscriptionSurfaceListenerCountForEvent<TEventMap> = ((
     event,
-    scope
+    scope = ListenerScope.ANY
   ) => {
     const includesOwn = (scope & ListenerScope.OWN) !== 0;
     const includesDelegate = (scope & ListenerScope.DELEGATE) !== 0;
@@ -458,14 +458,14 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
 
   public getListenersFor: SubscriptionSurfaceListenerForEvent<TEventMap> = ((
     event,
-    scope
+    scope = ListenerScope.ANY
   ) => {
     return this.registryForScope(scope).get(event) ?? EMPTY_LISTENER_SET;
   }) as SubscriptionSurfaceListenerForEvent<TEventMap>;
 
   public forEach: SubscriptionSurfaceListenerForEach<TEventMap> = ((
     fn,
-    scope
+    scope = ListenerScope.ANY
   ) => {
     this.registryForScope(scope).forEach((handlers, event) => {
       fn(event, handlers);

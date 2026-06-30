@@ -281,15 +281,15 @@ introspection respect the declared map — unknown event keys are compile errors
 import {Bus, ListenerScope} from 'strongbus';
 
 bus.active;                                    // boolean: does the SubscriptionSurface have any subscribers
-bus.hasListeners(ListenerScope.ANY);
-bus.getListenerCount(ListenerScope.ANY);       // total handlers in scope
-bus.getListeners(ListenerScope.ANY);           // union of all handlers in scope
-bus.getEventCount(ListenerScope.ANY);          // events with at least one listener in scope
+bus.hasListeners();                            // any scope (default)
+bus.getListenerCount();                        // total handlers in scope
+bus.getListeners();                            // union of all handlers in scope
+bus.getEventCount();                           // events with at least one listener in scope
 
 bus.hasListenersFor('message', ListenerScope.OWN);
 bus.getListenerCountFor('message', ListenerScope.DELEGATE);
-bus.getListenersFor('message', ListenerScope.ANY);  // empty set when none
-bus.forEach((event, handlers) => { /* ... */ }, ListenerScope.ANY);
+bus.getListenersFor('message');                // empty set when none
+bus.forEach((event, handlers) => { /* ... */ });
 ```
 
 ## Teardown

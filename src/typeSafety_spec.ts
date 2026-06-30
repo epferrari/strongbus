@@ -216,16 +216,25 @@ describe('type safety', () => {
     typeChecks.push(function validEventKeysAndReturnTypes(): void {
       const bus = new Bus<TestEventMap>();
 
+      expectType<boolean>(bus.hasListeners());
       expectType<boolean>(bus.hasListeners(ListenerScope.ANY));
+      expectType<number>(bus.getListenerCount());
       expectType<number>(bus.getListenerCount(ListenerScope.OWN));
+      expectType<ListenerSet>(bus.getListeners());
       expectType<ListenerSet>(bus.getListeners(ListenerScope.DELEGATE));
-      expectType<number>(bus.getEventCount(ListenerScope.ANY));
+      expectType<number>(bus.getEventCount());
 
+      expectType<boolean>(bus.hasListenersFor('foo'));
       expectType<boolean>(bus.hasListenersFor('foo', ListenerScope.ANY));
       expectType<number>(bus.getListenerCountFor('bar', ListenerScope.OWN));
+      expectType<ListenerSet>(bus.getListenersFor('baz'));
       expectType<ListenerSet>(bus.getListenersFor('baz', ListenerScope.DELEGATE));
-      expectType<ListenerSet>(bus.getListenersFor(WILDCARD, ListenerScope.ANY));
+      expectType<ListenerSet>(bus.getListenersFor(WILDCARD));
 
+      bus.forEach((event, handlers) => {
+        expectType<EventKeys<TestEventMap> | typeof WILDCARD>(event);
+        expectType<ListenerSet>(handlers);
+      });
       bus.forEach((event, handlers) => {
         expectType<EventKeys<TestEventMap> | typeof WILDCARD>(event);
         expectType<ListenerSet>(handlers);
@@ -253,13 +262,13 @@ describe('type safety', () => {
     typeChecks.push(function subscriptionSurfaceViewAcceptsKnownEvents(): void {
       const surface: SubscriptionSurface<TestEventMap> = new Bus<TestEventMap>();
 
-      surface.getListenersFor('foo', ListenerScope.ANY);
+      surface.getListenersFor('foo');
       surface.getListenerCountFor('bar', ListenerScope.OWN);
       surface.hasListenersFor('baz', ListenerScope.DELEGATE);
       surface.forEach((event, handlers) => {
         expectType<EventKeys<TestEventMap> | typeof WILDCARD>(event);
         expectType<ListenerSet>(handlers);
-      }, ListenerScope.ANY);
+      });
     });
   });
 
@@ -408,12 +417,11 @@ describe('type safety', () => {
     typeChecks.push(function narrowPipeRejectsIncompatibleSink(): void {
       const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
 
-      interface WrongPayload {
-        foo: string;
-        bar: string;
+      interface WrongEvents {
+        qux: number;
       }
 
-      const wrongSink: EventSink<WrongPayload> = () => undefined;
+      const wrongSink: EventSink<WrongEvents> = () => undefined;
 
       // @ts-expect-error sink must accept Narrow event keys and payloads
       narrow.pipe(wrongSink);

@@ -84,21 +84,21 @@ export type SubscriptionSurfaceUnpipe<TEventMap extends EventMap> =
   SubscriptionSurfaceUnpipeObject<TEventMap>['bivarianceHack'];
 
 interface SubscriptionSurfaceHasListenersForEventObject<in out TEventMap extends EventMap> {
-  bivarianceHack(event: EventListenerMapKey<TEventMap>, scope: ListenerScope): boolean;
+  bivarianceHack(event: EventListenerMapKey<TEventMap>, scope?: ListenerScope): boolean;
 }
 
 export type SubscriptionSurfaceHasListenersForEvent<TEventMap extends EventMap> =
   SubscriptionSurfaceHasListenersForEventObject<TEventMap>['bivarianceHack'];
 
 interface SubscriptionSurfaceListenerForEventObject<in out TEventMap extends EventMap> {
-  bivarianceHack(event: EventListenerMapKey<TEventMap>, scope: ListenerScope): ListenerSet;
+  bivarianceHack(event: EventListenerMapKey<TEventMap>, scope?: ListenerScope): ListenerSet;
 }
 
 export type SubscriptionSurfaceListenerForEvent<TEventMap extends EventMap> =
   SubscriptionSurfaceListenerForEventObject<TEventMap>['bivarianceHack'];
 
 interface SubscriptionSurfaceListenerCountForEventObject<in out TEventMap extends EventMap> {
-  bivarianceHack(event: EventListenerMapKey<TEventMap>, scope: ListenerScope): number;
+  bivarianceHack(event: EventListenerMapKey<TEventMap>, scope?: ListenerScope): number;
 }
 
 export type SubscriptionSurfaceListenerCountForEvent<TEventMap extends EventMap> =
@@ -109,7 +109,7 @@ interface SubscriptionSurfaceListenerForEachObject<in out TEventMap extends Even
     TMap extends AnyEventMap<TEventMap>
   >(
     fn: (event: EventListenerMapKey<TMap>, handlers: ListenerSet) => void,
-    scope: ListenerScope
+    scope?: ListenerScope
   ): void;
 }
 
@@ -146,13 +146,13 @@ export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMa
 
   readonly active: boolean;
 
-  hasListeners(scope: ListenerScope): boolean;
+  hasListeners(scope?: ListenerScope): boolean;
 
-  getListenerCount(scope: ListenerScope): number;
+  getListenerCount(scope?: ListenerScope): number;
 
-  getListeners(scope: ListenerScope): ListenerSet;
+  getListeners(scope?: ListenerScope): ListenerSet;
 
-  getEventCount(scope: ListenerScope): number;
+  getEventCount(scope?: ListenerScope): number;
 
   hasListenersFor: SubscriptionSurfaceHasListenersForEvent<TEventMap>;
 
