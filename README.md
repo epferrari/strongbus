@@ -266,29 +266,30 @@ wireFeature(app);                 // Bus<AppEvents> is a SubscriptionSurface<Fea
 ```
 
 Because event-map typing is contravariant on the subscription surface, a bus that emits a wider map can be passed
-where only a subset of events is relevant. Methods such as `scan`, `any`, `next`, `pipe`, and the per-event
-listener queries respect the declared map — unknown event keys are compile errors on the narrowed view.
-
-`listeners` and `ownListeners` are intentionally **not** on `SubscriptionSurface`; their `ReadonlyMap` keys are
-invariant in the event-map type parameter, which would break narrowing. Use those maps on `Bus` when you need raw
-handler sets.
+where only a subset of events is relevant. Methods such as `scan`, `any`, `next`, `pipe`, and listener
+introspection respect the declared map — unknown event keys are compile errors on the narrowed view.
 
 ## Introspection
 
+`ListenerScope` selects which handlers to include:
+
+- `OWN` — registered directly on this bus (including function sinks from `pipe(handler)`)
+- `DELEGATE` — on buses attached with `pipe(bus)` only
+- `ANY` — `OWN | DELEGATE` (equivalent alias)
+
 ```typescript
-bus.active;                         // boolean: does the bus have any subscribers
-bus.hasListeners;                   // own or delegate listeners
-bus.hasOwnListeners;                // listeners registered directly on this bus
-bus.hasDelegateListeners;           // listeners contributed by piped buses
-bus.listenerCount;                  // total
-bus.hasListenersFor('message');
-bus.hasOwnListenersFor('message');
-bus.hasDelegateListenersFor('message');
-bus.getListenerCountFor('message');
-bus.getOwnListenerCountFor('message');
-bus.getDelegateListenerCountFor('message');
-bus.listeners;                      // ReadonlyMap<event, ReadonlySet<handler>> — Bus only
-bus.ownListeners;                   // Bus only
+import {Bus, ListenerScope} from 'strongbus';
+
+bus.active;                                    // boolean: does the SubscriptionSurface have any subscribers
+bus.hasListeners(ListenerScope.ANY);
+bus.getListenerCount(ListenerScope.ANY);       // total handlers in scope
+bus.getListeners(ListenerScope.ANY);           // union of all handlers in scope
+bus.getEventCount(ListenerScope.ANY);          // events with at least one listener in scope
+
+bus.hasListenersFor('message', ListenerScope.OWN);
+bus.getListenerCountFor('message', ListenerScope.DELEGATE);
+bus.getListenersFor('message', ListenerScope.ANY);  // empty set when none
+bus.forEach((event, handlers) => { /* ... */ }, ListenerScope.ANY);
 ```
 
 ## Teardown

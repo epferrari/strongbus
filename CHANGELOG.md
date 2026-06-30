@@ -29,10 +29,21 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **`SubscriptionSurface<TEventMap>`** — the public subscribe-and-introspect API
   of `Bus`, excluding `emit`. Use it when a component should subscribe, await,
   pipe, or inspect listener state but must not raise events. `Bus` implements
-  `SubscriptionSurface`; `listeners` and `ownListeners` remain on `Bus` only
-  (their `ReadonlyMap` keys are invariant and would break contravariant views).
+  `SubscriptionSurface`.
+- **`ListenerScope`** — selects own, delegate (piped bus), or combined (`ANY`)
+  handlers for listener introspection. `ANY` is equivalent to
+  `ListenerScope.OWN | ListenerScope.DELEGATE`. `DELEGATE` covers listeners on
+  buses attached with `pipe(bus)` only, not function sinks from `pipe(handler)`.
 
 ### Changed (breaking)
+
+- **Listener introspection** — scoped methods on `Bus` / `SubscriptionSurface`:
+  `hasListeners`, `getListenerCount`, `getListeners`, `getEventCount`,
+  `hasListenersFor`, `getListenerCountFor`, `getListenersFor`, and `forEach`
+  (event-first callback). Pass a `ListenerScope` to select own, delegate, or
+  combined handlers. `getListenersFor` returns an empty set when none are
+  registered. `forEach` callback event keys are compile-time narrowed only; at
+  runtime all registered keys are visited.
 
 - **`on(event, handler)` only accepts a single event key.** It no longer
   forwards arrays to `any` or `'*'` to `proxy`.
@@ -52,13 +63,19 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **Handler types `EventHandler`, `MultiEventHandler`, `WildcardEventHandler`**
   — use `EventSink`.
 - **`GenericHandler` is no longer exported** — it was an internal type.
+- **Per-event listener helpers (v2)** — `hasListenersFor`, `getListenerCountFor`,
+  etc. without a scope parameter.
+- **`listeners` and `ownListeners` `ReadonlyMap` getters (v2).**
+- **`hasListeners` / `hasOwnListeners` / `hasDelegateListeners` properties,
+  `listenerCount`, and related per-scope method triplets** — use the scoped
+  introspection API with `ListenerScope`.
 
 ### Fixed
 
 - **Variance:** a `Bus<Wide>` is assignable to `SubscriptionSurface<Narrow>`
   (and other contravariant views), so consumers can declare a narrower event map
   while still preventing subscription to events outside it. `scan`, `any`,
-  `next`, `pipe`, and per-event listener queries participate in this narrowing.
+  `next`, `pipe`, and listener introspection methods participate in this narrowing.
 
 ### Internal
 
@@ -70,6 +87,48 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 ---
 
 ## Migrating from v2 to v3
+
+| v2 (removed or changed) | v3 equivalent |
+| --- | --- |
+| `bus.on('*', handler)` | `bus.pipe(handler)` |
+| `bus.on([...events], handler)` | `bus.any([...events], handler)` |
+| `bus.proxy(handler)` | `bus.pipe(handler)` |
+| `bus.every(handler)` | `bus.pipe(handler)` |
+| `await bus.next('foo')` → payload | `const {payload} = await bus.next('foo')` |
+| `await bus.next([...])` → `undefined` | `const {event, payload} = await bus.next([...])` |
+| `bus.scan<typeof evaluator>(...)` | `bus.scan<ResolvedType>(...)` |
+| `generateSubscription(dispose)` | `subscriptionWrapper(dispose)` |
+| `EventHandler<Map, 'foo'>` | `SingleEventHandler<Map, 'foo'>` |
+| `MultiEventHandler<Map>` | `EventSink<Map>` |
+| `WildcardEventHandler<Map>` | `EventSink<Map>` |
+| `GenericHandler` (exported) | *(internal; not part of the public API)* |
+| `bus.listeners` | `bus.forEach((event, handlers) => ..., ListenerScope.ANY)` |
+| `bus.listeners.get('foo')` | `bus.getListenersFor('foo', ListenerScope.ANY)` |
+| `bus.ownListeners` | `bus.forEach((event, handlers) => ..., ListenerScope.OWN)` |
+| `bus.hasListeners` *(property)* | `bus.hasListeners(ListenerScope.ANY)` |
+| `bus.hasOwnListeners` | `bus.hasListeners(ListenerScope.OWN)` |
+| `bus.hasDelegateListeners` | `bus.hasListeners(ListenerScope.DELEGATE)` |
+| `bus.listenerCount` | `bus.getListenerCount(ListenerScope.ANY)` |
+| `bus.listenerEventCount` | `bus.getEventCount(ListenerScope.ANY)` |
+| `bus.ownListenerEventCount` | `bus.getEventCount(ListenerScope.OWN)` |
+| `bus.delegateListenerEventCount` | `bus.getEventCount(ListenerScope.DELEGATE)` |
+| `bus.hasListenersFor('foo')` | `bus.hasListenersFor('foo', ListenerScope.ANY)` |
+| `bus.hasOwnListenersFor('foo')` | `bus.hasListenersFor('foo', ListenerScope.OWN)` |
+| `bus.hasDelegateListenersFor('foo')` | `bus.hasListenersFor('foo', ListenerScope.DELEGATE)` |
+| `bus.getListenerCountFor('foo')` | `bus.getListenerCountFor('foo', ListenerScope.ANY)` |
+| `bus.getOwnListenerCountFor('foo')` | `bus.getListenerCountFor('foo', ListenerScope.OWN)` |
+| `bus.getDelegateListenerCountFor('foo')` | `bus.getListenerCountFor('foo', ListenerScope.DELEGATE)` |
+| `bus.getListener('foo')` | `bus.getListenersFor('foo', ListenerScope.ANY)` |
+| `bus.getOwnListener('foo')` | `bus.getListenersFor('foo', ListenerScope.OWN)` |
+| `bus.getDelegateListener('foo')` | `bus.getListenersFor('foo', ListenerScope.DELEGATE)` |
+| `bus.getListenerCount('foo')` | `bus.getListenerCountFor('foo', ListenerScope.ANY)` |
+| `bus.getOwnListenerCount('foo')` | `bus.getListenerCountFor('foo', ListenerScope.OWN)` |
+| `bus.getDelegateListenerCount('foo')` | `bus.getListenerCountFor('foo', ListenerScope.DELEGATE)` |
+| `bus.forEachListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., ListenerScope.ANY)` |
+| `bus.forEachOwnListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., ListenerScope.OWN)` |
+| `bus.forEachDelegateListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., ListenerScope.DELEGATE)` |
+
+Import `ListenerScope` from `'strongbus'` wherever the v3 column uses it. `ListenerScope.ANY` is equivalent to `ListenerScope.OWN | ListenerScope.DELEGATE`. `ListenerScope.DELEGATE` covers listeners on buses attached with `pipe(bus)` only, not function sinks from `pipe(handler)` (those are `ListenerScope.OWN`).
 
 ### `on` with arrays or the wildcard
 
@@ -166,5 +225,26 @@ import type {SubscriptionSurface} from 'strongbus';
 
 function consume(source: SubscriptionSurface<Pick<MyEvents, 'foo' | 'bar'>>) {
   source.on('foo', handler);
+  source.getListenerCountFor('foo', ListenerScope.ANY);
 }
+```
+
+### Listener introspection
+
+```typescript
+import {ListenerScope} from 'strongbus';
+
+// v2
+if (bus.hasListenersFor('foo')) { /* ... */ }
+const count = bus.getListenerCountFor('foo');
+const handlers = bus.listeners.get('foo');
+for (const [event, set] of bus.listeners) { /* ... */ }
+
+// v3
+if (bus.hasListenersFor('foo', ListenerScope.ANY)) { /* ... */ }
+const count = bus.getListenerCountFor('foo', ListenerScope.ANY);
+const handlers = bus.getListenersFor('foo', ListenerScope.ANY);
+bus.forEach((event, set) => { /* ... */ }, ListenerScope.ANY);
+bus.forEach((event, set) => { /* ... */ }, ListenerScope.OWN);
+bus.forEach((event, set) => { /* ... */ }, ListenerScope.DELEGATE);
 ```

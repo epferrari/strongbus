@@ -8,6 +8,14 @@ export * from './types/lifecycle';
 export type {Logger, LoggerProvider} from './types/logger';
 export * from './types/options';
 export * from './types/scannable';
-export type {SubscriptionSurface, SubscriptionSurfaceScan, PipeTarget, ScanParams} from './types/subscriptionSurface';
+export {ListenerScope} from './types/listenerScope';
+export type {
+  SubscriptionSurface,
+  SubscriptionSurfaceScan,
+  PipeTarget,
+  ScanParams,
+  EventListenerMapKey,
+  ListenerSet
+} from './types/subscriptionSurface';
 export type {ScannableHook} from './types/scannable';
 export type {EventKeys, SubscribableEventKeys} from './types/utility';
