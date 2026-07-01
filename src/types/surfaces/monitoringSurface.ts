@@ -1,5 +1,5 @@
-import type {Subscription, EventMap} from './events';
-import type {Lifecycle} from './lifecycle';
+import type {Subscription, EventMap} from '../events';
+import type {Lifecycle} from '../lifecycle';
 
 export type MonitoringHook<in out TEventMap extends EventMap> = {
   bivarianceHack<L extends Lifecycle>(

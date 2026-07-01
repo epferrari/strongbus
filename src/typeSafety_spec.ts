@@ -5,10 +5,10 @@ import {Lifecycle, type LifecycleSubjectEvent} from './types/lifecycle';
 import {ListenerScope} from './types/listenerScope';
 import type {EventSink, PipeSink} from './types/eventHandlers';
 import type {ListenerSet} from './types/listenerRegistry';
-import type {ControlSurface} from './types/controlSurface';
-import type {IntrospectionSurface} from './types/introspectionSurface';
-import type {MonitoringSurface} from './types/monitoringSurface';
-import type {SubscriptionSurface} from './types/subscriptionSurface';
+import type {ControlSurface} from './types/surfaces/controlSurface';
+import type {IntrospectionSurface} from './types/surfaces/introspectionSurface';
+import type {MonitoringSurface} from './types/surfaces/monitoringSurface';
+import type {SubscriptionSurface} from './types/surfaces/subscriptionSurface';
 import type {EventKeys} from './types/utility';
 
 /**

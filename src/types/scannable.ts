@@ -1,6 +1,6 @@
 import type {EventMap} from './events';
-import type {MonitoringHook} from './monitoringSurface';
-import type {SubscriptionSurface} from './subscriptionSurface';
+import type {MonitoringHook} from './surfaces/monitoringSurface';
+import type {SubscriptionSurface} from './surfaces/subscriptionSurface';
 
 /**
  * Surface {@link Scanner} attaches to. {@link MonitoringHook} is defined on

@@ -1,5 +1,5 @@
-import type {EventMap} from './events';
-import type {EventKeys, EventPayload} from './utility';
+import type {EventMap} from '../events';
+import type {EventKeys, EventPayload} from '../utility';
 
 /**
  * Emit events and tear down a {@link Bus} instance.

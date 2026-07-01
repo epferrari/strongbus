@@ -23,16 +23,16 @@ import type {
   NextResult,
   PipeTarget,
   ScanOptions
-} from './types/subscriptionSurface';
-import type {ControlSurface} from './types/controlSurface';
+} from './types/surfaces/subscriptionSurface';
+import type {ControlSurface} from './types/surfaces/controlSurface';
 import type {
   IntrospectionSurface,
   IntrospectionSurfaceHasListenersForEvent,
   IntrospectionSurfaceListenerCountForEvent,
   IntrospectionSurfaceListenerForEach,
   IntrospectionSurfaceListenerForEvent
-} from './types/introspectionSurface';
-import type {MonitoringSurface, MonitoringHook} from './types/monitoringSurface';
+} from './types/surfaces/introspectionSurface';
+import type {MonitoringSurface, MonitoringHook} from './types/surfaces/monitoringSurface';
 import type {EventKeys, EventPayload, SubscribableEventKeys} from './types/utility';
 import {over} from './utils/over';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';

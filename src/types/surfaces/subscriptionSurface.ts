@@ -1,10 +1,10 @@
 import type {CancelablePromise} from 'jaasync';
 
-import type {Scanner} from '../scanner';
-import type {Subscription, EventMap, Listenable, SubscribableListenable} from './events';
-import type {SingleEventHandler, EventSink, PipeSink} from './eventHandlers';
+import type {Scanner} from '../../scanner';
+import type {Subscription, EventMap, Listenable, SubscribableListenable} from '../events';
+import type {SingleEventHandler, EventSink, PipeSink} from '../eventHandlers';
 import type {ControlSurface} from './controlSurface';
-import type {EventKeys, EventPayload, EventPayloadPair, SubscribableEventKeys} from './utility';
+import type {EventKeys, EventPayload, EventPayloadPair, SubscribableEventKeys} from '../utility';
 
 export type AnyEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
 

@@ -11,14 +11,14 @@ export {ListenerScope} from './types/listenerScope';
 export type {IntrospectionOptions} from './types/listenerScope';
 export type {
   ControlSurface
-} from './types/controlSurface';
+} from './types/surfaces/controlSurface';
 export type {
   IntrospectionSurface
-} from './types/introspectionSurface';
+} from './types/surfaces/introspectionSurface';
 export type {
   MonitoringSurface,
   MonitoringHook
-} from './types/monitoringSurface';
+} from './types/surfaces/monitoringSurface';
 export type {Scannable} from './types/scannable';
 export type {
   SubscriptionSurface,
@@ -26,7 +26,7 @@ export type {
   PipeTarget,
   ScanParams,
   ScanOptions
-} from './types/subscriptionSurface';
+} from './types/surfaces/subscriptionSurface';
 export type {EventListenerMapKey, ListenerSet} from './types/listenerRegistry';
 export type {EventKeys, SubscribableEventKeys} from './types/utility';
 export type {SubscribableListenable} from './types/events';

@@ -1,7 +1,7 @@
-import type {EventMap} from './events';
-import type {EventListenerMapKey, ListenerSet} from './listenerRegistry';
-import type {IntrospectionOptions} from './listenerScope';
-import type {GenericHandler} from './eventHandlers';
+import type {EventMap} from '../events';
+import type {EventListenerMapKey, ListenerSet} from '../listenerRegistry';
+import type {IntrospectionOptions} from '../listenerScope';
+import type {GenericHandler} from '../eventHandlers';
 
 export type IntrospectionSurfaceHasListenersForEvent<in out TEventMap extends EventMap> = {
   bivarianceHack(event: EventListenerMapKey<TEventMap>, options?: IntrospectionOptions): boolean;
