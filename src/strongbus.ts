@@ -363,10 +363,10 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       if(bus !== this as any) {
         if(!this.delegates.has(bus)) {
           this.delegates.set(bus, [
-            bus.hook(Lifecycle.willAddListener, this.willAddListener),
-            bus.hook(Lifecycle.didAddListener, event => this.didAddListener(event, bus)),
-            bus.hook(Lifecycle.willRemoveListener, this.willRemoveListener),
-            bus.hook(Lifecycle.didRemoveListener, event => this.didRemoveListener(event, bus))
+            bus.hook(Lifecycle.willAddListener, (event) => this.willAddListener(event as EventKeys<TEventMap>|WILDCARD)),
+            bus.hook(Lifecycle.didAddListener, (event) => this.didAddListener(event as EventKeys<TEventMap>|WILDCARD, bus)),
+            bus.hook(Lifecycle.willRemoveListener, (event) => this.willRemoveListener(event as EventKeys<TEventMap>|WILDCARD)),
+            bus.hook(Lifecycle.didRemoveListener, (event) => this.didRemoveListener(event as EventKeys<TEventMap>|WILDCARD, bus))
           ]);
         }
       }

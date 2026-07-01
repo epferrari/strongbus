@@ -1,6 +1,7 @@
 import {Bus} from './strongbus';
 import {Scanner} from './scanner';
 import {WILDCARD} from './types/events';
+import {Lifecycle, type LifecycleSubjectEvent} from './types/lifecycle';
 import {ListenerScope} from './types/listenerScope';
 import type {EventSink, PipeSink} from './types/eventHandlers';
 import type {ListenerSet} from './types/listenerRegistry';
@@ -258,6 +259,71 @@ describe('type safety', () => {
       };
       bus.scan(['foo', 'bar'], scanEvaluator);
       bus.scan({evaluator: scanEvaluator, trigger: ['foo', 'bar']});
+    });
+  });
+
+  describe('#hook', () => {
+    interface Narrow {
+      foo: number;
+      bar: string;
+    }
+    interface Wide {
+      foo: number;
+      bar: string;
+      baz: boolean;
+    }
+
+    typeChecks.push(function wideBusSatisfiesNarrowMonitoringSurfaceHook(): void {
+      const wide = new Bus<Wide>();
+      const monitor: MonitoringSurface<Narrow> = wide;
+
+      monitor.hook('didAddListener', event => {
+        expectType<LifecycleSubjectEvent<Narrow>>(event);
+        expectType<keyof Narrow | typeof WILDCARD | string>(event);
+      });
+    });
+
+    typeChecks.push(function listenerLifecycleHookAcceptsUndeclaredEventKeys(): void {
+      const narrow: MonitoringSurface<Narrow> = new Bus<Wide>();
+
+      narrow.hook(Lifecycle.didAddListener, event => {
+        expectType<LifecycleSubjectEvent<Narrow>>(event);
+        expectType<keyof Narrow | typeof WILDCARD | string>(event);
+      });
+      narrow.hook('willRemoveListener', event => {
+        expectType<LifecycleSubjectEvent<Narrow>>(event);
+      });
+    });
+
+    typeChecks.push(function listenerLifecycleHookRejectsNarrowOnlyHandler(): void {
+      const narrow: MonitoringSurface<Narrow> = new Bus<Wide>();
+
+      // @ts-expect-error hook handlers must accept undeclared event keys on a narrowed view
+      narrow.hook('didAddListener', (event: keyof Narrow) => undefined);
+    });
+
+    typeChecks.push(function errorHookAcceptsUndeclaredEventKeys(): void {
+      const narrow: MonitoringSurface<Narrow> = new Bus<Wide>();
+
+      narrow.hook('error', ({error, event}) => {
+        expectType<Error>(error);
+        expectType<LifecycleSubjectEvent<Narrow> | Lifecycle>(event);
+      });
+    });
+
+    typeChecks.push(function errorHookRejectsNarrowOnlyEventField(): void {
+      const narrow: MonitoringSurface<Narrow> = new Bus<Wide>();
+
+      // @ts-expect-error error hook must accept undeclared event keys on a narrowed view
+      narrow.hook('error', ({event}: {error: Error, event: keyof Narrow}) => undefined);
+    });
+
+    typeChecks.push(function voidLifecycleHooksUnchanged(): void {
+      const bus = new Bus<TestEventMap>();
+
+      bus.hook('active', () => undefined);
+      bus.hook('willDestroy', () => undefined);
+      bus.hook(Lifecycle.willActivate, () => undefined);
     });
   });
 
