@@ -161,12 +161,14 @@ root.unpipe(feature);        // detach
 ### `next(resolutionTrigger, rejectionTrigger?)`
 
 Returns a `CancelablePromise` that resolves with `{event, payload}` when the resolution trigger fires. Optionally
-provide a disjoint rejection trigger. The trigger may be a single event, an array of events, or the `'*'`
-wildcard.
+provide a disjoint rejection trigger. Triggers are a single event key or an array of events (`SubscribableListenable`);
+`'*'` is not accepted.
 
 ```typescript
 const {event, payload} = await bus.next('message');
 // event: 'message', payload: string
+
+const result = await bus.next(['message', 'connected', 'count']);
 
 // resolve on either event; reject if `count` fires first
 const result = await bus.next(['message', 'connected'], 'count');
@@ -178,12 +180,14 @@ bus.next('message', 'message'); // compile error
 ### `scan(params)`
 
 Resolve or reject a promise based on an evaluation run whenever a trigger fires. The evaluator is handed a
-`resolve`/`reject` pair and decides whether the current state settles the promise.
+`resolve`/`reject` pair and decides whether the current state settles the promise. Triggers are
+`Listenable` — a single key, an array of events, or `'*'`. When reading `resolve.trigger.payload`, narrow on
+`event` first.
 
 ```typescript
 const ready = await bus.scan<boolean>({
   evaluator: (resolve) => {
-    if (isReady()) {
+    if (resolve.trigger.type === 'event' && resolve.trigger.event === 'connected') {
       resolve(true);
     }
   },
@@ -194,7 +198,7 @@ const ready = await bus.scan<boolean>({
 `scan` options (only `trigger` is required; see the
 [`scan` API docs](https://epferrari.github.io/strongbus/classes/Bus.html#scan) for canonical defaults):
 
-- `trigger` — the event, array of events, or `'*'` that re-runs the evaluator.
+- `trigger` — `Listenable`: a single event key, array of events, or `'*'` that re-runs the evaluator.
 - `eager` — run the evaluator immediately, so an already-satisfied condition resolves without waiting for an
   event. This avoids the `if (!condition) { await scan(...) }` anti-pattern.
 - `pool` — reuse an in-flight scan that shares the same evaluator, eagerness, and a superset trigger, instead of

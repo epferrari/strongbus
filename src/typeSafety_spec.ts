@@ -123,7 +123,7 @@ describe('type safety', () => {
       });
       // disjoint resolution/rejection triggers are allowed
       bus.next('foo', 'bar');
-      // an array trigger resolves with a discriminated {event, payload} union
+      // a multi-event trigger resolves with a discriminated {event, payload} union
       bus.next(['foo', 'bar']).then(result => {
         expectType<'foo' | 'bar'>(result.event);
         if(result.event === 'foo') {
@@ -132,10 +132,18 @@ describe('type safety', () => {
           expectType<string>(result.payload);
         }
       });
-      // a wildcard trigger resolves with a pair over every event in the map
-      bus.next('*').then(result => {
-        expectType<keyof TestEventMap>(result.event);
-      });
+    });
+
+    typeChecks.push(function rejectsWildcardResolutionTrigger(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error wildcard is not allowed as a resolution trigger
+      bus.next('*');
+    });
+
+    typeChecks.push(function rejectsWildcardRejectionTrigger(): void {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error wildcard is not allowed as a rejection trigger
+      bus.next('foo', '*');
     });
 
     typeChecks.push(function rejectsUnknownResolutionTrigger(): void {
@@ -154,7 +162,7 @@ describe('type safety', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error resolution and rejection triggers must be disjoint
       bus.next('foo', 'foo');
-      // @ts-expect-error resolution and rejection triggers must be disjoint
+      // @ts-expect-error wildcard is not allowed as a resolution trigger
       bus.next('*', 'foo');
       // @ts-expect-error resolution and rejection triggers must be disjoint
       bus.next(['foo', 'bar'], 'foo');
@@ -208,6 +216,33 @@ describe('type safety', () => {
           resolve('nope');
         },
         trigger: 'foo'
+      });
+    });
+
+    typeChecks.push(function scanEvaluatorDiscriminatesTrigger(): void {
+      const bus = new Bus<TestEventMap>();
+      bus.scan({
+        evaluator: resolve => {
+          if (resolve.trigger.type === 'event' && resolve.trigger.event === 'foo') {
+            expectType<number>(resolve.trigger.payload);
+          } else if (resolve.trigger.type === 'event' && resolve.trigger.event === 'bar') {
+            expectType<string>(resolve.trigger.payload);
+          }
+        },
+        trigger: ['foo', 'bar']
+      });
+    });
+
+    typeChecks.push(function scanEvaluatorRejectsUniformTriggerPayload(): void {
+      const bus = new Bus<TestEventMap>();
+      bus.scan({
+        evaluator: resolve => {
+          if (resolve.trigger.type === 'event') {
+            // @ts-expect-error payload is not uniform across event keys
+            const payload: string = resolve.trigger.payload;
+          }
+        },
+        trigger: ['foo', 'bar']
       });
     });
   });

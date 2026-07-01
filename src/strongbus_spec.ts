@@ -17,6 +17,8 @@ type TestEventMap = {
   quo: void;
 };
 
+const ALL_TEST_EVENTS: EventKeys<TestEventMap>[] = ['foo', 'bar', 'baz', 'quo'];
+
 class DelegateTestBus<T extends EventMap = TestEventMap> extends Strongbus.Bus<T> {
   private readonly emulateListenerCount: boolean = false;
   constructor(options: Strongbus.Options & {emulateListenerCount?: boolean}) {
@@ -1704,15 +1706,15 @@ describe('Strongbus.Bus', () => {
       });
     });
 
-    describe('given the resolving event is the wildcard "*"', () => {
+    describe('given the resolving event is every event in the map', () => {
       it('resolves on any event with the triggering event and payload', async () => {
-        const p1 = bus.next('*');
+        const p1 = bus.next(ALL_TEST_EVENTS);
         p1.then(onResolve);
         bus.emit('baz', 3);
         await sleep(1);
         expect(onResolve).toHaveBeenCalledWith({event: 'baz', payload: 3});
         onResolve.calls.reset();
-        const p2 = bus.next('*');
+        const p2 = bus.next(ALL_TEST_EVENTS);
         p2.then(onResolve);
         bus.emit('foo', 'FOO!');
         await sleep(1);

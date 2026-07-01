@@ -213,8 +213,28 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
   /**
    * Utility for resolving/rejecting a promise based on the reception of an event.
    * Promise resolves with the triggering event and its payload as `{event, payload}`.
-   * @param resolutionTrigger - what event/events should resolve the promise
-   * @param rejectionTrigger - what event/events should reject the promise. Must be mutually disjoint with `resolvingEvent`
+   *
+   * Triggers must be {@link SubscribableListenable} values.
+   * The `'*'` wildcard is not accepted (see {@link SubscriptionSurfaceNext}).
+   *
+   * @param resolutionTrigger - specific event(s) that resolve the promise
+   * @param rejectionTrigger - specific event(s) that reject the promise. Must be mutually disjoint with `resolutionTrigger`
+   *
+   * @example
+   * ```typescript
+   * // first of several events (replaces `next('*')`)
+   * const {event, payload} = await bus.next(['message', 'connected', 'count']);
+   *
+   * // conditional or filtered resolution — use scan (supports trigger: '*')
+   * const ready = await bus.scan({
+   *   evaluator: (resolve) => {
+   *     if (resolve.trigger.type === 'event' && isReady(resolve.trigger)) {
+   *       resolve(true);
+   *     }
+   *   },
+   *   trigger: '*'
+   * });
+   * ```
    */
   public next: SubscriptionSurfaceNext<TEventMap> = ((
     resolutionTrigger,
@@ -281,7 +301,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
    * @param params
    * @param params.evaluator - an evaluation function that should check for a certain state
    * and may resolve or reject the scan based on the state.
-   * @param params.trigger - event or events that should trigger evaluator
+   * @param params.trigger - {@link Listenable} event or events that trigger the evaluator,
+   *   including `'*'`. Discriminate on `resolve.trigger` when reading `event` or `payload`.
    * @param {boolean} [params.pool=true] - attempt to pool scanners that can be resolved by the same evaluator and trigger; default is `true`
    * @param {integer} [params.timeout] - cancel the scan after `params.timeout` milliseconds. Values `<= 0` are ignored.
    * Currently pooling timeouts is not supported. If `params.timeout` is configured, it will disable pooling regardless if `params.pool=true`

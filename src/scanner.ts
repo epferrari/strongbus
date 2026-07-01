@@ -11,16 +11,32 @@ import {type ListenableSubscriber, subscribeListenable} from './utils/subscribeL
 
 export namespace Scanner {
   export type TriggerType = 'eager'|'event'|'destroy';
-  export interface Trigger<TEventMap extends EventMap, T extends keyof TEventMap> {
-    type: TriggerType;
-    event: T;
-    payload: TEventMap[T];
-  }
+
+  export type ScanResolverEventTrigger<TEventMap extends EventMap> =
+    EventKeys<TEventMap> extends never
+      ? { type: 'event'; event: string & {}; payload: unknown }
+      : {
+          [K in EventKeys<TEventMap>]: {
+            type: 'event';
+            event: K;
+            payload: TEventMap[K];
+          };
+        }[EventKeys<TEventMap>];
+
+  /**
+   * Discriminated trigger passed to {@link Evaluator} resolvers. Known events
+   * correlate payload types; any other event name is typed as `unknown`.
+   */
+  export type ScanResolverTrigger<TEventMap extends EventMap> =
+    | { type: 'eager'; event: null; payload: null }
+    | { type: 'destroy'; event: null; payload: null }
+    | ScanResolverEventTrigger<TEventMap>;
+
   export interface Resolver<TResult, TEventMap extends EventMap = any> {
     (result: TResult): void;
     resolve: (result: TResult) => void;
     reject: (err?: Error) => void;
-    trigger: Trigger<TEventMap, keyof TEventMap>;
+    trigger: ScanResolverTrigger<TEventMap>;
   }
   export type Rejecter = (err?: Error) => void;
 
@@ -60,7 +76,7 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
     const {evaluator, eager = true} = params;
     this.evaluator = evaluator;
     if(eager) {
-      this.evaluate<any, any>({
+      this.evaluate<any>({
         type: 'eager',
         event: null,
         payload: null
@@ -68,7 +84,9 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
     }
   }
 
-  private evaluate<TEventMap extends EventMap, T extends keyof TEventMap>(trigger: Scanner.Trigger<TEventMap, T>): void|Promise<void> {
+  private evaluate<TEventMap extends EventMap>(
+    trigger: Scanner.ScanResolverTrigger<TEventMap>
+  ): void|Promise<void> {
     const resolver = (val: TResult) => this.resolve(val);
     (resolver as any).resolve = this.resolve;
     (resolver as any).reject = this.reject;
@@ -137,18 +155,18 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
     }
 
     const listener = subscribeListenable(scannable, listenable, (event, payload) => {
-      this.evaluate({
+      this.evaluate<TEventMap>({
         type: 'event',
         event,
         payload
-      });
+      } as Scanner.ScanResolverEventTrigger<TEventMap>);
     });
 
     const willDestroyListener = scannable.hook(Lifecycle.willDestroy, async () => {
       willDestroyListener();
       this.willDestroyListeners.delete(willDestroyListener);
       if(this.willDestroyListeners.size === 0) {
-        await this.evaluate<any, any>({
+        await this.evaluate<any>({
           type: 'destroy',
           event: null,
           payload: null

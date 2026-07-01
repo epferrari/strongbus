@@ -21,7 +21,9 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   receives `(event, payload)` for every event raised; the returned
   `Subscription` removes it. This replaces the removed `proxy`/`every` methods.
 - **`next(...)` resolves with `{event, payload}`** — a discriminated pair, so
-  array and wildcard awaits can tell which event fired.
+  multi-event awaits can tell which event fired. Wildcard (`'*'`) triggers are removed
+  from `next` only; use `scan` with `trigger: '*'` when you need any-event listening
+  with evaluator-side discrimination (see migration guide).
 - **`EventSink<TEventMap>`** handler type — the `(event, payload)` handler shape
   used by `any` and the function-sink form of `pipe`.
 - **`Logger` and `LoggerProvider`** types are now exported, for typing a custom
@@ -174,6 +176,32 @@ await bus.next(['foo', 'bar']);               // resolved with undefined
 const {payload} = await bus.next('foo');      // payload: TEventMap['foo']
 const {event, payload} = await bus.next(['foo', 'bar']);
 // event is narrowed to 'foo' | 'bar'; payload is the matching payload type
+```
+
+### Wildcard (`'*'`) triggers on `next`
+
+`next` no longer accepts `'*'` as a resolution or rejection trigger. `next` always resolves on the first
+matching event. In the type system, the wider events are transparent to the narrower bus, however at runtime they do get piped into the narrower bus, so a wildcard handler could unintentionally resolve/reject a `next` on an event the narrow bus is oblivous to.
+
+`scan` still accepts `trigger: '*'` because the evaluator can discriminate on `resolve.trigger` before
+resolving.
+
+```typescript
+// before — compile-time allowed on next, payload typing was unsound
+await bus.next('*');
+
+// after — list events when using next
+await bus.next(['foo', 'bar', 'baz']);
+
+// after — wildcard with conditional resolve via scan
+await bus.scan({
+  evaluator: (resolve) => {
+    if (resolve.trigger.type === 'event' && shouldAccept(resolve.trigger)) {
+      resolve(resolve.trigger);
+    }
+  },
+  trigger: '*'
+});
 ```
 
 ### `scan` type argument

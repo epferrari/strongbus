@@ -20,3 +20,4 @@ export type {
 } from './types/subscriptionSurface';
 export type {ScannableHook} from './types/scannable';
 export type {EventKeys, SubscribableEventKeys} from './types/utility';
+export type {SubscribableListenable} from './types/events';

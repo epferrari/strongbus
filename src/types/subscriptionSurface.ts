@@ -1,7 +1,7 @@
 import type {CancelablePromise} from 'jaasync';
 
 import type {Scanner} from '../scanner';
-import type {Subscription, EventMap, Listenable, WILDCARD} from './events';
+import type {Subscription, EventMap, Listenable, SubscribableListenable} from './events';
 import type {SingleEventHandler, EventSink, PipeSink} from './eventHandlers';
 import type {EventListenerMapKey, ListenerSet} from './listenerRegistry';
 import type {IntrospectionOptions} from './listenerScope';
@@ -21,6 +21,7 @@ export type ScanEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
 interface ScanParamsObject<T, in out TEventMap extends EventMap, in out TMap extends ScanEventMap<TEventMap>> {
   bivarianceHack: {
     evaluator: Scanner.Evaluator<T, TMap>;
+    /** {@link Listenable} trigger, including `'*'`. Discriminate on `resolve.trigger` in the evaluator. */
     trigger: Listenable<EventKeys<TMap>> & Listenable<EventKeys<TEventMap>>;
     eager?: boolean;
     pool?: boolean;
@@ -105,16 +106,30 @@ interface SubscriptionSurfacePipeObject<in out TEventMap extends EventMap> {
 export type SubscriptionSurfacePipe<TEventMap extends EventMap> =
   SubscriptionSurfacePipeObject<TEventMap>['bivarianceHack'];
 
+/**
+ * Await the first matching event as a `CancelablePromise` of `{event, payload}`.
+ *
+ * Triggers must be {@link SubscribableListenable} values (a single event key or
+ * array of keys). The `'*'` wildcard accepted by older {@link Listenable}
+ * triggers is not supported — it could not keep event and payload types
+ * correlated.
+ *
+ * **Migrating from `next('*')`**
+ *
+ * - To resolve on the first of several known events, pass every key:
+ *   `next(['foo', 'bar', 'baz'])`. The result discriminates on `event`.
+ * - When you need to inspect payload shape, filter events, or resolve only under
+ *   a condition, use {@link Bus.scan} — including `trigger: '*'` with an
+ *   evaluator that discriminates on `resolve.trigger` (see {@link Scanner.Evaluator}).
+ */
 interface SubscriptionSurfaceNextObject<in out TEventMap extends EventMap> {
-  bivarianceHack<T extends Listenable<EventKeys<TEventMap>>>(
+  bivarianceHack<T extends SubscribableListenable<EventKeys<TEventMap>>>(
     resolutionTrigger: T,
-    rejectionTrigger?: T extends WILDCARD
-      ? never
-      : T extends EventKeys<TEventMap>[]
-        ? EventKeys<Omit<TEventMap, T[number]>>|EventKeys<Omit<TEventMap, T[number]>>[]
-        : T extends EventKeys<TEventMap>
-          ? EventKeys<Omit<TEventMap, T>>|EventKeys<Omit<TEventMap, T>>[]
-          : never
+    rejectionTrigger?: T extends EventKeys<TEventMap>[]
+      ? SubscribableListenable<EventKeys<Omit<TEventMap, T[number]>>>
+      : T extends EventKeys<TEventMap>
+        ? SubscribableListenable<EventKeys<Omit<TEventMap, T>>>
+        : never
   ): CancelablePromise<NextResult<TEventMap, T>>;
 }
 
@@ -165,13 +180,11 @@ export type SubscriptionSurfaceListenerForEach<TEventMap extends EventMap> =
   SubscriptionSurfaceListenerForEachObject<TEventMap>['bivarianceHack'];
 
 export type NextResult<TEventMap extends EventMap, T> =
-  T extends WILDCARD
-    ? EventPayloadPair<TEventMap, EventKeys<TEventMap>>
-    : T extends EventKeys<TEventMap>[]
-      ? EventPayloadPair<TEventMap, T[number]>
-      : T extends EventKeys<TEventMap>
-        ? EventPayloadPair<TEventMap, T>
-        : never;
+  T extends EventKeys<TEventMap>[]
+    ? EventPayloadPair<TEventMap, T[number]>
+    : T extends EventKeys<TEventMap>
+      ? EventPayloadPair<TEventMap, T>
+      : never;
 
 /**
  * The public subscription and introspection surface of {@link Bus}, excluding
