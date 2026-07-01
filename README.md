@@ -181,7 +181,7 @@ bus.next('message', 'message'); // compile error
 
 Resolve or reject a promise based on an evaluation run whenever a trigger fires. The evaluator is handed a
 `resolve`/`reject` pair and decides whether the current state settles the promise. Triggers are
-`Listenable` — a single key, an array of events, or `'*'`. When reading `resolve.trigger.payload`, narrow on
+`Listenable` — a single event, an array of events, or the wildcard (`'*'`). When reading `resolve.trigger.payload`, narrow on
 `event` first.
 
 ```typescript
@@ -242,11 +242,22 @@ Shorthand for observing the active/idle transition. The handler receives `true` 
 bus.monitor((isActive) => console.log(isActive ? 'active' : 'idle'));
 ```
 
-## SubscriptionSurface
+## Surfaces
 
-`SubscriptionSurface<TEventMap>` is the subscribe-and-introspect API of `Bus` — everything in the sections above
-except `emit`. Type a dependency as `SubscriptionSurface<Events>` when it may listen, await, pipe, or inspect
-listener state but must not raise events.
+`Bus` implements four typed surfaces over the same event map. Compose them when a dependency needs only part of the API.
+
+| Surface | Methods | Use when |
+|---------|---------|----------|
+| **`ControlSurface`** | `emit`, `destroy` | Raising events or tearing down a bus |
+| **`SubscriptionSurface`** | `on`, `once`, `any`, `next`, `scan`, `pipe`, `unpipe` | Subscribing, awaiting, or forwarding events |
+| **`IntrospectionSurface`** | `hasListeners`, `getListeners`, `getListenerCount`, `hasListenersFor`, `getEventCount`, `getListenerCountFor`, `getListenersFor`, `forEach` | Inspecting listener state |
+| **`MonitoringSurface`** | `monitor`, `hook`, `active` | Observing lifecycle and active/idle state |
+
+A `Bus<Wide>` is assignable to any narrower view (for example `SubscriptionSurface<Narrow>`) so consumers can declare only the events and capabilities they need.
+
+### SubscriptionSurface
+
+Type a dependency as `SubscriptionSurface<Events>` when it may listen, await, pipe, or scan but must not raise events.
 
 ```typescript
 import {Bus, type SubscriptionSurface} from 'strongbus';
@@ -269,9 +280,7 @@ const app = new Bus<AppEvents>();
 wireFeature(app);                 // Bus<AppEvents> is a SubscriptionSurface<FeatureEvents>
 ```
 
-Because event-map typing is contravariant on the subscription surface, a bus that emits a wider map can be passed
-where only a subset of events is relevant. Methods such as `scan`, `any`, `next`, `pipe`, and listener
-introspection respect the declared map — unknown event keys are compile errors on the narrowed view.
+Because event-map typing is contravariant on the subscription surface, a bus that emits a wider map can be passed where only a subset of events is relevant. Methods such as `scan`, `any`, `next`, and `pipe` respect the declared map — listening to unknown events are compile errors on the narrowed view.
 
 ## Introspection
 
@@ -286,7 +295,7 @@ argument. `ListenerScope` selects which handlers to include and defaults to
 ```typescript
 import {Bus, ListenerScope} from 'strongbus';
 
-bus.active;                                            // boolean: does the SubscriptionSurface have any subscribers
+bus.active;                                                          // boolean: does the bus have any subscribers
 bus.hasListeners(/* options? */);                                    // any scope (default)
 bus.getListenerCount(/* options? */);                                // total handlers in scope
 bus.getListeners(/* options? */);                                    // union of all handlers in scope

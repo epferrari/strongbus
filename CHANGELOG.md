@@ -28,10 +28,10 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   used by `any` and the function-sink form of `pipe`.
 - **`Logger` and `LoggerProvider`** types are now exported, for typing a custom
   `options.logger`.
-- **`SubscriptionSurface<TEventMap>`** — the public subscribe-and-introspect API
-  of `Bus`, excluding `emit`. Use it when a component should subscribe, await,
-  pipe, or inspect listener state but must not raise events. `Bus` implements
-  `SubscriptionSurface`.
+- **`ControlSurface<TEventMap>`** — `emit` and `destroy`.
+- **`SubscriptionSurface<TEventMap>`** — subscribe, await, scan, and pipe (`on`, `once`, `any`, `next`, `scan`, `pipe`, `unpipe`). Use when a component should listen but must not raise events.
+- **`IntrospectionSurface<TEventMap>`** — scoped listener introspection (`hasListeners`, `getListenerCount`, `getListeners`, `getEventCount`, `hasListenersFor`, `getListenerCountFor`, `getListenersFor`, `forEach`).
+- **`MonitoringSurface<TEventMap>`** — lifecycle observation (`monitor`, `hook`, `active`).
 - **`ListenerScope`** — selects own, delegate (piped bus), or combined (`ANY`)
   handlers for listener introspection. `ANY` is equivalent to
   `ListenerScope.OWN | ListenerScope.DELEGATE`. `DELEGATE` covers listeners on
@@ -41,7 +41,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Changed (breaking)
 
-- **Listener introspection** — scoped methods on `Bus` / `SubscriptionSurface`:
+- **Listener introspection** — scoped methods on `Bus` / `IntrospectionSurface`:
   `hasListeners`, `getListenerCount`, `getListeners`, `getEventCount`,
   `hasListenersFor`, `getListenerCountFor`, `getListenersFor`, and `forEach`
   (event-first callback). Each takes an optional `{scope?: ListenerScope}`
@@ -77,10 +77,11 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Fixed
 
-- **Variance:** a `Bus<Wide>` is assignable to `SubscriptionSurface<Narrow>`
-  (and other contravariant views), so consumers can declare a narrower event map
-  while still preventing subscription to events outside it. `scan`, `any`,
-  `next`, `pipe`, and listener introspection methods participate in this narrowing.
+- **Variance:** a `Bus<Wide>` is assignable to `SubscriptionSurface<Narrow>`,
+  `IntrospectionSurface<Narrow>`, and other contravariant views, so consumers can
+  declare a narrower event map while still preventing subscription to events
+  outside it. `scan`, `any`, `next`, `pipe`, and listener introspection methods
+  participate in this narrowing.
 
 ### Internal
 
@@ -101,6 +102,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | `bus.every(handler)` | `bus.pipe(handler)` |
 | `await bus.next('foo')` → payload | `const {payload} = await bus.next('foo')` |
 | `await bus.next([...])` → `undefined` | `const {event, payload} = await bus.next([...])` |
+| `bus.next('*', ...)` | `bus.next([...events])` or `bus.scan({evaluator, trigger: '*'})` — see [Wildcard (`'*'`) triggers on `next`](#wildcard--triggers-on-next) |
 | `bus.scan<typeof evaluator>(...)` | `bus.scan<ResolvedType>(...)` |
 | `generateSubscription(dispose)` | `subscriptionWrapper(dispose)` |
 | `EventHandler<Map, 'foo'>` | `SingleEventHandler<Map, 'foo'>` |
@@ -246,16 +248,17 @@ import {subscriptionWrapper} from 'strongbus';
 
 ### Narrower consumer views
 
-Prefer `SubscriptionSurface<Narrow>` over ad-hoc `Pick<Bus<Narrow>, ...>` when a
-component should subscribe but not emit. A `Bus<Wide>` remains assignable to
-`SubscriptionSurface<Narrow>`.
+Prefer `SubscriptionSurface<Narrow>` when a component should subscribe but not emit, or `IntrospectionSurface<Narrow>` when it only inspects listeners. A `Bus<Wide>` remains assignable to either narrower view.
 
 ```typescript
 // v3
-import type {SubscriptionSurface} from 'strongbus';
+import type {SubscriptionSurface, IntrospectionSurface} from 'strongbus';
 
 function consume(source: SubscriptionSurface<Pick<MyEvents, 'foo' | 'bar'>>) {
   source.on('foo', handler);
+}
+
+function inspect(source: IntrospectionSurface<Pick<MyEvents, 'foo' | 'bar'>>) {
   source.getListenerCountFor('foo');
 }
 ```
