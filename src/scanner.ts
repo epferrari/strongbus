@@ -45,14 +45,12 @@ export namespace Scanner {
    * is bivariant; this lets a `Bus` over a wider event map satisfy a view over a
    * narrower one (see {@link Bus.scan}).
    */
-  interface EvaluatorObject<TResult, in out TEventMap extends EventMap> {
+  export type Evaluator<TResult, in out TEventMap extends EventMap> = {
     bivarianceHack(
       resolve: Resolver<TResult, TEventMap>,
       reject: Rejecter
     ): void|Promise<void>;
-  }
-  export type Evaluator<TResult, TEventMap extends EventMap> =
-    EvaluatorObject<TResult, TEventMap>['bivarianceHack'];
+  }['bivarianceHack'];
 
   export interface Params<TResult, TEventMap extends object> {
     evaluator: Evaluator<TResult, TEventMap>;

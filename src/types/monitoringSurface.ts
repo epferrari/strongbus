@@ -1,15 +1,12 @@
 import type {Subscription, EventMap} from './events';
 import type {Lifecycle} from './lifecycle';
 
-interface MonitoringHookObject<in out TEventMap extends EventMap> {
+export type MonitoringHook<in out TEventMap extends EventMap> = {
   bivarianceHack<L extends Lifecycle>(
     event: L,
     handler: (payload: Lifecycle.EventMap<TEventMap>[L]) => void
   ): Subscription;
-}
-
-export type MonitoringHook<TEventMap extends EventMap> =
-  MonitoringHookObject<TEventMap>['bivarianceHack'];
+}['bivarianceHack'];
 
 /**
  * Observe {@link Bus} lifecycle and active/idle state.

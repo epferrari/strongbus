@@ -3,38 +3,26 @@ import type {EventListenerMapKey, ListenerSet} from './listenerRegistry';
 import type {IntrospectionOptions} from './listenerScope';
 import type {GenericHandler} from './eventHandlers';
 
-interface IntrospectionSurfaceHasListenersForEventObject<in out TEventMap extends EventMap> {
+export type IntrospectionSurfaceHasListenersForEvent<in out TEventMap extends EventMap> = {
   bivarianceHack(event: EventListenerMapKey<TEventMap>, options?: IntrospectionOptions): boolean;
-}
+}['bivarianceHack'];
 
-export type IntrospectionSurfaceHasListenersForEvent<TEventMap extends EventMap> =
-  IntrospectionSurfaceHasListenersForEventObject<TEventMap>['bivarianceHack'];
-
-interface IntrospectionSurfaceListenerForEventObject<in out TEventMap extends EventMap> {
+export type IntrospectionSurfaceListenerForEvent<in out TEventMap extends EventMap> = {
   bivarianceHack(event: EventListenerMapKey<TEventMap>, options?: IntrospectionOptions): ListenerSet;
-}
+}['bivarianceHack'];
 
-export type IntrospectionSurfaceListenerForEvent<TEventMap extends EventMap> =
-  IntrospectionSurfaceListenerForEventObject<TEventMap>['bivarianceHack'];
-
-interface IntrospectionSurfaceListenerCountForEventObject<in out TEventMap extends EventMap> {
+export type IntrospectionSurfaceListenerCountForEvent<in out TEventMap extends EventMap> = {
   bivarianceHack(event: EventListenerMapKey<TEventMap>, options?: IntrospectionOptions): number;
-}
+}['bivarianceHack'];
 
-export type IntrospectionSurfaceListenerCountForEvent<TEventMap extends EventMap> =
-  IntrospectionSurfaceListenerCountForEventObject<TEventMap>['bivarianceHack'];
-
-interface IntrospectionSurfaceListenerForEachObject<in out TEventMap extends EventMap> {
+export type IntrospectionSurfaceListenerForEach<in out TEventMap extends EventMap> = {
   bivarianceHack<
     TMap extends {[K in keyof TEventMap]: TEventMap[K]}
   >(
     fn: (event: EventListenerMapKey<TMap>, handlers: ListenerSet) => void,
     options?: IntrospectionOptions
   ): void;
-}
-
-export type IntrospectionSurfaceListenerForEach<TEventMap extends EventMap> =
-  IntrospectionSurfaceListenerForEachObject<TEventMap>['bivarianceHack'];
+}['bivarianceHack'];
 
 /**
  * Inspect listener registrations on a {@link Bus} or {@link SubscriptionSurface}.

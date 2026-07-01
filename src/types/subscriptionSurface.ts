@@ -19,22 +19,19 @@ export interface ScanOptions {
   timeout?: number;
 }
 
-interface ScanParamsObject<T, in out TEventMap extends EventMap, in out TMap extends ScanEventMap<TEventMap>> {
+/**
+ * @deprecated Pass `trigger` and `evaluator` as separate arguments to {@link SubscriptionSurfaceScan}:
+ * `scan(trigger, evaluator, options?)`.
+ */
+export type ScanParams<T, TEventMap extends EventMap, TMap extends ScanEventMap<TEventMap>> = {
   bivarianceHack: {
     evaluator: Scanner.Evaluator<T, TMap>;
     /** {@link Listenable} trigger, including `'*'`. Discriminate on `resolve.trigger` in the evaluator. */
     trigger: Listenable<EventKeys<TMap>> & Listenable<EventKeys<TEventMap>>;
   } & ScanOptions;
-}
+}['bivarianceHack'];
 
-/**
- * @deprecated Pass `trigger` and `evaluator` as separate arguments to {@link SubscriptionSurfaceScan}:
- * `scan(trigger, evaluator, options?)`.
- */
-export type ScanParams<T, TEventMap extends EventMap, TMap extends ScanEventMap<TEventMap>> =
-  ScanParamsObject<T, TEventMap, TMap>['bivarianceHack'];
-
-interface SubscriptionSurfaceScanObject<in out TEventMap extends EventMap> {
+export type SubscriptionSurfaceScan<in out TEventMap extends EventMap> = {
   bivarianceHack<
     T = any,
     TMap extends ScanEventMap<TEventMap> = TEventMap
@@ -51,20 +48,14 @@ interface SubscriptionSurfaceScanObject<in out TEventMap extends EventMap> {
     T = any,
     TMap extends ScanEventMap<TEventMap> = TEventMap
   >(params: ScanParams<T, TEventMap, TMap>): CancelablePromise<T>;
-}
+}['bivarianceHack'];
 
-export type SubscriptionSurfaceScan<TEventMap extends EventMap> =
-  SubscriptionSurfaceScanObject<TEventMap>['bivarianceHack'];
-
-interface SubscriptionSurfaceAnyObject<in out TEventMap extends EventMap> {
+export type SubscriptionSurfaceAny<in out TEventMap extends EventMap> = {
   bivarianceHack<
     TMap extends AnyEventMap<TEventMap>,
     TEvents extends SubscribableEventKeys<TMap>[] & SubscribableEventKeys<TEventMap>[]
   >(events: TEvents, handler: EventSink<TMap>): Subscription;
-}
-
-export type SubscriptionSurfaceAny<TEventMap extends EventMap> =
-  SubscriptionSurfaceAnyObject<TEventMap>['bivarianceHack'];
+}['bivarianceHack'];
 
 export type PipeTargetEmit<TEventMap extends EventMap> = <
   T extends EventKeys<TEventMap>
@@ -103,7 +94,7 @@ export type PipePayloadOverlap<TSource extends EventMap, TDelegate extends Event
           : never
         : never;
 
-interface SubscriptionSurfacePipeObject<in out TEventMap extends EventMap> {
+export type SubscriptionSurfacePipe<in out TEventMap extends EventMap> = {
   bivarianceHack: {
     <TMap extends PipeEventMap<TEventMap>>(sink: PipeSink<TMap>): Subscription;
     <
@@ -115,10 +106,7 @@ interface SubscriptionSurfacePipeObject<in out TEventMap extends EventMap> {
       } & PipePayloadOverlap<TEventMap, TDelegateMap>
     ): SubscriptionSurface<TDelegateMap>;
   };
-}
-
-export type SubscriptionSurfacePipe<TEventMap extends EventMap> =
-  SubscriptionSurfacePipeObject<TEventMap>['bivarianceHack'];
+}['bivarianceHack'];
 
 /**
  * Await the first matching event as a `CancelablePromise` of `{event, payload}`.
@@ -136,7 +124,7 @@ export type SubscriptionSurfacePipe<TEventMap extends EventMap> =
  *   a condition, use {@link Bus.scan} — including `trigger: '*'` with an
  *   evaluator that discriminates on `resolve.trigger` (see {@link Scanner.Evaluator}).
  */
-interface SubscriptionSurfaceNextObject<in out TEventMap extends EventMap> {
+export type SubscriptionSurfaceNext<in out TEventMap extends EventMap> = {
   bivarianceHack<T extends SubscribableListenable<EventKeys<TEventMap>>>(
     resolutionTrigger: T,
     rejectionTrigger?: T extends EventKeys<TEventMap>[]
@@ -145,20 +133,14 @@ interface SubscriptionSurfaceNextObject<in out TEventMap extends EventMap> {
         ? SubscribableListenable<EventKeys<Omit<TEventMap, T>>>
         : never
   ): CancelablePromise<NextResult<TEventMap, T>>;
-}
+}['bivarianceHack'];
 
-export type SubscriptionSurfaceNext<TEventMap extends EventMap> =
-  SubscriptionSurfaceNextObject<TEventMap>['bivarianceHack'];
-
-interface SubscriptionSurfaceUnpipeObject<in out TEventMap extends EventMap> {
+export type SubscriptionSurfaceUnpipe<in out TEventMap extends EventMap> = {
   bivarianceHack: {
     <TMap extends PipeEventMap<TEventMap>>(sink: PipeSink<TMap>): void;
     <TDelegate extends PipeTarget<TEventMap>>(delegate: TDelegate): void;
   };
-}
-
-export type SubscriptionSurfaceUnpipe<TEventMap extends EventMap> =
-  SubscriptionSurfaceUnpipeObject<TEventMap>['bivarianceHack'];
+}['bivarianceHack'];
 
 export type NextResult<TEventMap extends EventMap, T> =
   T extends EventKeys<TEventMap>[]

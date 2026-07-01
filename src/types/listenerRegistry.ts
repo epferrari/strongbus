@@ -12,36 +12,23 @@ export type ListenerSet = ReadonlySet<GenericHandler>;
 
 export const EMPTY_LISTENER_SET: ListenerSet = new Set();
 
-
-interface ListenerRegistryGetObject<in out TEventMap extends EventMap> {
+export type ListenerRegistryGet<in out TEventMap extends EventMap> = {
   bivarianceHack(event: EventListenerMapKey<TEventMap>): ListenerSet | undefined;
-}
+}['bivarianceHack'];
 
-export type ListenerRegistryGet<TEventMap extends EventMap> =
-  ListenerRegistryGetObject<TEventMap>['bivarianceHack'];
-
-interface ListenerRegistryGetCountObject<in out TEventMap extends EventMap> {
+export type ListenerRegistryGetCount<in out TEventMap extends EventMap> = {
   bivarianceHack(event: EventListenerMapKey<TEventMap>): number;
-}
+}['bivarianceHack'];
 
-export type ListenerRegistryGetCount<TEventMap extends EventMap> =
-  ListenerRegistryGetCountObject<TEventMap>['bivarianceHack'];
-
-interface ListenerRegistryForEachHandlerObject<in out TEventMap extends EventMap> {
+export type ListenerRegistryForEachHandler<in out TEventMap extends EventMap> = {
   bivarianceHack(handlers: ListenerSet, event: EventListenerMapKey<TEventMap>): void;
-}
+}['bivarianceHack'];
 
-export type ListenerRegistryForEachHandler<TEventMap extends EventMap> =
-  ListenerRegistryForEachHandlerObject<TEventMap>['bivarianceHack'];
-
-interface ListenerRegistryForEachObject<in out TEventMap extends EventMap> {
+export type ListenerRegistryForEach<in out TEventMap extends EventMap> = {
   bivarianceHack<
     TMap extends AnyEventMap<TEventMap>
   >(fn: ListenerRegistryForEachHandler<TMap>): void;
-}
-
-export type ListenerRegistryForEach<TEventMap extends EventMap> =
-  ListenerRegistryForEachObject<TEventMap>['bivarianceHack'];
+}['bivarianceHack'];
 
 /**
  * Contravariant, map-like view of handlers keyed by event. Not a `ReadonlyMap` —
