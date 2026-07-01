@@ -2,7 +2,7 @@ import {Bus} from './strongbus';
 import {Scanner} from './scanner';
 import {WILDCARD} from './types/events';
 import {ListenerScope} from './types/listenerScope';
-import type {EventSink} from './types/eventHandlers';
+import type {EventSink, PipeSink} from './types/eventHandlers';
 import type {ListenerSet, SubscriptionSurface} from './types/subscriptionSurface';
 import type {EventKeys} from './types/utility';
 
@@ -390,16 +390,28 @@ describe('type safety', () => {
 
     typeChecks.push(function narrowPipeAcceptsWideSink(): void {
       const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
+
+      narrow.pipe((event, payload) => {
+        expectType<keyof Narrow | string>(event);
+        if (event === 'foo') {
+          expectType<number>(payload as number);
+        } else if (event === 'bar') {
+          expectType<string>(payload as string);
+        } else {
+          expectType<unknown>(payload);
+        }
+      });
+    });
+
+    typeChecks.push(function narrowPipeRejectsUniformWideSink(): void {
+      const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
       const wideSink: EventSink<Wide> = (event, payload) => {
         expectType<keyof Wide>(event);
         expectType<Wide[keyof Wide]>(payload);
       };
 
+      // @ts-expect-error pipe sinks must discriminate events or accept unknown payloads for undeclared events
       narrow.pipe(wideSink);
-      narrow.pipe((event, payload) => {
-        expectType<keyof Wide>(event);
-        expectType<Wide[keyof Wide]>(payload);
-      });
     });
 
     typeChecks.push(function narrowPipeRejectsIncompatibleDelegate(): void {
@@ -427,11 +439,32 @@ describe('type safety', () => {
       narrow.pipe(wrongSink);
     });
 
-    typeChecks.push(function widePipeAcceptsNarrowSink(): void {
+    typeChecks.push(function widePipeRejectsNarrowSinkWithoutUnknown(): void {
       const bus = new Bus<Wide>();
+      // @ts-expect-error sink must discriminate events or accept unknown payloads for undeclared events
       bus.pipe(<T extends keyof Narrow>(event: T, payload: Narrow[T]) => {
         expectType<keyof Wide>(event);
         expectType<Wide[keyof Wide]>(payload);
+      });
+    });
+
+    typeChecks.push(function widePipeAcceptsNarrowSinkWithUnknown(): void {
+      const bus = new Bus<Wide>();
+      bus.pipe(<K extends keyof Wide | string>(event: K, payload: K extends keyof Wide ? Wide[K] : unknown) => {
+        expectType<keyof Wide | string>(event);
+        switch (event) {
+          case 'foo':
+            expectType<number>(payload as number);
+            break;
+          case 'bar':
+            expectType<string>(payload as string);
+            break;
+          case 'baz':
+            expectType<boolean>(payload as boolean);
+            break;
+          default:
+            expectType<unknown>(payload);
+        }
       });
     });
 

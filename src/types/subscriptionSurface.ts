@@ -2,7 +2,7 @@ import type {CancelablePromise} from 'jaasync';
 
 import type {Scanner} from '../scanner';
 import type {Subscription, EventMap, Listenable, WILDCARD} from './events';
-import type {SingleEventHandler, EventSink} from './eventHandlers';
+import type {SingleEventHandler, EventSink, PipeSink} from './eventHandlers';
 import type {EventListenerMapKey, ListenerSet} from './listenerRegistry';
 import type {IntrospectionOptions} from './listenerScope';
 import type {Scannable} from './scannable';
@@ -58,7 +58,7 @@ export type PipeTargetEmit<TEventMap extends EventMap> = <
   ...payload: EventPayload<TEventMap, T>
 ) => boolean;
 
-type StrongbusEventMapBrand<T> = T extends {__strongbusEventMap?: infer M}
+type StrongbusEventMapBrand<T> = T extends {strongbusEventMap?: infer M}
   ? M extends EventMap
     ? M
     : never
@@ -90,7 +90,7 @@ export type PipePayloadOverlap<TSource extends EventMap, TDelegate extends Event
 
 interface SubscriptionSurfacePipeObject<in out TEventMap extends EventMap> {
   bivarianceHack: {
-    <TMap extends PipeEventMap<TEventMap>>(sink: EventSink<TMap>): Subscription;
+    <TMap extends PipeEventMap<TEventMap>>(sink: PipeSink<TMap>): Subscription;
     <
       TDelegate,
       TDelegateMap extends EventMap = InferPipeDelegateMap<TDelegate>
@@ -122,7 +122,10 @@ export type SubscriptionSurfaceNext<TEventMap extends EventMap> =
   SubscriptionSurfaceNextObject<TEventMap>['bivarianceHack'];
 
 interface SubscriptionSurfaceUnpipeObject<in out TEventMap extends EventMap> {
-  bivarianceHack<TDelegate extends (PipeTarget<TEventMap>|EventSink<TEventMap>)>(dest: TDelegate): void;
+  bivarianceHack: {
+    <TMap extends PipeEventMap<TEventMap>>(sink: PipeSink<TMap>): void;
+    <TDelegate extends PipeTarget<TEventMap>>(delegate: TDelegate): void;
+  };
 }
 
 export type SubscriptionSurfaceUnpipe<TEventMap extends EventMap> =
@@ -210,8 +213,10 @@ export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMa
   destroy(): void;
 }
 
-/** A delegate that can receive piped events via {@link Bus.emit}. The returned
- * value is a {@link SubscriptionSurface} over the delegate map for chaining. */
+/**
+ * A delegate that can receive piped events via {@link Bus.emit}. The returned
+ * value is a {@link SubscriptionSurface} over the delegate map for chaining.
+ */
 export type PipeTarget<TEventMap extends EventMap> = {
   bivarianceHack: SubscriptionSurface<TEventMap> & {
     emit: PipeTargetEmit<TEventMap>;

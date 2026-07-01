@@ -6,7 +6,7 @@ import {Scanner} from './scanner';
 import {ScannerPools, type ScanParams as InternalScanParams} from './scannerPools';
 import {StrongbusLogger} from './strongbusLogger';
 import {type Subscription, type EventMap, WILDCARD} from './types/events';
-import type {SingleEventHandler, EventSink, GenericHandler} from './types/eventHandlers';
+import type {SingleEventHandler, EventSink, PipeSink, GenericHandler} from './types/eventHandlers';
 import {Lifecycle} from './types/lifecycle';
 import type {Logger} from './types/logger';
 import type {Options, ListenerThresholds} from './types/options';
@@ -42,8 +42,10 @@ import {normalizeError} from './utils/normalizeError';
 @autobind
 export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionSurface<TEventMap> {
 
-  /** @internal Supports {@link InferPipeDelegateMap} without inferring from bivariant surfaces. */
-  declare readonly __strongbusEventMap?: TEventMap;
+  /**
+   * @internal Carries `TEventMap` for pipe delegate inference without relying on bivariant surfaces.
+   */
+  public declare readonly strongbusEventMap?: TEventMap;
 
   private static defaultOptions: Required<Options> & {thresholds: Required<ListenerThresholds>} = {
     name: 'Anonymous',
@@ -90,7 +92,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
 
   private readonly delegates = new Map<Bus<TEventMap>, Subscription[]>();
   private readonly delegateListenerCountsByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
-  private readonly eventSinks = new WeakMap<EventSink<TEventMap>, Subscription>();
+  private readonly sinks = new WeakMap<PipeSink<TEventMap>, Subscription>();
   private readonly listenersRegistry: ListenerRegistry<TEventMap>;
   private readonly ownListenersRegistry: ListenerRegistry<TEventMap>;
   private readonly delegateListenersRegistry: ListenerRegistry<TEventMap>;
@@ -326,14 +328,15 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
 
   /**
    * Pipe events into another bus, or into a function sink.
-   * Function sinks receive the raised event as the first argument and payload as the second.
+   * Function sinks must satisfy {@link PipeSink}: the raised event is the first
+   * argument and the correlated payload is the second.
    */
   public pipe: SubscriptionSurfacePipe<TEventMap> = ((
-    dest: EventSink<TEventMap> | PipeTarget<TEventMap>
+    dest: PipeSink<TEventMap> | PipeTarget<TEventMap>
   ): Subscription | SubscriptionSurface<TEventMap> => {
     if(typeof dest === 'function') {
-      const sink = dest as EventSink<TEventMap>;
-      this.eventSinks.set(sink, this.addListener(WILDCARD, sink));
+      const sink = dest as PipeSink<TEventMap>;
+      this.sinks.set(sink, this.addListener(WILDCARD, sink));
       return subscriptionWrapper(() => this.unpipe(sink));
     } else {
       const bus = dest as Bus<TEventMap>;
@@ -351,12 +354,16 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
     }
   }) as SubscriptionSurfacePipe<TEventMap>;
 
+  /**
+   * Stop piping events into a bus delegate or function sink previously passed to
+   * {@link Bus.pipe}. Function sinks must satisfy {@link PipeSink}.
+   */
   public unpipe: SubscriptionSurfaceUnpipe<TEventMap> = ((
-    dest
+    dest: PipeSink<TEventMap> | PipeTarget<TEventMap>
   ) => {
     if(typeof dest === 'function') {
-      this.eventSinks.get(dest)?.();
-      this.eventSinks.delete(dest);
+      this.sinks.get(dest as PipeSink<TEventMap>)?.();
+      this.sinks.delete(dest as PipeSink<TEventMap>);
     } else {
       const bus = dest as Bus<TEventMap>;
       over(this.delegates.get(bus) || [])();

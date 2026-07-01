@@ -24,9 +24,26 @@ interface EventSinkObject<in out TEventMap extends EventMap> {
 /**
  * Handler for any event in `TEventMap`. Receives the raised event as its first
  * argument and that event's payload as its second. This is the handler shape
- * accepted by {@link Bus.any} and the function-sink form of {@link Bus.pipe}.
+ * accepted by {@link Bus.any}.
  */
 export type EventSink<TEventMap extends EventMap> = EventSinkObject<TEventMap>['bivarianceHack'];
+
+interface PipeSinkObject<in out TEventMap extends EventMap> {
+  bivarianceHack: <
+    K extends EventKeys<TEventMap> | (string & {})
+  >(
+    event: K,
+    payload: K extends EventKeys<TEventMap> ? TEventMap[K] : unknown
+  ) => void;
+}
+
+/**
+ * Discriminated handler for the function-sink forms of {@link Bus.pipe} and
+ * {@link Bus.unpipe}. Known events in `TEventMap` correlate payload types; any
+ * other event name is typed as `unknown` so sinks must not assume a uniform
+ * payload across all events.
+ */
+export type PipeSink<TEventMap extends EventMap> = PipeSinkObject<TEventMap>['bivarianceHack'];
 
 /**
  * Internal, untyped handler shape used for the {@link Bus}'s listener bookkeeping.
