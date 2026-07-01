@@ -22,8 +22,7 @@ import type {
   SubscriptionSurfaceUnpipe,
   NextResult,
   PipeTarget,
-  ScanEventMap,
-  ScanParams
+  ScanOptions
 } from './types/subscriptionSurface';
 import type {ControlSurface} from './types/controlSurface';
 import type {
@@ -304,34 +303,26 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
   /**
    * Utility for resolving/rejecting a promise based on an evaluation done when an event is triggered.
-   * If params.eager=true (default), evaluates condition immedately.
-   * If evaluator resolves or rejects in the eager evaluation, the scanner does not subscribe to any events
-   * @param params
-   * @param params.evaluator - an evaluation function that should check for a certain state
-   * and may resolve or reject the scan based on the state.
-   * @param params.trigger - {@link Listenable} event or events that trigger the evaluator,
-   *   including `'*'`. Discriminate on `resolve.trigger` when reading `event` or `payload`.
-   * @param {boolean} [params.pool=true] - attempt to pool scanners that can be resolved by the same evaluator and trigger; default is `true`
-   * @param {integer} [params.timeout] - cancel the scan after `params.timeout` milliseconds. Values `<= 0` are ignored.
-   * Currently pooling timeouts is not supported. If `params.timeout` is configured, it will disable pooling regardless if `params.pool=true`
-   * @param {boolean} [params.eager=true] - should `params.evaluator` be called immediately; default is `true`.
-   * This eliminates the following anti-pattern:
-   * ```
-   * if(!someCondition) {
-   *  await this.scan({evaluator: evaluateSomeCondition, trigger: ...});
-   * }
-   * ```
+   * If `options.eager` is true (default), evaluates the condition immediately.
+   * If the evaluator resolves or rejects during eager evaluation, the scanner does not subscribe to any events.
+   *
+   * @param trigger - {@link Listenable} event or events that trigger the evaluator, including `'*'`.
+   *   Discriminate on `resolve.trigger` when reading `event` or `payload`.
+   * @param evaluator - checks for a certain state and may resolve or reject the scan.
+   * @param options.pool - attempt to pool scanners that share the same evaluator and trigger; default `true`.
+   * @param options.timeout - cancel the scan after N milliseconds. Values `<= 0` are ignored.
+   *   Configuring a timeout disables pooling even when `options.pool` is true.
+   * @param options.eager - call the evaluator immediately; default `true`.
+   *   This eliminates the anti-pattern of guarding `scan` with `if (!condition)`.
    */
-  public scan: SubscriptionSurfaceScan<TEventMap> = (<
-    T = any,
-    TMap extends ScanEventMap<TEventMap> = TEventMap
-  >(
-    params: ScanParams<T, TEventMap, TMap>
-  ): CancelablePromise<T> => {
-    const scanParams = params as unknown as InternalScanParams<T, TEventMap>;
+  public scan: SubscriptionSurfaceScan<TEventMap> = ((
+    ...args: unknown[]
+  ): CancelablePromise<any> => {
+    const params = normalizeScanParams<TEventMap>(args);
+    const scanParams = params as unknown as InternalScanParams<any, TEventMap>;
 
     if(params.timeout && params.timeout > 0) {
-      const scanner = new Scanner<T>(scanParams);
+      const scanner = new Scanner<any>(scanParams);
       scanner.scan<TEventMap>(this, params.trigger);
       // tslint:disable-next-line:prefer-object-spread
       return Object.assign(
@@ -342,7 +333,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
         }
       );
     } else if(params.pool === false) {
-      const scanner = new Scanner<T>(scanParams);
+      const scanner = new Scanner<any>(scanParams);
       scanner.scan<TEventMap>(this, params.trigger);
       // tslint:disable-next-line:prefer-object-spread
       return Object.assign(
@@ -352,7 +343,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
     }
 
-    return this.scannerPools.scan<T>(this, scanParams);
+    return this.scannerPools.scan<any>(this, scanParams);
   }) as SubscriptionSurfaceScan<TEventMap>;
 
   /**
@@ -821,6 +812,30 @@ export interface Bus<TEventMap extends EventMap = EventMap> extends
   IntrospectionSurface<TEventMap>,
   MonitoringSurface<TEventMap> {}
 
+
+/**
+ * @ignore
+ */
+function normalizeScanParams<TEventMap extends EventMap>(
+  args: readonly unknown[]
+): InternalScanParams<any, TEventMap> {
+  const [first, second, third] = args;
+  if(
+    args.length === 1 &&
+    typeof first === 'object' &&
+    first !== null &&
+    'evaluator' in first &&
+    'trigger' in first
+  ) {
+    return first as InternalScanParams<any, TEventMap>;
+  }
+
+  return {
+    trigger: first as InternalScanParams<any, TEventMap>['trigger'],
+    evaluator: second as InternalScanParams<any, TEventMap>['evaluator'],
+    ...(third as ScanOptions | undefined)
+  };
+}
 
 /**
  * @ignore

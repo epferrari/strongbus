@@ -12,21 +12,41 @@ export type PipeEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
 
 export type ScanEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
 
+/** Options for {@link SubscriptionSurfaceScan}. */
+export interface ScanOptions {
+  eager?: boolean;
+  pool?: boolean;
+  timeout?: number;
+}
+
 interface ScanParamsObject<T, in out TEventMap extends EventMap, in out TMap extends ScanEventMap<TEventMap>> {
   bivarianceHack: {
     evaluator: Scanner.Evaluator<T, TMap>;
     /** {@link Listenable} trigger, including `'*'`. Discriminate on `resolve.trigger` in the evaluator. */
     trigger: Listenable<EventKeys<TMap>> & Listenable<EventKeys<TEventMap>>;
-    eager?: boolean;
-    pool?: boolean;
-    timeout?: number;
-  };
+  } & ScanOptions;
 }
 
+/**
+ * @deprecated Pass `trigger` and `evaluator` as separate arguments to {@link SubscriptionSurfaceScan}:
+ * `scan(trigger, evaluator, options?)`.
+ */
 export type ScanParams<T, TEventMap extends EventMap, TMap extends ScanEventMap<TEventMap>> =
   ScanParamsObject<T, TEventMap, TMap>['bivarianceHack'];
 
 interface SubscriptionSurfaceScanObject<in out TEventMap extends EventMap> {
+  bivarianceHack<
+    T = any,
+    TMap extends ScanEventMap<TEventMap> = TEventMap
+  >(
+    trigger: Listenable<EventKeys<TMap>> & Listenable<EventKeys<TEventMap>>,
+    evaluator: Scanner.Evaluator<T, TMap>,
+    options?: ScanOptions
+  ): CancelablePromise<T>;
+  /**
+   * @deprecated Pass `trigger` and `evaluator` as separate arguments:
+   * `scan(trigger, evaluator, options?)`.
+   */
   bivarianceHack<
     T = any,
     TMap extends ScanEventMap<TEventMap> = TEventMap

@@ -177,7 +177,7 @@ const result = await bus.next(['message', 'connected'], 'count');
 bus.next('message', 'message'); // compile error
 ```
 
-### `scan(params)`
+### `scan(trigger, evaluator, options?)`
 
 Resolve or reject a promise based on an evaluation run whenever a trigger fires. The evaluator is handed a
 `resolve`/`reject` pair and decides whether the current state settles the promise. Triggers are
@@ -185,20 +185,19 @@ Resolve or reject a promise based on an evaluation run whenever a trigger fires.
 `event` first.
 
 ```typescript
-const ready = await bus.scan<boolean>({
-  evaluator: (resolve) => {
+const ready = await bus.scan<boolean>(
+  ['message', 'connected'],
+  (resolve) => {
     if (resolve.trigger.type === 'event' && resolve.trigger.event === 'connected') {
       resolve(true);
     }
-  },
-  trigger: ['message', 'connected']
-});
+  }
+);
 ```
 
-`scan` options (only `trigger` is required; see the
+`scan` options (see the
 [`scan` API docs](https://epferrari.github.io/strongbus/classes/Bus.html#scan) for canonical defaults):
 
-- `trigger` — `Listenable`: a single event key, array of events, or `'*'` that re-runs the evaluator.
 - `eager` — run the evaluator immediately, so an already-satisfied condition resolves without waiting for an
   event. This avoids the `if (!condition) { await scan(...) }` anti-pattern.
 - `pool` — reuse an in-flight scan that shares the same evaluator, eagerness, and a superset trigger, instead of
@@ -208,11 +207,10 @@ const ready = await bus.scan<boolean>({
 The `<T>` type argument is the resolved value's type and flows into the resolver:
 
 ```typescript
-bus.scan<number>({
-  evaluator: (resolve) => resolve('nope'), // compile error: expected number
-  trigger: 'count'
-});
+bus.scan<number>('count', (resolve) => resolve('nope')); // compile error: expected number
 ```
+
+The object form `scan({evaluator, trigger, ...options})` is deprecated but still supported.
 
 ## Lifecycle hooks
 

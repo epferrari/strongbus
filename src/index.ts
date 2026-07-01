@@ -24,7 +24,8 @@ export type {
   SubscriptionSurface,
   SubscriptionSurfaceScan,
   PipeTarget,
-  ScanParams
+  ScanParams,
+  ScanOptions
 } from './types/subscriptionSurface';
 export type {EventListenerMapKey, ListenerSet} from './types/listenerRegistry';
 export type {EventKeys, SubscribableEventKeys} from './types/utility';

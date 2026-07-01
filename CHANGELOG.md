@@ -103,6 +103,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | `await bus.next('foo')` → payload | `const {payload} = await bus.next('foo')` |
 | `await bus.next([...])` → `undefined` | `const {event, payload} = await bus.next([...])` |
 | `bus.next('*', ...)` | `bus.next([...events])` or `bus.scan({evaluator, trigger: '*'})` — see [Wildcard (`'*'`) triggers on `next`](#wildcard--triggers-on-next) |
+| `bus.scan({evaluator, trigger, ...})` | `bus.scan(trigger, evaluator, options?)` — object form deprecated |
 | `bus.scan<typeof evaluator>(...)` | `bus.scan<ResolvedType>(...)` |
 | `generateSubscription(dispose)` | `subscriptionWrapper(dispose)` |
 | `EventHandler<Map, 'foo'>` | `SingleEventHandler<Map, 'foo'>` |
@@ -196,17 +197,35 @@ await bus.next('*');
 await bus.next(['foo', 'bar', 'baz']);
 
 // after — wildcard with conditional resolve via scan
-await bus.scan({
-  evaluator: (resolve) => {
-    if (resolve.trigger.type === 'event' && shouldAccept(resolve.trigger)) {
-      resolve(resolve.trigger);
-    }
-  },
-  trigger: '*'
+await bus.scan('*', (resolve) => {
+  if (resolve.trigger.type === 'event' && shouldAccept(resolve.trigger)) {
+    resolve(resolve.trigger);
+  }
 });
 ```
 
-### `scan` type argument
+### `scan` signature
+
+```typescript
+// v3 (preferred)
+bus.scan<boolean>('foo', myEvaluator);
+bus.scan<boolean>('foo', myEvaluator, {eager: false, pool: false, timeout: 1000});
+
+// v3 (deprecated object form — still supported)
+bus.scan<boolean>({evaluator: myEvaluator, trigger: 'foo'});
+```
+
+The type argument is the resolved value type. Inference from a typed `evaluator` is unchanged.
+
+```typescript
+// explicit resolved-value type argument
+bus.scan<boolean>('foo', myEvaluator);
+
+// inference is unchanged in both forms
+const ready = await bus.scan('foo', myEvaluator);
+```
+
+### `scan` type argument (evaluator type parameter removed in v3)
 
 The type argument is now the resolved value type. Inference from a typed
 `evaluator` is unaffected; only an explicit type argument changes.

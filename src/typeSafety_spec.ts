@@ -182,6 +182,9 @@ describe('type safety', () => {
 
     typeChecks.push(function validTrigger(): void {
       const bus = new Bus<TestEventMap>();
+      bus.scan('foo', evaluator);
+      bus.scan(['foo', 'bar'], evaluator);
+      bus.scan('*', evaluator);
       bus.scan({evaluator, trigger: 'foo'});
       bus.scan({evaluator, trigger: ['foo', 'bar']});
       bus.scan({evaluator, trigger: '*'});
@@ -190,30 +193,39 @@ describe('type safety', () => {
     typeChecks.push(function rejectsUnknownTrigger(): void {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'qux' is not a key of TestEventMap
+      bus.scan('qux', evaluator);
+      // @ts-expect-error 'qux' is not a key of TestEventMap
       bus.scan({evaluator, trigger: 'qux'});
     });
 
     typeChecks.push(function resultTypeDrivesEvaluatorAndPromise(): void {
       const bus = new Bus<TestEventMap>();
-      // the type argument is the resolved result type, and flows into the resolver
-      const result = bus.scan<number>({
+      const result = bus.scan<number>('foo', resolve => {
+        resolve(1);
+        resolve.resolve(2);
+      });
+      result.then(value => expectType<number>(value));
+      bus.scan<number>({
         evaluator: resolve => {
           resolve(1);
           resolve.resolve(2);
         },
         trigger: 'foo'
-      });
-      result.then(value => expectType<number>(value));
+      }).then(value => expectType<number>(value));
     });
 
     typeChecks.push(function inferredResultTypeFromTypedEvaluator(): void {
       const bus = new Bus<TestEventMap>();
-      // result type is inferred from a pre-typed evaluator
+      bus.scan('foo', evaluator).then(value => expectType<boolean>(value));
       bus.scan({evaluator, trigger: 'foo'}).then(value => expectType<boolean>(value));
     });
 
     typeChecks.push(function rejectsMismatchedResolveValue(): void {
       const bus = new Bus<TestEventMap>();
+      bus.scan<number>('foo', resolve => {
+        // @ts-expect-error result type is number, not string
+        resolve('nope');
+      });
       bus.scan<number>({
         evaluator: resolve => {
           // @ts-expect-error result type is number, not string
@@ -225,29 +237,27 @@ describe('type safety', () => {
 
     typeChecks.push(function scanEvaluatorDiscriminatesTrigger(): void {
       const bus = new Bus<TestEventMap>();
-      bus.scan({
-        evaluator: resolve => {
-          if (resolve.trigger.type === 'event' && resolve.trigger.event === 'foo') {
-            expectType<number>(resolve.trigger.payload);
-          } else if (resolve.trigger.type === 'event' && resolve.trigger.event === 'bar') {
-            expectType<string>(resolve.trigger.payload);
-          }
-        },
-        trigger: ['foo', 'bar']
-      });
+      const scanEvaluator: Scanner.Evaluator<void, TestEventMap> = resolve => {
+        if (resolve.trigger.type === 'event' && resolve.trigger.event === 'foo') {
+          expectType<number>(resolve.trigger.payload);
+        } else if (resolve.trigger.type === 'event' && resolve.trigger.event === 'bar') {
+          expectType<string>(resolve.trigger.payload);
+        }
+      };
+      bus.scan(['foo', 'bar'], scanEvaluator);
+      bus.scan({evaluator: scanEvaluator, trigger: ['foo', 'bar']});
     });
 
     typeChecks.push(function scanEvaluatorRejectsUniformTriggerPayload(): void {
       const bus = new Bus<TestEventMap>();
-      bus.scan({
-        evaluator: resolve => {
-          if (resolve.trigger.type === 'event') {
-            // @ts-expect-error payload is not uniform across event keys
-            const payload: string = resolve.trigger.payload;
-          }
-        },
-        trigger: ['foo', 'bar']
-      });
+      const scanEvaluator: Scanner.Evaluator<void, TestEventMap> = resolve => {
+        if (resolve.trigger.type === 'event') {
+          // @ts-expect-error payload is not uniform across event keys
+          const payload: string = resolve.trigger.payload;
+        }
+      };
+      bus.scan(['foo', 'bar'], scanEvaluator);
+      bus.scan({evaluator: scanEvaluator, trigger: ['foo', 'bar']});
     });
   });
 
