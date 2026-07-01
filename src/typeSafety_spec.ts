@@ -15,8 +15,7 @@ import type {EventKeys} from './types/utility';
  * These specs are primarily *compile-time* assertions. The test pipeline runs
  * `tsc` before jasmine, so every `// @ts-expect-error` below doubles as an
  * assertion: if the following line were to compile, tsc would report the
- * directive as unused (TS2578) and fail the build. The runtime `it` block
- * exists so jasmine has something to execute.
+ * directive as unused (TS2578) and fail the build.
  */
 describe('type safety', () => {
   interface TestEventMap {
@@ -34,29 +33,27 @@ describe('type safety', () => {
     // type-level assertion only; no runtime behavior
   }
 
-  // referenced (but never invoked) so the type-checks run without side effects
-  const typeChecks: (() => void)[] = [];
 
   describe('#on', () => {
-    typeChecks.push(function validEventAndPayload(): void {
+    it('accepts valid event and payload types', () => {
       const bus = new Bus<TestEventMap>();
       bus.on('foo', payload => expectType<number>(payload));
       bus.on('baz', payload => expectType<void>(payload));
     });
 
-    typeChecks.push(function rejectsUnknownEvent(): void {
+    it('rejects unknown event', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'qux' is not a key of TestEventMap
       bus.on('qux', () => undefined);
     });
 
-    typeChecks.push(function rejectsMismatchedPayload(): void {
+    it('rejects mismatched payload', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'foo' carries a number payload, not a string
       bus.on('foo', (payload: string) => undefined);
     });
 
-    typeChecks.push(function rejectsWildcard(): void {
+    it('rejects wildcard', () => {
       const bus = new Bus<WildcardEventMap>();
       // @ts-expect-error WILDCARD is reserved for internal use
       bus.on(WILDCARD, () => undefined);
@@ -66,24 +63,24 @@ describe('type safety', () => {
   });
 
   describe('#once', () => {
-    typeChecks.push(function validEventAndPayload(): void {
+    it('accepts valid event and payload types', () => {
       const bus = new Bus<TestEventMap>();
       bus.once('bar', payload => expectType<string>(payload));
     });
 
-    typeChecks.push(function rejectsUnknownEvent(): void {
+    it('rejects unknown event', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'qux' is not a key of TestEventMap
       bus.once('qux', () => undefined);
     });
 
-    typeChecks.push(function rejectsMismatchedPayload(): void {
+    it('rejects mismatched payload', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'bar' carries a string payload, not a number
       bus.once('bar', (payload: number) => undefined);
     });
 
-    typeChecks.push(function rejectsWildcard(): void {
+    it('rejects wildcard', () => {
       const bus = new Bus<WildcardEventMap>();
       // @ts-expect-error WILDCARD is reserved for internal use
       bus.once(WILDCARD, () => undefined);
@@ -93,7 +90,7 @@ describe('type safety', () => {
   });
 
   describe('#any', () => {
-    typeChecks.push(function validEventSubset(): void {
+    it('accepts a valid event subset', () => {
       const bus = new Bus<TestEventMap>();
       bus.any(['foo', 'bar'], (event, payload) => {
         expectType<keyof TestEventMap>(event);
@@ -101,13 +98,13 @@ describe('type safety', () => {
       });
     });
 
-    typeChecks.push(function rejectsUnknownEvent(): void {
+    it('rejects unknown event', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'qux' is not a key of TestEventMap
       bus.any(['foo', 'qux'], () => undefined);
     });
 
-    typeChecks.push(function rejectsWildcard(): void {
+    it('rejects wildcard', () => {
       const bus = new Bus<WildcardEventMap>();
       // @ts-expect-error WILDCARD is reserved for internal use
       bus.any([WILDCARD], () => undefined);
@@ -119,7 +116,7 @@ describe('type safety', () => {
   });
 
   describe('#next', () => {
-    typeChecks.push(function validTriggers(): void {
+    it('accepts valid resolution and rejection triggers', () => {
       const bus = new Bus<TestEventMap>();
       // single event resolves with the triggering event and its payload
       bus.next('foo').then(result => {
@@ -139,31 +136,31 @@ describe('type safety', () => {
       });
     });
 
-    typeChecks.push(function rejectsWildcardResolutionTrigger(): void {
+    it('rejects wildcard resolution trigger', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error wildcard is not allowed as a resolution trigger
       bus.next('*');
     });
 
-    typeChecks.push(function rejectsWildcardRejectionTrigger(): void {
+    it('rejects wildcard rejection trigger', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error wildcard is not allowed as a rejection trigger
       bus.next('foo', '*');
     });
 
-    typeChecks.push(function rejectsUnknownResolutionTrigger(): void {
+    it('rejects unknown resolution trigger', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'qux' is not a key of TestEventMap
       bus.next('qux');
     });
 
-    typeChecks.push(function rejectsUnknownRejectionTrigger(): void {
+    it('rejects unknown rejection trigger', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'qux' is not a key of TestEventMap
       bus.next('foo', 'qux');
     });
 
-    typeChecks.push(function rejectsOverlappingTriggers(): void {
+    it('rejects overlapping triggers', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error resolution and rejection triggers must be disjoint
       bus.next('foo', 'foo');
@@ -181,7 +178,7 @@ describe('type safety', () => {
       resolve(true);
     };
 
-    typeChecks.push(function validTrigger(): void {
+    it('accepts valid scan triggers', () => {
       const bus = new Bus<TestEventMap>();
       bus.scan('foo', evaluator);
       bus.scan(['foo', 'bar'], evaluator);
@@ -191,7 +188,7 @@ describe('type safety', () => {
       bus.scan({evaluator, trigger: '*'});
     });
 
-    typeChecks.push(function rejectsUnknownTrigger(): void {
+    it('rejects unknown trigger', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'qux' is not a key of TestEventMap
       bus.scan('qux', evaluator);
@@ -199,7 +196,7 @@ describe('type safety', () => {
       bus.scan({evaluator, trigger: 'qux'});
     });
 
-    typeChecks.push(function resultTypeDrivesEvaluatorAndPromise(): void {
+    it('result type drives evaluator and promise', () => {
       const bus = new Bus<TestEventMap>();
       const result = bus.scan<number>('foo', resolve => {
         resolve(1);
@@ -215,13 +212,13 @@ describe('type safety', () => {
       }).then(value => expectType<number>(value));
     });
 
-    typeChecks.push(function inferredResultTypeFromTypedEvaluator(): void {
+    it('inferred result type from typed evaluator', () => {
       const bus = new Bus<TestEventMap>();
       bus.scan('foo', evaluator).then(value => expectType<boolean>(value));
       bus.scan({evaluator, trigger: 'foo'}).then(value => expectType<boolean>(value));
     });
 
-    typeChecks.push(function rejectsMismatchedResolveValue(): void {
+    it('rejects mismatched resolve value', () => {
       const bus = new Bus<TestEventMap>();
       bus.scan<number>('foo', resolve => {
         // @ts-expect-error result type is number, not string
@@ -236,7 +233,7 @@ describe('type safety', () => {
       });
     });
 
-    typeChecks.push(function scanEvaluatorDiscriminatesTrigger(): void {
+    it('scan evaluator discriminates trigger', () => {
       const bus = new Bus<TestEventMap>();
       const scanEvaluator: Scanner.Evaluator<void, TestEventMap> = resolve => {
         if (resolve.trigger.type === 'event' && resolve.trigger.event === 'foo') {
@@ -249,7 +246,7 @@ describe('type safety', () => {
       bus.scan({evaluator: scanEvaluator, trigger: ['foo', 'bar']});
     });
 
-    typeChecks.push(function scanEvaluatorRejectsUniformTriggerPayload(): void {
+    it('scan evaluator rejects uniform trigger payload', () => {
       const bus = new Bus<TestEventMap>();
       const scanEvaluator: Scanner.Evaluator<void, TestEventMap> = resolve => {
         if (resolve.trigger.type === 'event') {
@@ -273,7 +270,7 @@ describe('type safety', () => {
       baz: boolean;
     }
 
-    typeChecks.push(function wideBusSatisfiesNarrowMonitoringSurfaceHook(): void {
+    it('accepts assignment of Bus<Wide> to MonitoringSurface<Narrow> for hooks', () => {
       const wide = new Bus<Wide>();
       const monitor: MonitoringSurface<Narrow> = wide;
 
@@ -283,7 +280,7 @@ describe('type safety', () => {
       });
     });
 
-    typeChecks.push(function listenerLifecycleHookAcceptsUndeclaredEventKeys(): void {
+    it('listener lifecycle hook accepts undeclared event keys', () => {
       const narrow: MonitoringSurface<Narrow> = new Bus<Wide>();
 
       narrow.hook(Lifecycle.didAddListener, event => {
@@ -295,14 +292,14 @@ describe('type safety', () => {
       });
     });
 
-    typeChecks.push(function listenerLifecycleHookRejectsNarrowOnlyHandler(): void {
+    it('listener lifecycle hook rejects Narrow only handler', () => {
       const narrow: MonitoringSurface<Narrow> = new Bus<Wide>();
 
       // @ts-expect-error hook handlers must accept undeclared event keys on a narrowed view
       narrow.hook('didAddListener', (event: keyof Narrow) => undefined);
     });
 
-    typeChecks.push(function errorHookAcceptsUndeclaredEventKeys(): void {
+    it('error hook accepts undeclared event keys', () => {
       const narrow: MonitoringSurface<Narrow> = new Bus<Wide>();
 
       narrow.hook('error', ({error, event}) => {
@@ -311,14 +308,14 @@ describe('type safety', () => {
       });
     });
 
-    typeChecks.push(function errorHookRejectsNarrowOnlyEventField(): void {
+    it('error hook rejects Narrow only event field', () => {
       const narrow: MonitoringSurface<Narrow> = new Bus<Wide>();
 
       // @ts-expect-error error hook must accept undeclared event keys on a narrowed view
       narrow.hook('error', ({event}: {error: Error, event: keyof Narrow}) => undefined);
     });
 
-    typeChecks.push(function voidLifecycleHooksUnchanged(): void {
+    it('void lifecycle hooks unchanged', () => {
       const bus = new Bus<TestEventMap>();
 
       bus.hook('active', () => undefined);
@@ -328,7 +325,7 @@ describe('type safety', () => {
   });
 
   describe('listener introspection', () => {
-    typeChecks.push(function validEventKeysAndReturnTypes(): void {
+    it('accepts valid event keys and return types', () => {
       const bus = new Bus<TestEventMap>();
 
       expectType<boolean>(bus.hasListeners());
@@ -356,25 +353,25 @@ describe('type safety', () => {
       }, {scope: ListenerScope.ANY});
     });
 
-    typeChecks.push(function rejectsUnknownEventOnGetListenersFor(): void {
+    it('rejects unknown event on get listeners for', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'qux' is not a key of TestEventMap
       bus.getListenersFor('qux', {scope: ListenerScope.ANY});
     });
 
-    typeChecks.push(function rejectsUnknownEventOnGetListenerCountFor(): void {
+    it('rejects unknown event on get listener count for', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'qux' is not a key of TestEventMap
       bus.getListenerCountFor('qux', {scope: ListenerScope.OWN});
     });
 
-    typeChecks.push(function rejectsUnknownEventOnHasListenersFor(): void {
+    it('rejects unknown event on has listeners for', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'qux' is not a key of TestEventMap
       bus.hasListenersFor('qux', {scope: ListenerScope.DELEGATE});
     });
 
-    typeChecks.push(function introspectionSurfaceViewAcceptsKnownEvents(): void {
+    it('IntrospectionSurface view accepts known events', () => {
       const surface: IntrospectionSurface<TestEventMap> = new Bus<TestEventMap>();
 
       surface.getListenersFor('foo');
@@ -386,7 +383,7 @@ describe('type safety', () => {
       });
     });
 
-    typeChecks.push(function subscriptionSurfaceViewAcceptsKnownEvents(): void {
+    it('SubscriptionSurface view accepts known events', () => {
       const surface: SubscriptionSurface<TestEventMap> = new Bus<TestEventMap>();
 
       surface.on('foo', payload => expectType<number>(payload));
@@ -437,7 +434,7 @@ describe('type safety', () => {
       public emit = this.bus.emit;
     }
 
-    typeChecks.push(function wideBusSatisfiesNarrowSubscriptionSurface(): void {
+    it('accepts assignment of Bus<Wide> to SubscriptionSurface<Narrow>', () => {
       const evaluator: Scanner.Evaluator<boolean, Narrow> = resolve => {
         resolve(true);
       };
@@ -458,7 +455,7 @@ describe('type safety', () => {
       });
     });
 
-    typeChecks.push(function wideBusSatisfiesNarrowIntrospectionSurface(): void {
+    it('accepts assignment of Bus<Wide> to IntrospectionSurface<Narrow>', () => {
       const wide = new Bus<Wide>();
       const narrowed: IntrospectionSurface<Narrow> = wide;
 
@@ -466,7 +463,7 @@ describe('type safety', () => {
       expectType<ListenerSet>(narrowed.getListenersFor('bar', {scope: ListenerScope.OWN}));
     });
 
-    typeChecks.push(function wideBusSatisfiesNarrowMonitoringSurface(): void {
+    it('accepts assignment of Bus<Wide> to MonitoringSurface<Narrow>', () => {
       const wide = new Bus<Wide>();
       const narrowed: MonitoringSurface<Narrow> = wide;
 
@@ -477,7 +474,7 @@ describe('type safety', () => {
       });
     });
 
-    typeChecks.push(function wideBusSatisfiesNarrowControlSurface(): void {
+    it('accepts assignment of Bus<Wide> to ControlSurface<Narrow>', () => {
       const wide = new Bus<Wide>();
       const narrowed: ControlSurface<Narrow> = wide;
 
@@ -485,7 +482,7 @@ describe('type safety', () => {
       narrowed.destroy();
     });
 
-    typeChecks.push(function wideBusCompositionSatisfiesNarrowSubscriptionSurface(): void {
+    it('NarrowSurface composition satisfies SubscriptionSurface<Narrow>', () => {
       const evaluator: Scanner.Evaluator<boolean, Narrow> = resolve => {
         resolve(true);
       };
@@ -505,14 +502,14 @@ describe('type safety', () => {
       });
     });
 
-    typeChecks.push(function wideBusCompositionSatisfiesNarrowIntrospectionSurface(): void {
+    it('NarrowSurface composition satisfies IntrospectionSurface<Narrow>', () => {
       const narrow = new NarrowSurface();
       expectType<IntrospectionSurface<Narrow>>(narrow);
       expectType<number>(narrow.getListenerCountFor('foo', {scope: ListenerScope.ANY}));
       expectType<ListenerSet>(narrow.getListenersFor('bar', {scope: ListenerScope.OWN}));
     });
 
-    typeChecks.push(function wideBusCompositionSatisfiesNarrowMonitoringSurface(): void {
+    it('NarrowSurface composition satisfies MonitoringSurface<Narrow>', () => {
       const narrow = new NarrowSurface();
       expectType<MonitoringSurface<Narrow>>(narrow);
       narrow.monitor(active => expectType<boolean>(active));
@@ -522,14 +519,14 @@ describe('type safety', () => {
       });
     });
 
-    typeChecks.push(function wideBusCompositionSatisfiesNarrowControlSurface(): void {
+    it('NarrowSurface composition satisfies ControlSurface<Narrow>', () => {
       const narrow = new NarrowSurface();
       expectType<ControlSurface<Narrow>>(narrow);
       narrow.emit('foo', 1);
       narrow.destroy();
     });
 
-    typeChecks.push(function narrowSubscriptionSurfaceRejectsUnknownEvent(): void {
+    it('NarrowSubscriptionSurface rejects unknown event', () => {
       const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
       const evaluator: Scanner.Evaluator<boolean, Narrow> = resolve => {
         resolve(true);
@@ -547,7 +544,7 @@ describe('type safety', () => {
       narrow.next('baz');
     });
 
-    typeChecks.push(function narrowIntrospectionSurfaceRejectsUnknownEvent(): void {
+    it('NarrowIntrospectionSurface rejects unknown event', () => {
       const narrow: IntrospectionSurface<Narrow> = new Bus<Wide>();
 
       // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
@@ -556,7 +553,7 @@ describe('type safety', () => {
       narrow.getListenerCountFor('baz', {scope: ListenerScope.ANY});
     });
 
-    typeChecks.push(function narrowPipeAcceptsWideBus(): void {
+    it('PipeSink<Narrow> accepts Bus<Wide>', () => {
       const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
       const wideBus = new Bus<Wide>();
 
@@ -566,7 +563,7 @@ describe('type safety', () => {
       delegate.on('baz', payload => expectType<boolean>(payload));
     });
 
-    typeChecks.push(function narrowPipeAcceptsWideSink(): void {
+    it('PipeSink<Narrow> accepts EventSink<Wide>', () => {
       const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
 
       narrow.pipe((event, payload) => {
@@ -581,7 +578,7 @@ describe('type safety', () => {
       });
     });
 
-    typeChecks.push(function narrowPipeRejectsUniformWideSink(): void {
+    it('PipeSink<Narrow> rejects uniform EventSink<Wide>', () => {
       const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
       const wideSink: EventSink<Wide> = (event, payload) => {
         expectType<keyof Wide>(event);
@@ -592,7 +589,7 @@ describe('type safety', () => {
       narrow.pipe(wideSink);
     });
 
-    typeChecks.push(function narrowPipeRejectsIncompatibleDelegate(): void {
+    it('PipeSink<Narrow> rejects incompatible delegate', () => {
       const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
 
       interface Incompatible {
@@ -604,7 +601,7 @@ describe('type safety', () => {
       narrow.pipe(new Bus<Incompatible>());
     });
 
-    typeChecks.push(function narrowPipeRejectsIncompatibleSink(): void {
+    it('PipeSink<Narrow> rejects incompatible sink', () => {
       const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
 
       interface WrongEvents {
@@ -617,7 +614,7 @@ describe('type safety', () => {
       narrow.pipe(wrongSink);
     });
 
-    typeChecks.push(function widePipeRejectsNarrowSinkWithoutUnknown(): void {
+    it('PipeSink<Wide> rejects EventSink<Narrow> without unknown', () => {
       const bus = new Bus<Wide>();
       // @ts-expect-error sink must discriminate events or accept unknown payloads for undeclared events
       bus.pipe(<T extends keyof Narrow>(event: T, payload: Narrow[T]) => {
@@ -626,7 +623,7 @@ describe('type safety', () => {
       });
     });
 
-    typeChecks.push(function widePipeAcceptsNarrowSinkWithUnknown(): void {
+    it('PipeSink<Wide> accepts EventSink<Narrow> with unknown', () => {
       const bus = new Bus<Wide>();
       bus.pipe(<K extends keyof Wide | string>(event: K, payload: K extends keyof Wide ? Wide[K] : unknown) => {
         expectType<keyof Wide | string>(event);
@@ -646,7 +643,7 @@ describe('type safety', () => {
       });
     });
 
-    typeChecks.push(function widePipeAcceptsNarrowBus(): void {
+    it('PipeSink<Wide> accepts Bus<Narrow>', () => {
       const wide = new Bus<Wide>();
       const narrowBus = new Bus<Narrow>();
 
@@ -659,8 +656,4 @@ describe('type safety', () => {
     });
   });
 
-  it('enforces event and payload types at compile time', () => {
-    expect(typeChecks.length).toBeGreaterThan(0);
-    expect(typeChecks.every(check => typeof check === 'function')).toBe(true);
-  });
 });
