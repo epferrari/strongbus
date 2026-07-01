@@ -383,9 +383,9 @@ describe('type safety', () => {
       const wideBus = new Bus<Wide>();
 
       const delegate = narrow.pipe(wideBus);
-      expectType<Bus<Wide> & SubscriptionSurface<Narrow>>(delegate);
+      expectType<SubscriptionSurface<Wide>>(delegate);
       delegate.on('foo', payload => expectType<number>(payload));
-      delegate.emit('baz', true);
+      delegate.on('baz', payload => expectType<boolean>(payload));
     });
 
     typeChecks.push(function narrowPipeAcceptsWideSink(): void {
@@ -410,7 +410,7 @@ describe('type safety', () => {
         bar: string;
       }
 
-      // @ts-expect-error delegate emit signatures must accept Narrow payloads
+      // @ts-expect-error delegate emit must accept Narrow payloads for shared events
       narrow.pipe(new Bus<Incompatible>());
     });
 
@@ -433,6 +433,18 @@ describe('type safety', () => {
         expectType<keyof Wide>(event);
         expectType<Wide[keyof Wide]>(payload);
       });
+    });
+
+    typeChecks.push(function widePipeAcceptsNarrowBus(): void {
+      const wide = new Bus<Wide>();
+      const narrowBus = new Bus<Narrow>();
+
+      const delegate = wide.pipe(narrowBus);
+      expectType<SubscriptionSurface<Narrow>>(delegate);
+      delegate.on('foo', payload => expectType<number>(payload));
+      delegate.on('bar', payload => expectType<string>(payload));
+      // @ts-expect-error 'baz' is not in the Narrow delegate's event map
+      delegate.on('baz', () => undefined);
     });
   });
 

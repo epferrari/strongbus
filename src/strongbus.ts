@@ -42,6 +42,9 @@ import {normalizeError} from './utils/normalizeError';
 @autobind
 export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionSurface<TEventMap> {
 
+  /** @internal Supports {@link InferPipeDelegateMap} without inferring from bivariant surfaces. */
+  declare readonly __strongbusEventMap?: TEventMap;
+
   private static defaultOptions: Required<Options> & {thresholds: Required<ListenerThresholds>} = {
     name: 'Anonymous',
     allowUnhandledEvents: true,

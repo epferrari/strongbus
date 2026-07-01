@@ -51,10 +51,54 @@ interface SubscriptionSurfaceAnyObject<in out TEventMap extends EventMap> {
 export type SubscriptionSurfaceAny<TEventMap extends EventMap> =
   SubscriptionSurfaceAnyObject<TEventMap>['bivarianceHack'];
 
+export type PipeTargetEmit<TEventMap extends EventMap> = <
+  T extends EventKeys<TEventMap>
+>(
+  event: T,
+  ...payload: EventPayload<TEventMap, T>
+) => boolean;
+
+type StrongbusEventMapBrand<T> = T extends {__strongbusEventMap?: infer M}
+  ? M extends EventMap
+    ? M
+    : never
+  : never;
+
+/** Event map carried by a pipe delegate, preferring the Bus brand when present. */
+export type InferPipeDelegateMap<TDelegate> = [StrongbusEventMapBrand<TDelegate>] extends [never]
+  ? TDelegate extends {emit: PipeTargetEmit<infer M extends EventMap>} ? M : never
+  : StrongbusEventMapBrand<TDelegate>;
+
+/**
+ * For events shared by the pipe source and delegate maps, payload types must
+ * match exactly. Source-only events are not required on the delegate.
+ */
+export type PipePayloadOverlap<TSource extends EventMap, TDelegate extends EventMap> =
+  Extract<EventKeys<TSource>, EventKeys<TDelegate>> extends never
+    ? unknown
+    : {
+        [K in Extract<EventKeys<TSource>, EventKeys<TDelegate>>]: EventPayload<TSource, K> extends EventPayload<TDelegate, K>
+          ? EventPayload<TDelegate, K> extends EventPayload<TSource, K>
+            ? true
+            : false
+          : false;
+      } extends infer Result
+        ? Exclude<Result[keyof Result], true> extends never
+          ? unknown
+          : never
+        : never;
+
 interface SubscriptionSurfacePipeObject<in out TEventMap extends EventMap> {
   bivarianceHack: {
     <TMap extends PipeEventMap<TEventMap>>(sink: EventSink<TMap>): Subscription;
-    <TDelegate extends PipeTarget<TEventMap>>(delegate: TDelegate): TDelegate & SubscriptionSurface<TEventMap>;
+    <
+      TDelegate,
+      TDelegateMap extends EventMap = InferPipeDelegateMap<TDelegate>
+    >(
+      delegate: TDelegate & {
+        emit: PipeTargetEmit<TDelegateMap>;
+      } & PipePayloadOverlap<TEventMap, TDelegateMap>
+    ): SubscriptionSurface<TDelegateMap>;
   };
 }
 
@@ -166,9 +210,10 @@ export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMa
   destroy(): void;
 }
 
-/** A delegate that can receive piped events via {@link Bus.emit}. */
+/** A delegate that can receive piped events via {@link Bus.emit}. The returned
+ * value is a {@link SubscriptionSurface} over the delegate map for chaining. */
 export type PipeTarget<TEventMap extends EventMap> = {
   bivarianceHack: SubscriptionSurface<TEventMap> & {
-    emit<T extends EventKeys<TEventMap>>(event: T, ...payload: EventPayload<TEventMap, T>): boolean;
+    emit: PipeTargetEmit<TEventMap>;
   };
 }['bivarianceHack'];
