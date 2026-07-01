@@ -259,6 +259,69 @@ describe('type safety', () => {
     });
   });
 
+  describe('#emit', () => {
+    it('accepts a correlated payload for a non-void event', () => {
+      const bus = new Bus<TestEventMap>();
+      bus.emit('foo', 1);
+      bus.emit('bar', 'hello');
+    });
+
+    it('rejects a mismatched payload', () => {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'foo' carries a number payload, not a string
+      bus.emit('foo', 'hello');
+    });
+
+    it('requires a payload for a non-void event', () => {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'foo' requires its number payload
+      bus.emit('foo');
+    });
+
+    it('allows a void event to be emitted without a payload', () => {
+      const bus = new Bus<TestEventMap>();
+      bus.emit('baz');
+      bus.emit('baz', null);
+      bus.emit('baz', undefined);
+    });
+
+    it('rejects a non-null payload for a void event', () => {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'baz' is a void event and cannot carry a payload
+      bus.emit('baz', 1);
+    });
+
+    it('rejects an unknown event', () => {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'qux' is not a key of TestEventMap
+      bus.emit('qux', 1);
+    });
+
+    // regression: emitting a correlated payload must type-check even when the
+    // event map is a generic type parameter (the motivation for dropping the
+    // rest-spread payload). See the `emit` entry in CHANGELOG 3.0.0.
+    it('correlates the payload when the event map is generic', () => {
+      interface Events<T> {
+        foo: {a: T[]; b: T[]};
+        bar: void;
+      }
+
+      class ClassWithGenericEvents<
+        OutputType extends object,
+        TEvents extends Events<OutputType> = Events<OutputType>
+      > {
+        protected readonly bus = new Bus<TEvents>();
+
+        public method(a: OutputType[], b: OutputType[]): void {
+          this.bus.emit('foo', {a, b});
+          this.bus.emit('bar', null);
+        }
+      }
+
+      expectType<typeof ClassWithGenericEvents>(ClassWithGenericEvents);
+    });
+  });
+
   describe('#hook', () => {
     interface Narrow {
       foo: number;

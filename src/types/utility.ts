@@ -12,6 +12,14 @@ export type EventPayload<T extends EventMap, E extends keyof T> = T[E] extends v
   : [T[E]];
 
 /**
+ * Event keys whose payload type is `void`, i.e. those that may be emitted
+ * without a payload. Used to type the void-event overload of {@link Bus.emit}.
+ */
+export type VoidEventKeys<T extends EventMap> = {
+  [K in EventKeys<T>]: T[K] extends void ? K : never;
+}[EventKeys<T>];
+
+/**
  * A discriminated `{event, payload}` pair over the events `E`, correlating each
  * event with its payload type from `TEventMap`.
  */

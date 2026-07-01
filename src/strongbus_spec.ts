@@ -7,7 +7,7 @@ import {StrongbusLogMessages} from './strongbusLogger';
 import type {Logger} from './types/logger';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import type {EventMap} from './types/events';
-import type {EventKeys, EventPayload} from './types/utility';
+import type {EventKeys, VoidEventKeys} from './types/utility';
 import {over} from './utils/over';
 
 type TestEventMap = {
@@ -26,8 +26,10 @@ class DelegateTestBus<T extends EventMap = TestEventMap> extends Strongbus.Bus<T
     this.emulateListenerCount = options.emulateListenerCount;
   }
 
-  public emit<E extends EventKeys<T>>(event: E, ...payload: EventPayload<T, E>): boolean {
-    super.emit(event, ...payload);
+  public emit<E extends VoidEventKeys<T>>(event: E, payload?: null | undefined): boolean;
+  public emit<E extends EventKeys<T>>(event: E, payload: T[E]): boolean;
+  public emit<E extends EventKeys<T>>(event: E, payload?: T[E]): boolean {
+    super.emit(event as any, payload as any);
     return this.emulateListenerCount;
   }
 }

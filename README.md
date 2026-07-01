@@ -121,7 +121,7 @@ stop(); // stop receiving all events
 
 ## Emitting events
 
-`emit(event, ...payload)` returns a `boolean` indicating whether the event was handled (by an own listener, a
+`emit(event, payload)` returns a `boolean` indicating whether the event was handled (by an own listener, a
 wildcard sink, or a delegate bus).
 
 ```typescript

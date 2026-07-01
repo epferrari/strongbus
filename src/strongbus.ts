@@ -33,7 +33,7 @@ import type {
   IntrospectionSurfaceListenerForEvent
 } from './types/surfaces/introspectionSurface';
 import type {MonitoringSurface, MonitoringHook} from './types/surfaces/monitoringSurface';
-import type {EventKeys, EventPayload, SubscribableEventKeys} from './types/utility';
+import type {EventKeys, SubscribableEventKeys, VoidEventKeys} from './types/utility';
 import {over} from './utils/over';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {randomId} from './utils/randomId';
@@ -152,13 +152,11 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    */
   protected handleUnexpectedEvent<T extends EventKeys<TEventMap>>(
     event: T,
-    ...payload: TEventMap[T] extends void
-      ? ([] | [null] | [undefined])
-      : [TEventMap[T]]
+    payload?: TEventMap[T]
   ) {
     const errorMessage = [
       `Strongbus.Bus received unexpected message type '${String(event)}' with contents:`,
-      JSON.stringify(payload[0], null, 2)
+      JSON.stringify(payload, null, 2)
     ].join('\n');
 
     throw new Error(errorMessage);
@@ -184,19 +182,21 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     return sub;
   }
 
-  public emit<T extends EventKeys<TEventMap>>(event: T, ...payload: EventPayload<TEventMap, T>): boolean {
+  public emit<T extends VoidEventKeys<TEventMap>>(event: T, payload?: null | undefined): boolean;
+  public emit<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T]): boolean;
+  public emit<T extends EventKeys<TEventMap>>(event: T, payload?: TEventMap[T]): boolean {
     if(event === WILDCARD) {
       throw new Error(`Do not emit "${String(event)}" manually. Reserved for internal use.`);
     }
 
     let handled = false;
 
-    handled = this.emitEvent(event, ...payload) || handled;
-    handled = this.emitEvent(WILDCARD, event, ...payload) || handled;
-    handled = this.forward<T>(event, ...payload) || handled;
+    handled = this.emitEvent(event, payload) || handled;
+    handled = this.emitEvent(WILDCARD, event, payload) || handled;
+    handled = this.forward<T>(event, payload) || handled;
 
     if(!handled && !this.options.allowUnhandledEvents) {
-      this.handleUnexpectedEvent<T>(event, ...payload);
+      this.handleUnexpectedEvent<T>(event, payload);
     }
     return handled;
   }
@@ -740,11 +740,11 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     }
   }
 
-  private forward<T extends EventKeys<TEventMap>>(event: T, ...payload: EventPayload<TEventMap, T>): boolean {
+  private forward<T extends EventKeys<TEventMap>>(event: T, payload?: TEventMap[T]): boolean {
     const {delegates: _delegates} = this;
     if(_delegates.size) {
       return Array.from(_delegates.keys())
-        .reduce((acc, d) => (d.emit(event as any, ...payload) || acc), false);
+        .reduce((acc, d) => (d.emit(event as any, payload as any) || acc), false);
     } else {
       return false;
     }

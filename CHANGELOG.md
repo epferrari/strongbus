@@ -50,6 +50,16 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   none are registered. `forEach` callback event keys are compile-time narrowed
   only; at runtime all registered keys are visited.
 
+- **`emit(event, payload)` takes a single correlated payload** instead of a
+  rest-spread (`emit(event, ...payload)`). The payload type is now `TEventMap[T]`
+  directly, so a call type-checks even when the event map is a generic type
+  parameter (e.g. `new Bus<TEvents>()` inside a generic base class) — previously
+  the rest tuple `EventPayload<TEventMap, T>` failed to resolve against an
+  abstract map. Payload is required for non-void events; void events may still be
+  emitted as `emit(event)` or `emit(event, null)`. Anything the type system
+  already accepted keeps working; only genuine multi-arg spreads (which were never
+  typeable) are gone. `ControlSurface.emit`, `PipeTargetEmit`, and
+  `handleUnexpectedEvent` adopt the same correlated shape.
 - **`on(event, handler)` only accepts a single event key.** It no longer
   forwards arrays to `any` or `'*'` to `proxy`.
 - **`next(...)` resolves with `{event, payload}`** instead of the bare payload

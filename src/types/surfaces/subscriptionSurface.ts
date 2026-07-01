@@ -4,7 +4,7 @@ import type {Scanner} from '../../scanner';
 import type {Subscription, EventMap, Listenable, SubscribableListenable} from '../events';
 import type {SingleEventHandler, EventSink, PipeSink} from '../eventHandlers';
 import type {ControlSurface} from './controlSurface';
-import type {EventKeys, EventPayload, EventPayloadPair, SubscribableEventKeys} from '../utility';
+import type {EventKeys, EventPayloadPair, SubscribableEventKeys} from '../utility';
 
 export type AnyEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
 
@@ -61,7 +61,7 @@ export type PipeTargetEmit<TEventMap extends EventMap> = <
   T extends EventKeys<TEventMap>
 >(
   event: T,
-  ...payload: EventPayload<TEventMap, T>
+  payload: TEventMap[T]
 ) => boolean;
 
 type StrongbusEventMapBrand<T> = T extends {strongbusEventMap?: infer M}
@@ -83,8 +83,8 @@ export type PipePayloadOverlap<TSource extends EventMap, TDelegate extends Event
   Extract<EventKeys<TSource>, EventKeys<TDelegate>> extends never
     ? unknown
     : {
-        [K in Extract<EventKeys<TSource>, EventKeys<TDelegate>>]: EventPayload<TSource, K> extends EventPayload<TDelegate, K>
-          ? EventPayload<TDelegate, K> extends EventPayload<TSource, K>
+        [K in Extract<EventKeys<TSource>, EventKeys<TDelegate>>]: TSource[K] extends TDelegate[K]
+          ? TDelegate[K] extends TSource[K]
             ? true
             : false
           : false;
