@@ -405,6 +405,38 @@ describe('type safety', () => {
       baz: boolean;
     }
 
+    class NarrowSurface implements
+      ControlSurface<Narrow>,
+      SubscriptionSurface<Narrow>,
+      IntrospectionSurface<Narrow>,
+      MonitoringSurface<Narrow> {
+      private readonly bus = new Bus<Wide>();
+
+      public get name() {
+        return this.bus.name;
+      }
+      public on: SubscriptionSurface<Narrow>['on'] = this.bus.on;
+      public hook = this.bus.hook;
+      public once: SubscriptionSurface<Narrow>['once'] = this.bus.once;
+      public any: SubscriptionSurface<Narrow>['any'] = this.bus.any;
+      public next: SubscriptionSurface<Narrow>['next'] = this.bus.next;
+      public scan: SubscriptionSurface<Narrow>['scan'] = this.bus.scan;
+      public pipe: SubscriptionSurface<Narrow>['pipe'] = this.bus.pipe;
+      public unpipe = this.bus.unpipe;
+      public monitor = this.bus.monitor;
+      public get active() { return this.bus.active; }
+      public hasListeners = this.bus.hasListeners;
+      public getListenerCount = this.bus.getListenerCount;
+      public getListeners = this.bus.getListeners;
+      public getEventCount = this.bus.getEventCount;
+      public hasListenersFor = this.bus.hasListenersFor;
+      public getListenerCountFor = this.bus.getListenerCountFor;
+      public getListenersFor = this.bus.getListenersFor;
+      public forEach = this.bus.forEach;
+      public destroy = this.bus.destroy;
+      public emit = this.bus.emit;
+    }
+
     typeChecks.push(function wideBusSatisfiesNarrowSubscriptionSurface(): void {
       const evaluator: Scanner.Evaluator<boolean, Narrow> = resolve => {
         resolve(true);
@@ -434,62 +466,67 @@ describe('type safety', () => {
       expectType<ListenerSet>(narrowed.getListenersFor('bar', {scope: ListenerScope.OWN}));
     });
 
-    typeChecks.push(function wideBusCompositionSatisfiesNarrowSurfaces(): void {
-      // a wrapper that implements the narrow surfaces via composition
-      class NarrowSurface implements
-        ControlSurface<Narrow>,
-        SubscriptionSurface<Narrow>,
-        IntrospectionSurface<Narrow>,
-        MonitoringSurface<Narrow> {
-        private readonly bus = new Bus<Wide>();
+    typeChecks.push(function wideBusSatisfiesNarrowMonitoringSurface(): void {
+      const wide = new Bus<Wide>();
+      const narrowed: MonitoringSurface<Narrow> = wide;
 
-        public get name() {
-          return this.bus.name;
-        }
-        public on: SubscriptionSurface<Narrow>['on'] = this.bus.on;
-        public hook = this.bus.hook;
-        public once: SubscriptionSurface<Narrow>['once'] = this.bus.once;
-        public any: SubscriptionSurface<Narrow>['any'] = this.bus.any;
-        public next: SubscriptionSurface<Narrow>['next'] = this.bus.next;
-        public scan: SubscriptionSurface<Narrow>['scan'] = this.bus.scan;
-        public pipe: SubscriptionSurface<Narrow>['pipe'] = this.bus.pipe;
-        public unpipe = this.bus.unpipe;
-        public monitor = this.bus.monitor;
-        public get active() { return this.bus.active; }
-        public hasListeners = this.bus.hasListeners;
-        public getListenerCount = this.bus.getListenerCount;
-        public getListeners = this.bus.getListeners;
-        public getEventCount = this.bus.getEventCount;
-        public hasListenersFor = this.bus.hasListenersFor;
-        public getListenerCountFor = this.bus.getListenerCountFor;
-        public getListenersFor = this.bus.getListenersFor;
-        public forEach = this.bus.forEach;
-        public destroy = this.bus.destroy;
-        public emit = this.bus.emit;
-      }
+      narrowed.monitor(active => expectType<boolean>(active));
+      expectType<boolean>(narrowed.active);
+      narrowed.hook(Lifecycle.didAddListener, event => {
+        expectType<LifecycleSubjectEvent<Narrow>>(event);
+      });
+    });
 
+    typeChecks.push(function wideBusSatisfiesNarrowControlSurface(): void {
+      const wide = new Bus<Wide>();
+      const narrowed: ControlSurface<Narrow> = wide;
+
+      narrowed.emit('foo', 1);
+      narrowed.destroy();
+    });
+
+    typeChecks.push(function wideBusCompositionSatisfiesNarrowSubscriptionSurface(): void {
       const evaluator: Scanner.Evaluator<boolean, Narrow> = resolve => {
         resolve(true);
       };
 
       const narrow = new NarrowSurface();
       expectType<SubscriptionSurface<Narrow>>(narrow);
-      expectType<IntrospectionSurface<Narrow>>(narrow);
-      expectType<MonitoringSurface<Narrow>>(narrow);
-      expectType<ControlSurface<Narrow>>(narrow);
       narrow.on('foo', payload => expectType<number>(payload));
       narrow.once('bar', payload => expectType<string>(payload));
       narrow.any(['foo', 'bar'], (event, payload) => {
         expectType<keyof Narrow>(event);
         expectType<Narrow[keyof Narrow]>(payload);
       });
-      narrow.scan({evaluator, trigger: 'foo'});
+      narrow.scan('foo', evaluator);
       narrow.next('foo').then(result => {
         expectType<'foo'>(result.event);
         expectType<number>(result.payload);
       });
+    });
+
+    typeChecks.push(function wideBusCompositionSatisfiesNarrowIntrospectionSurface(): void {
+      const narrow = new NarrowSurface();
+      expectType<IntrospectionSurface<Narrow>>(narrow);
       expectType<number>(narrow.getListenerCountFor('foo', {scope: ListenerScope.ANY}));
       expectType<ListenerSet>(narrow.getListenersFor('bar', {scope: ListenerScope.OWN}));
+    });
+
+    typeChecks.push(function wideBusCompositionSatisfiesNarrowMonitoringSurface(): void {
+      const narrow = new NarrowSurface();
+      expectType<MonitoringSurface<Narrow>>(narrow);
+      narrow.monitor(active => expectType<boolean>(active));
+      expectType<boolean>(narrow.active);
+      narrow.hook('didAddListener', event => {
+        expectType<LifecycleSubjectEvent<Narrow>>(event);
+      });
+    });
+
+    typeChecks.push(function wideBusCompositionSatisfiesNarrowControlSurface(): void {
+      const narrow = new NarrowSurface();
+      expectType<ControlSurface<Narrow>>(narrow);
+      narrow.emit('foo', 1);
+      narrow.destroy();
     });
 
     typeChecks.push(function narrowSubscriptionSurfaceRejectsUnknownEvent(): void {
