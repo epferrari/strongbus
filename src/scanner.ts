@@ -3,10 +3,10 @@ import {type CancelablePromise, Deferred} from 'jaasync';
 
 import type {EventMap, Subscription, Listenable} from './types/events';
 import {Lifecycle} from './types/lifecycle';
-import {Scannable} from './types/scannable';
+import type {Scannable} from './types/scannable';
 import type {EventKeys} from './types/utility';
 import {over} from './utils/over';
-import {type ListenableSubscriber, subscribeListenable} from './utils/subscribeListenable';
+import {subscribeListenable} from './utils/subscribeListenable';
 
 
 export namespace Scanner {
@@ -147,7 +147,7 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
    * scan listenable and resolve based on `this.evaluator`
    */
   public scan<TEventMap extends EventMap>(
-    scannable: Scannable<TEventMap> & Pick<ListenableSubscriber<TEventMap>, 'any' | 'pipe'>,
+    scannable: Scannable<TEventMap>,
     listenable: Listenable<EventKeys<TEventMap>>
   ): this {
     if(this.settled) {

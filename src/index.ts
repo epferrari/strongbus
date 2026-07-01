@@ -7,17 +7,25 @@ export type {SingleEventHandler, EventSink, PipeSink} from './types/eventHandler
 export * from './types/lifecycle';
 export type {Logger, LoggerProvider} from './types/logger';
 export * from './types/options';
-export * from './types/scannable';
 export {ListenerScope} from './types/listenerScope';
 export type {IntrospectionOptions} from './types/listenerScope';
+export type {
+  ControlSurface
+} from './types/controlSurface';
+export type {
+  IntrospectionSurface
+} from './types/introspectionSurface';
+export type {
+  MonitoringSurface,
+  MonitoringHook
+} from './types/monitoringSurface';
+export type {Scannable} from './types/scannable';
 export type {
   SubscriptionSurface,
   SubscriptionSurfaceScan,
   PipeTarget,
-  ScanParams,
-  EventListenerMapKey,
-  ListenerSet
+  ScanParams
 } from './types/subscriptionSurface';
-export type {ScannableHook} from './types/scannable';
+export type {EventListenerMapKey, ListenerSet} from './types/listenerRegistry';
 export type {EventKeys, SubscribableEventKeys} from './types/utility';
 export type {SubscribableListenable} from './types/events';

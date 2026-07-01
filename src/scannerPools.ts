@@ -4,12 +4,8 @@ import {Scanner} from './scanner';
 import {type EventMap, type Listenable, WILDCARD} from './types/events';
 import type {Scannable} from './types/scannable';
 import type {EventKeys} from './types/utility';
-import type {ListenableSubscriber} from './utils/subscribeListenable';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import { autobind } from 'core-decorators';
-
-export type ScanTarget<TEventMap extends EventMap> =
-  Scannable<TEventMap> & Pick<ListenableSubscriber<TEventMap>, 'any' | 'pipe'>;
 
 export interface ScanParams<T, TEventMap extends EventMap> {
   evaluator: Scanner.Evaluator<T, TEventMap>;
@@ -44,7 +40,7 @@ export class ScannerPools<TEventMap extends EventMap> {
    * Acquire a pooled scan for `params`, reusing an existing scan when its trigger
    * is a superset of the requested trigger, otherwise creating a new one.
    */
-  public scan<T>(scannable: ScanTarget<TEventMap>, params: ScanParams<T, TEventMap>): CancelablePromise<T> {
+  public scan<T>(scannable: Scannable<TEventMap>, params: ScanParams<T, TEventMap>): CancelablePromise<T> {
     /*
     Determine if we can use an existing scanner
     - are the evaluators the same?
@@ -101,7 +97,7 @@ export class ScannerPools<TEventMap extends EventMap> {
   }
 
   private createNew<T>(
-    scannable: ScanTarget<TEventMap>,
+    scannable: Scannable<TEventMap>,
     params: ScanParams<T, TEventMap>,
     lazyOrEager: LazyOrEager
   ): Promise<T> {

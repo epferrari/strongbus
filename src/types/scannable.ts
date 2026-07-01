@@ -1,20 +1,11 @@
-import type {Subscription, EventMap} from './events';
-import type {SingleEventHandler} from './eventHandlers';
-import type {SubscribableEventKeys} from './utility';
-import type {Lifecycle} from './lifecycle';
+import type {EventMap} from './events';
+import type {MonitoringHook} from './monitoringSurface';
+import type {SubscriptionSurface} from './subscriptionSurface';
 
-interface ScannableHookObject<in out TEventMap extends EventMap> {
-  bivarianceHack<L extends Lifecycle>(
-    event: L,
-    handler: (payload: Lifecycle.EventMap<TEventMap>[L]) => void
-  ): Subscription;
-}
-
-export type ScannableHook<TEventMap extends EventMap> =
-  ScannableHookObject<TEventMap>['bivarianceHack'];
-
-export interface Scannable<in out TEventMap extends EventMap = EventMap> {
-  readonly name: string;
-  on<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription;
-  hook: ScannableHook<TEventMap>;
-}
+/**
+ * Surface {@link Scanner} attaches to. {@link MonitoringHook} is defined on
+ * {@link MonitoringSurface}; subscribe methods match {@link SubscriptionSurface}.
+ */
+export type Scannable<TEventMap extends EventMap = EventMap> =
+  { readonly name: string; hook: MonitoringHook<TEventMap> } &
+  Pick<SubscriptionSurface<TEventMap>, 'on' | 'any' | 'pipe'>;

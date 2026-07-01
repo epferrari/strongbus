@@ -46,7 +46,7 @@ export type ListenerRegistryForEach<TEventMap extends EventMap> =
 /**
  * Contravariant, map-like view of handlers keyed by event. Not a `ReadonlyMap` —
  * lookup keys are typed through the event map so a `Bus<Wide>` can satisfy
- * `SubscriptionSurface<Narrow>`. Iteration via {@link forEach} is typed at
+ * `IntrospectionSurface<Narrow>`. Iteration via {@link forEach} is typed at
  * compile time only; at runtime all registered keys are visited.
  */
 export interface ListenerRegistry<TEventMap extends EventMap = EventMap> {

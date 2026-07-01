@@ -16,7 +16,7 @@ export enum ListenerScope {
 
 /**
  * Options accepted by the listener-introspection methods on {@link Bus} /
- * `SubscriptionSurface`. `scope` selects which handlers are included and
+ * `IntrospectionSurface`. `scope` selects which handlers are included and
  * defaults to {@link ListenerScope.ANY}.
  */
 export interface IntrospectionOptions {

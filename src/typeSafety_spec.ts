@@ -3,7 +3,11 @@ import {Scanner} from './scanner';
 import {WILDCARD} from './types/events';
 import {ListenerScope} from './types/listenerScope';
 import type {EventSink, PipeSink} from './types/eventHandlers';
-import type {ListenerSet, SubscriptionSurface} from './types/subscriptionSurface';
+import type {ListenerSet} from './types/listenerRegistry';
+import type {ControlSurface} from './types/controlSurface';
+import type {IntrospectionSurface} from './types/introspectionSurface';
+import type {MonitoringSurface} from './types/monitoringSurface';
+import type {SubscriptionSurface} from './types/subscriptionSurface';
 import type {EventKeys} from './types/utility';
 
 /**
@@ -294,8 +298,8 @@ describe('type safety', () => {
       bus.hasListenersFor('qux', {scope: ListenerScope.DELEGATE});
     });
 
-    typeChecks.push(function subscriptionSurfaceViewAcceptsKnownEvents(): void {
-      const surface: SubscriptionSurface<TestEventMap> = new Bus<TestEventMap>();
+    typeChecks.push(function introspectionSurfaceViewAcceptsKnownEvents(): void {
+      const surface: IntrospectionSurface<TestEventMap> = new Bus<TestEventMap>();
 
       surface.getListenersFor('foo');
       surface.getListenerCountFor('bar', {scope: ListenerScope.OWN});
@@ -304,6 +308,13 @@ describe('type safety', () => {
         expectType<EventKeys<TestEventMap> | typeof WILDCARD>(event);
         expectType<ListenerSet>(handlers);
       });
+    });
+
+    typeChecks.push(function subscriptionSurfaceViewAcceptsKnownEvents(): void {
+      const surface: SubscriptionSurface<TestEventMap> = new Bus<TestEventMap>();
+
+      surface.on('foo', payload => expectType<number>(payload));
+      surface.once('bar', payload => expectType<string>(payload));
     });
   });
 
@@ -337,13 +348,23 @@ describe('type safety', () => {
         expectType<'foo'>(result.event);
         expectType<number>(result.payload);
       });
+    });
+
+    typeChecks.push(function wideBusSatisfiesNarrowIntrospectionSurface(): void {
+      const wide = new Bus<Wide>();
+      const narrowed: IntrospectionSurface<Narrow> = wide;
+
       expectType<number>(narrowed.getListenerCountFor('foo', {scope: ListenerScope.ANY}));
       expectType<ListenerSet>(narrowed.getListenersFor('bar', {scope: ListenerScope.OWN}));
     });
 
-    typeChecks.push(function wideBusCompositionSatisfiesNarrowSubscriptionSurface(): void {
-      // a wrapper that implements the narrow subscription surface via composition
-      class NarrowSurface implements SubscriptionSurface<Narrow> {
+    typeChecks.push(function wideBusCompositionSatisfiesNarrowSurfaces(): void {
+      // a wrapper that implements the narrow surfaces via composition
+      class NarrowSurface implements
+        ControlSurface<Narrow>,
+        SubscriptionSurface<Narrow>,
+        IntrospectionSurface<Narrow>,
+        MonitoringSurface<Narrow> {
         private readonly bus = new Bus<Wide>();
 
         public get name() {
@@ -368,6 +389,7 @@ describe('type safety', () => {
         public getListenersFor = this.bus.getListenersFor;
         public forEach = this.bus.forEach;
         public destroy = this.bus.destroy;
+        public emit = this.bus.emit;
       }
 
       const evaluator: Scanner.Evaluator<boolean, Narrow> = resolve => {
@@ -376,6 +398,9 @@ describe('type safety', () => {
 
       const narrow = new NarrowSurface();
       expectType<SubscriptionSurface<Narrow>>(narrow);
+      expectType<IntrospectionSurface<Narrow>>(narrow);
+      expectType<MonitoringSurface<Narrow>>(narrow);
+      expectType<ControlSurface<Narrow>>(narrow);
       narrow.on('foo', payload => expectType<number>(payload));
       narrow.once('bar', payload => expectType<string>(payload));
       narrow.any(['foo', 'bar'], (event, payload) => {
@@ -407,6 +432,11 @@ describe('type safety', () => {
       narrow.scan({evaluator, trigger: 'baz'});
       // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
       narrow.next('baz');
+    });
+
+    typeChecks.push(function narrowIntrospectionSurfaceRejectsUnknownEvent(): void {
+      const narrow: IntrospectionSurface<Narrow> = new Bus<Wide>();
+
       // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
       narrow.getListenersFor('baz', {scope: ListenerScope.ANY});
       // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide

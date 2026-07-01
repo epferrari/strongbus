@@ -16,10 +16,6 @@ import type {
   AnyEventMap,
   SubscriptionSurface,
   SubscriptionSurfaceAny,
-  SubscriptionSurfaceHasListenersForEvent,
-  SubscriptionSurfaceListenerCountForEvent,
-  SubscriptionSurfaceListenerForEach,
-  SubscriptionSurfaceListenerForEvent,
   SubscriptionSurfaceNext,
   SubscriptionSurfacePipe,
   SubscriptionSurfaceScan,
@@ -29,7 +25,15 @@ import type {
   ScanEventMap,
   ScanParams
 } from './types/subscriptionSurface';
-import type {ScannableHook} from './types/scannable';
+import type {ControlSurface} from './types/controlSurface';
+import type {
+  IntrospectionSurface,
+  IntrospectionSurfaceHasListenersForEvent,
+  IntrospectionSurfaceListenerCountForEvent,
+  IntrospectionSurfaceListenerForEach,
+  IntrospectionSurfaceListenerForEvent
+} from './types/introspectionSurface';
+import type {MonitoringSurface, MonitoringHook} from './types/monitoringSurface';
 import type {EventKeys, EventPayload, SubscribableEventKeys} from './types/utility';
 import {over} from './utils/over';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
@@ -40,7 +44,11 @@ import {normalizeError} from './utils/normalizeError';
 
 
 @autobind
-export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionSurface<TEventMap> {
+export class Bus<TEventMap extends EventMap = EventMap> implements
+  ControlSurface<TEventMap>,
+  SubscriptionSurface<TEventMap>,
+  IntrospectionSurface<TEventMap>,
+  MonitoringSurface<TEventMap> {
 
   /**
    * @internal Carries `TEventMap` for pipe delegate inference without relying on bivariant surfaces.
@@ -395,13 +403,13 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
   /**
    * Subscribe to meta changes to the {@link Bus} with {@link Lifecycle} events
    */
-  public hook: ScannableHook<TEventMap> = ((
+  public hook: MonitoringHook<TEventMap> = ((
     event,
     handler
   ) => {
     addListener(this.lifecycle, event, handler);
     return subscriptionWrapper(() => removeListener(this.lifecycle, event, handler));
-  }) as ScannableHook<TEventMap>;
+  }) as MonitoringHook<TEventMap>;
 
   /**
    * Subscribe to meta states of the {@link Bus}, `idle` and `active`.
@@ -471,14 +479,14 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
     return this.registryForScope(scope).size;
   }
 
-  public hasListenersFor: SubscriptionSurfaceHasListenersForEvent<TEventMap> = ((
+  public hasListenersFor: IntrospectionSurfaceHasListenersForEvent<TEventMap> = ((
     event,
     options: IntrospectionOptions = {}
   ) => {
     return this.getListenerCountFor(event, options) > 0;
-  }) as SubscriptionSurfaceHasListenersForEvent<TEventMap>;
+  }) as IntrospectionSurfaceHasListenersForEvent<TEventMap>;
 
-  public getListenerCountFor: SubscriptionSurfaceListenerCountForEvent<TEventMap> = ((
+  public getListenerCountFor: IntrospectionSurfaceListenerCountForEvent<TEventMap> = ((
     event,
     options: IntrospectionOptions = {}
   ) => {
@@ -490,17 +498,17 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
         + this.getListenerCountFor(event, {scope: ListenerScope.DELEGATE});
     }
     return this.registryForScope(scope).getCount(event);
-  }) as SubscriptionSurfaceListenerCountForEvent<TEventMap>;
+  }) as IntrospectionSurfaceListenerCountForEvent<TEventMap>;
 
-  public getListenersFor: SubscriptionSurfaceListenerForEvent<TEventMap> = ((
+  public getListenersFor: IntrospectionSurfaceListenerForEvent<TEventMap> = ((
     event,
     options: IntrospectionOptions = {}
   ) => {
     const {scope = ListenerScope.ANY} = options;
     return this.registryForScope(scope).get(event) ?? EMPTY_LISTENER_SET;
-  }) as SubscriptionSurfaceListenerForEvent<TEventMap>;
+  }) as IntrospectionSurfaceListenerForEvent<TEventMap>;
 
-  public forEach: SubscriptionSurfaceListenerForEach<TEventMap> = ((
+  public forEach: IntrospectionSurfaceListenerForEach<TEventMap> = ((
     fn,
     options: IntrospectionOptions = {}
   ) => {
@@ -508,7 +516,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
     this.registryForScope(scope).forEach((handlers, event) => {
       fn(event, handlers);
     });
-  }) as SubscriptionSurfaceListenerForEach<TEventMap>;
+  }) as IntrospectionSurfaceListenerForEach<TEventMap>;
 
   private static readonly _emptyListenersRegistry: ListenerRegistry<any> =
     ListenerRegistryView.create(() => new Map());
@@ -807,9 +815,11 @@ export class Bus<TEventMap extends EventMap = EventMap> implements SubscriptionS
 }
 
 
-export interface Bus<TEventMap extends EventMap = EventMap> extends SubscriptionSurface<TEventMap> {
-  emit<T extends EventKeys<TEventMap>>(event: T, ...payload: EventPayload<TEventMap, T>): boolean;
-}
+export interface Bus<TEventMap extends EventMap = EventMap> extends
+  ControlSurface<TEventMap>,
+  SubscriptionSurface<TEventMap>,
+  IntrospectionSurface<TEventMap>,
+  MonitoringSurface<TEventMap> {}
 
 
 /**

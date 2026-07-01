@@ -3,14 +3,8 @@ import type {CancelablePromise} from 'jaasync';
 import type {Scanner} from '../scanner';
 import type {Subscription, EventMap, Listenable, SubscribableListenable} from './events';
 import type {SingleEventHandler, EventSink, PipeSink} from './eventHandlers';
-import type {EventListenerMapKey, ListenerSet} from './listenerRegistry';
-import type {IntrospectionOptions} from './listenerScope';
-import type {Scannable} from './scannable';
+import type {ControlSurface} from './controlSurface';
 import type {EventKeys, EventPayload, EventPayloadPair, SubscribableEventKeys} from './utility';
-
-export type {EventListenerMapKey, ListenerSet} from './listenerRegistry';
-export {ListenerScope} from './listenerScope';
-export type {IntrospectionOptions} from './listenerScope';
 
 export type AnyEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
 
@@ -146,39 +140,6 @@ interface SubscriptionSurfaceUnpipeObject<in out TEventMap extends EventMap> {
 export type SubscriptionSurfaceUnpipe<TEventMap extends EventMap> =
   SubscriptionSurfaceUnpipeObject<TEventMap>['bivarianceHack'];
 
-interface SubscriptionSurfaceHasListenersForEventObject<in out TEventMap extends EventMap> {
-  bivarianceHack(event: EventListenerMapKey<TEventMap>, options?: IntrospectionOptions): boolean;
-}
-
-export type SubscriptionSurfaceHasListenersForEvent<TEventMap extends EventMap> =
-  SubscriptionSurfaceHasListenersForEventObject<TEventMap>['bivarianceHack'];
-
-interface SubscriptionSurfaceListenerForEventObject<in out TEventMap extends EventMap> {
-  bivarianceHack(event: EventListenerMapKey<TEventMap>, options?: IntrospectionOptions): ListenerSet;
-}
-
-export type SubscriptionSurfaceListenerForEvent<TEventMap extends EventMap> =
-  SubscriptionSurfaceListenerForEventObject<TEventMap>['bivarianceHack'];
-
-interface SubscriptionSurfaceListenerCountForEventObject<in out TEventMap extends EventMap> {
-  bivarianceHack(event: EventListenerMapKey<TEventMap>, options?: IntrospectionOptions): number;
-}
-
-export type SubscriptionSurfaceListenerCountForEvent<TEventMap extends EventMap> =
-  SubscriptionSurfaceListenerCountForEventObject<TEventMap>['bivarianceHack'];
-
-interface SubscriptionSurfaceListenerForEachObject<in out TEventMap extends EventMap> {
-  bivarianceHack<
-    TMap extends AnyEventMap<TEventMap>
-  >(
-    fn: (event: EventListenerMapKey<TMap>, handlers: ListenerSet) => void,
-    options?: IntrospectionOptions
-  ): void;
-}
-
-export type SubscriptionSurfaceListenerForEach<TEventMap extends EventMap> =
-  SubscriptionSurfaceListenerForEachObject<TEventMap>['bivarianceHack'];
-
 export type NextResult<TEventMap extends EventMap, T> =
   T extends EventKeys<TEventMap>[]
     ? EventPayloadPair<TEventMap, T[number]>
@@ -187,10 +148,11 @@ export type NextResult<TEventMap extends EventMap, T> =
       : never;
 
 /**
- * The public subscription and introspection surface of {@link Bus}, excluding
- * {@link Bus.emit}.
+ * Subscribe, await, scan, and pipe events on a {@link Bus}.
  */
-export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMap> extends Scannable<TEventMap> {
+export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMap> {
+  on<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription;
+
   once<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription;
 
   any: SubscriptionSurfaceAny<TEventMap>;
@@ -202,28 +164,6 @@ export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMa
   pipe: SubscriptionSurfacePipe<TEventMap>;
 
   unpipe: SubscriptionSurfaceUnpipe<TEventMap>;
-
-  monitor(handler: (activeState: boolean) => void): Subscription;
-
-  readonly active: boolean;
-
-  hasListeners(options?: IntrospectionOptions): boolean;
-
-  getListenerCount(options?: IntrospectionOptions): number;
-
-  getListeners(options?: IntrospectionOptions): ListenerSet;
-
-  getEventCount(options?: IntrospectionOptions): number;
-
-  hasListenersFor: SubscriptionSurfaceHasListenersForEvent<TEventMap>;
-
-  getListenerCountFor: SubscriptionSurfaceListenerCountForEvent<TEventMap>;
-
-  getListenersFor: SubscriptionSurfaceListenerForEvent<TEventMap>;
-
-  forEach: SubscriptionSurfaceListenerForEach<TEventMap>;
-
-  destroy(): void;
 }
 
 /**
@@ -231,7 +171,5 @@ export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMa
  * value is a {@link SubscriptionSurface} over the delegate map for chaining.
  */
 export type PipeTarget<TEventMap extends EventMap> = {
-  bivarianceHack: SubscriptionSurface<TEventMap> & {
-    emit: PipeTargetEmit<TEventMap>;
-  };
+  bivarianceHack: SubscriptionSurface<TEventMap> & Pick<ControlSurface<TEventMap>, 'emit'>;
 }['bivarianceHack'];
