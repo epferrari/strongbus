@@ -29,4 +29,5 @@ export type {
 } from './types/surfaces/subscriptionSurface';
 export type {EventListenerMapKey, ListenerSet} from './types/listenerRegistry';
 export type {EventKeys, SubscribableEventKeys} from './types/utility';
+export type {Merge} from './types/merge';
 export type {SubscribableListenable} from './types/events';

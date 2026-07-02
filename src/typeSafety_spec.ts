@@ -10,6 +10,7 @@ import type {IntrospectionSurface} from './types/surfaces/introspectionSurface';
 import type {MonitoringSurface} from './types/surfaces/monitoringSurface';
 import type {SubscriptionSurface} from './types/surfaces/subscriptionSurface';
 import type {EventKeys, SubscribableEventKeys, VoidEventKeys} from './types/utility';
+import type {Merge} from './types/merge';
 
 /**
  * These specs are primarily *compile-time* assertions. The test pipeline runs
@@ -1101,15 +1102,8 @@ describe('type safety', () => {
     // *through* a layer that folds in the open generic's keyset. It's the
     // position of the generic, not the merge operator, that decides this.
     it('emits fixed-key literals from a generic base via a position-aware flattening merge', () => {
-      // a flattening merge: overlaps take `Base`, unlike `Base & Ext` which
-      // intersects (and thus defers) each payload.
-      type Merge<Base extends object, Ext extends object> = {
-        [K in keyof Base | keyof Ext]: K extends keyof Base
-          ? Base[K]
-          : K extends keyof Ext
-            ? Ext[K]
-            : never;
-      };
+      // `Merge` is the public flattening merge: overlaps take `Base`, unlike
+      // `Base & Ext` which intersects (and thus defers) each payload.
 
       // wrong shape: the open generic is folded into an inner merge layer, so a
       // fixed key resolving through it stays deferred — the same failure as the
