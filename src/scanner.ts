@@ -1,32 +1,56 @@
 import {autobind} from 'core-decorators';
-import {CancelablePromise, Deferred} from 'jaasync';
-import {EventHandler} from './types/eventHandlers';
+import {type CancelablePromise, Deferred} from 'jaasync';
 
-import * as Events from './types/events';
+import type {EventMap, Subscription, Listenable} from './types/events';
 import {Lifecycle} from './types/lifecycle';
-import {Scannable} from './types/scannable';
-import {EventKeys} from './types/utility';
+import type {Scannable} from './types/scannable';
+import type {EventKeys} from './types/utility';
 import {over} from './utils/over';
+import {subscribeListenable} from './utils/subscribeListenable';
 
 
 export namespace Scanner {
   export type TriggerType = 'eager'|'event'|'destroy';
-  export interface Trigger<TEventMap extends Events.EventMap, T extends keyof TEventMap> {
-    type: TriggerType;
-    event: T;
-    payload: TEventMap[T];
-  }
-  export interface Resolver<TResult, TEventMap extends Events.EventMap = any> {
+
+  export type ScanResolverEventTrigger<TEventMap extends EventMap> =
+    EventKeys<TEventMap> extends never
+      ? { type: 'event'; event: string & {}; payload: unknown }
+      : {
+          [K in EventKeys<TEventMap>]: {
+            type: 'event';
+            event: K;
+            payload: TEventMap[K];
+          };
+        }[EventKeys<TEventMap>];
+
+  /**
+   * Discriminated trigger passed to {@link Evaluator} resolvers. Known events
+   * correlate payload types; any other event name is typed as `unknown`.
+   */
+  export type ScanResolverTrigger<TEventMap extends EventMap> =
+    | { type: 'eager'; event: null; payload: null }
+    | { type: 'destroy'; event: null; payload: null }
+    | ScanResolverEventTrigger<TEventMap>;
+
+  export interface Resolver<TResult, TEventMap extends EventMap = any> {
     (result: TResult): void;
     resolve: (result: TResult) => void;
     reject: (err?: Error) => void;
-    trigger: Trigger<TEventMap, keyof TEventMap>;
+    trigger: ScanResolverTrigger<TEventMap>;
   }
   export type Rejecter = (err?: Error) => void;
-  export type Evaluator<TResult, TEventMap extends Events.EventMap> = (
-    resolve: Resolver<TResult, TEventMap>,
-    reject: Rejecter
-  ) => void|Promise<void>;
+
+  /**
+   * Declared via the `bivarianceHack` indirection so the event map type parameter
+   * is bivariant; this lets a `Bus` over a wider event map satisfy a view over a
+   * narrower one (see {@link Bus.scan}).
+   */
+  export type Evaluator<TResult, in out TEventMap extends EventMap> = {
+    bivarianceHack(
+      resolve: Resolver<TResult, TEventMap>,
+      reject: Rejecter
+    ): void|Promise<void>;
+  }['bivarianceHack'];
 
   export interface Params<TResult, TEventMap extends object> {
     evaluator: Evaluator<TResult, TEventMap>;
@@ -40,8 +64,8 @@ export namespace Scanner {
 @autobind
 export class Scanner<TResult> implements CancelablePromise<TResult> {
   private settled: boolean = false;
-  private readonly triggerListeners = new Set<Events.Subscription>();
-  private readonly willDestroyListeners = new Set<Events.Subscription>();
+  private readonly triggerListeners = new Set<Subscription>();
+  private readonly willDestroyListeners = new Set<Subscription>();
   private readonly evaluator!: Scanner.Evaluator<TResult, any>;
   private readonly _promise = new Deferred<TResult>();
   public readonly [Symbol.toStringTag]: string = 'Promise';
@@ -50,7 +74,7 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
     const {evaluator, eager = true} = params;
     this.evaluator = evaluator;
     if(eager) {
-      this.evaluate<any, any>({
+      this.evaluate<any>({
         type: 'eager',
         event: null,
         payload: null
@@ -58,7 +82,9 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
     }
   }
 
-  private evaluate<TEventMap extends Events.EventMap, T extends keyof TEventMap>(trigger: Scanner.Trigger<TEventMap, T>): void|Promise<void> {
+  private evaluate<TEventMap extends EventMap>(
+    trigger: Scanner.ScanResolverTrigger<TEventMap>
+  ): void|Promise<void> {
     const resolver = (val: TResult) => this.resolve(val);
     (resolver as any).resolve = this.resolve;
     (resolver as any).reject = this.reject;
@@ -118,35 +144,27 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
   /**
    * scan listenable and resolve based on `this.evaluator`
    */
-  public scan<TEventMap extends Events.EventMap>(
+  public scan<TEventMap extends EventMap>(
     scannable: Scannable<TEventMap>,
-    listenable: Events.Listenable<EventKeys<TEventMap>>
+    listenable: Listenable<EventKeys<TEventMap>>
   ): this {
     if(this.settled) {
       return this;
     }
 
-    const listener = Array.isArray(listenable) || listenable === Events.WILDCARD
-      ? scannable.on(listenable, ((event, payload) => {
-          this.evaluate({
-            type: 'event',
-            event,
-            payload
-          });
-        }) as EventHandler<TEventMap, typeof listenable>)
-      : scannable.on(listenable, ((payload: TEventMap[typeof listenable]) => {
-          this.evaluate({
-            type: 'event',
-            event: listenable,
-            payload
-          });
-        }) as EventHandler<TEventMap, typeof listenable>);
+    const listener = subscribeListenable(scannable, listenable, (event, payload) => {
+      this.evaluate<TEventMap>({
+        type: 'event',
+        event,
+        payload
+      } as Scanner.ScanResolverEventTrigger<TEventMap>);
+    });
 
     const willDestroyListener = scannable.hook(Lifecycle.willDestroy, async () => {
       willDestroyListener();
       this.willDestroyListeners.delete(willDestroyListener);
       if(this.willDestroyListeners.size === 0) {
-        await this.evaluate<any, any>({
+        await this.evaluate<any>({
           type: 'destroy',
           event: null,
           payload: null
