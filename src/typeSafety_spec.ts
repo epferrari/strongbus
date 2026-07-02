@@ -626,30 +626,109 @@ describe('type safety', () => {
       delegate.on('baz', payload => expectType<boolean>(payload));
     });
 
-    it('PipeSink<Narrow> accepts EventSink<Wide>', () => {
+    it('narrows payload by discriminating event in a function sink', () => {
       const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
 
       narrow.pipe((event, payload) => {
-        expectType<keyof Narrow | string>(event);
+        expectType<keyof Narrow>(event);
         if (event === 'foo') {
-          expectType<number>(payload as number);
+          expectType<number>(payload);
+          // @ts-expect-error 'foo' carries a number payload, not a string
+          expectType<string>(payload);
         } else if (event === 'bar') {
-          expectType<string>(payload as string);
-        } else {
-          expectType<unknown>(payload);
+          expectType<string>(payload);
+          // @ts-expect-error 'bar' carries a string payload, not a number
+          expectType<number>(payload);
         }
       });
     });
 
-    it('PipeSink<Narrow> rejects uniform EventSink<Wide>', () => {
-      const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
-      const wideSink: EventSink<Wide> = (event, payload) => {
-        expectType<keyof Wide>(event);
-        expectType<Wide[keyof Wide]>(payload);
-      };
+    it('rejects a function sink whose payload type is too narrow for a shared event', () => {
+      const bus = new Bus<Narrow>();
 
-      // @ts-expect-error pipe sinks must discriminate events or accept unknown payloads for undeclared events
-      narrow.pipe(wideSink);
+      // @ts-expect-error 'bar' carries a string payload, which a number-only sink cannot accept
+      bus.pipe((event: 'foo' | 'bar', payload: number) => {
+        expectType<number>(payload);
+      });
+    });
+
+    it('supports the documented discriminated pipe sink', () => {
+      const bus = new Bus<{foo: string; bar: number}>();
+      bus.pipe((event, payload) => {
+        if (event === 'foo') {
+          payload.toUpperCase();
+        } else if (event === 'bar') {
+          payload.toString(2);
+        } else {
+          // unknown event/payload, ignore
+        }
+      });
+    });
+
+    it('types payload as unknown until the event is discriminated', () => {
+      const bus = new Bus<{foo: string; bar: number}>();
+
+      bus.pipe((event, payload) => {
+        expectType<unknown>(payload);
+        // @ts-expect-error payload is unknown until event is discriminated
+        expectType<string>(payload);
+        if (event === 'foo') {
+          expectType<string>(payload);
+        }
+      });
+    });
+
+    it('keeps pipe sinks sound when a wider source forwards unknown events', () => {
+      const wide = new Bus<{foo: string, bar: string, baz: number}>();
+      const narrow = new Bus<{foo: string, bar: string}>();
+
+      // piping wide into narrow forwards 'baz' (number) into narrow at runtime.
+      // pipe returns the delegate's own surface, so a chained sink is identical
+      // to piping on `narrow` directly.
+      const surface = wide.pipe(narrow);
+      expectType<SubscriptionSurface<{foo: string; bar: string}>>(surface);
+
+      // the following are the same assertions, one over the narrow bus itself, and one over the surface returned from pipe;
+
+      narrow.pipe((event, payload) => {
+        // payload is unknown until the event is discriminated...
+        // @ts-expect-error payload is unknown until event is discriminated
+        payload.toLowerCase();
+
+        // ...and a forwarded 'baz' isn't part of narrow's surface, so it can't
+        // be named and simply falls through the known branches rather than being
+        // mistyped as a string.
+        // @ts-expect-error 'baz' is not part of the delegate's surface
+        if (event === 'baz') {
+          expectType<unknown>(payload);
+        }
+
+        if (event === 'foo') {
+          expectType<string>(payload);
+        } else if (event === 'bar') {
+          expectType<string>(payload);
+        }
+      });
+
+      surface.pipe((event, payload) => {
+        // payload is unknown until the event is discriminated...
+        // @ts-expect-error payload is unknown until event is discriminated
+        payload.toLowerCase();
+
+        // ...and a forwarded 'baz' isn't part of narrow's surface, so it can't
+        // be named and simply falls through the known branches rather than being
+        // mistyped as a string.
+        // @ts-expect-error 'baz' is not part of the delegate's surface
+        if (event === 'baz') {
+          expectType<unknown>(payload);
+        }
+
+        if (event === 'foo') {
+          expectType<string>(payload);
+        } else if (event === 'bar') {
+          expectType<string>(payload);
+        }
+      });
     });
 
     it('PipeSink<Narrow> rejects incompatible delegate', () => {
@@ -671,51 +750,53 @@ describe('type safety', () => {
         qux: number;
       }
 
-      const wrongSink: EventSink<WrongEvents> = () => undefined;
+      const wrongSink: PipeSink<WrongEvents> = () => undefined;
 
       // @ts-expect-error sink must accept Narrow event keys and payloads
       narrow.pipe(wrongSink);
     });
 
-    it('PipeSink<Wide> rejects EventSink<Narrow> without unknown', () => {
+    it('rejects a function sink that omits an event in the source map', () => {
       const bus = new Bus<Wide>();
-      // @ts-expect-error sink must discriminate events or accept unknown payloads for undeclared events
-      bus.pipe(<T extends keyof Narrow>(event: T, payload: Narrow[T]) => {
-        expectType<keyof Wide>(event);
-        expectType<Wide[keyof Wide]>(payload);
+      // @ts-expect-error a Wide sink must also handle 'baz', which this Narrow-only sink cannot
+      bus.pipe((event: keyof Narrow, payload: Narrow[keyof Narrow]) => {
+        expectType<keyof Narrow>(event);
       });
     });
 
-    it('PipeSink<Wide> accepts EventSink<Narrow> with unknown', () => {
+    it('narrows payload across every event of the source map', () => {
       const bus = new Bus<Wide>();
-      bus.pipe(<K extends keyof Wide | string>(event: K, payload: K extends keyof Wide ? Wide[K] : unknown) => {
-        expectType<keyof Wide | string>(event);
+      bus.pipe((event, payload) => {
+        expectType<keyof Wide>(event);
+        expectType<unknown>(payload);
         switch (event) {
           case 'foo':
-            expectType<number>(payload as number);
+            expectType<number>(payload);
             break;
           case 'bar':
-            expectType<string>(payload as string);
+            expectType<string>(payload);
             break;
           case 'baz':
-            expectType<boolean>(payload as boolean);
+            expectType<boolean>(payload);
             break;
           default:
-            expectType<unknown>(payload);
+            expectType<never>(payload);
         }
       });
     });
 
-    it('PipeSink<Wide> accepts Bus<Narrow>', () => {
+    it('piping into a narrower delegate returns the delegate\'s own surface', () => {
       const wide = new Bus<Wide>();
-      const narrowBus = new Bus<Narrow>();
+      const narrow = new Bus<Narrow>();
 
-      const delegate = wide.pipe(narrowBus);
-      expectType<SubscriptionSurface<Narrow>>(delegate);
-      delegate.on('foo', payload => expectType<number>(payload));
-      delegate.on('bar', payload => expectType<string>(payload));
+      // pipe returns the delegate's own surface, identical to using narrowBus
+      // directly; source-only events are not surfaced on it.
+      const surface = wide.pipe(narrow);
+      expectType<SubscriptionSurface<Narrow>>(surface);
+      surface.on('foo', payload => expectType<number>(payload));
+      surface.on('bar', payload => expectType<string>(payload));
       // @ts-expect-error 'baz' is not in the Narrow delegate's event map
-      delegate.on('baz', () => undefined);
+      surface.on('baz', () => undefined);
     });
   });
 

@@ -20,6 +20,28 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **`pipe(sink)` accepts a function sink** in addition to a `Bus`. The sink
   receives `(event, payload)` for every event raised; the returned
   `Subscription` removes it. This replaces the removed `proxy`/`every` methods.
+  The sink's parameters are a union of `[event, payload]` tuples, so
+  discriminating on `event` correlatively narrows `payload`:
+
+  ```ts
+  bus.pipe((event, payload) => {
+    if (event === 'foo') {
+      payload.toUpperCase(); // payload narrowed to the 'foo' payload type
+    } else if (event === 'bar') {
+      payload.toString(2);   // payload narrowed to the 'bar' payload type
+    }
+  });
+  ```
+
+  Before `event` is discriminated, `payload` is `unknown`, so a sink must match a
+  specific event before using its payload. This keeps sinks sound even when
+  payload types coincide (e.g. two `string` events) and means an unexpected event
+  forwarded from a wider source is skipped rather than mistyped.
+
+  (Previously `PipeSink` typed the handler as generic in the event key with a
+  `string & {}` fallthrough carrying an `unknown` payload; that fallthrough
+  overlapped every string literal and defeated narrowing on both `event` and
+  `payload`.)
 - **`next(...)` resolves with `{event, payload}`** — a discriminated pair, so
   multi-event awaits can tell which event fired. Wildcard (`'*'`) triggers are removed
   from `next` only; use `scan` with `trigger: '*'` when you need any-event listening

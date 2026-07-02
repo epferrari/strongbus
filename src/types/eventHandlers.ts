@@ -28,17 +28,40 @@ export type EventSink<in out TEventMap extends EventMap> = {
 
 /**
  * Discriminated handler for the function-sink forms of {@link Bus.pipe} and
- * {@link Bus.unpipe}. Known events in `TEventMap` correlate payload types; any
- * other event name is typed as `unknown` so sinks must not assume a uniform
- * payload across all events.
+ * {@link Bus.unpipe}. The parameters are a union of `[event, payload]` tuples —
+ * one per key of `TEventMap` — so that narrowing `event` (via `if`/`switch`)
+ * correlatively narrows `payload` to that event's type:
+ *
+ * ```ts
+ * bus.pipe((event, payload) => {
+ *   if (event === 'foo') {
+ *     payload; // narrowed to TEventMap['foo']
+ *   } else if (event === 'bar') {
+ *     payload; // narrowed to TEventMap['bar']
+ *   }
+ * });
+ * ```
+ *
+ * The union includes a `[never, unknown]` member so that, *before* `event` is
+ * discriminated, `payload` is `unknown` — you cannot use it until you've matched
+ * a specific event. That member is eliminated as soon as `event` is compared to
+ * any real key, so each branch still gets the exact payload type. This also
+ * keeps the sink sound when the payload types happen to coincide (e.g. two
+ * `string` events), where a plain union would collapse to a usable type; and it
+ * means unexpected events forwarded from a wider source are simply skipped
+ * rather than mistyped.
+ *
+ * Declared via the `bivarianceHack` indirection so the parameters are bivariant;
+ * this lets a `Bus` over a wider event map satisfy a view over a narrower one.
  */
 export type PipeSink<in out TEventMap extends EventMap> = {
-  bivarianceHack: <
-    K extends EventKeys<TEventMap> | (string & {})
-  >(
-    event: K,
-    payload: K extends EventKeys<TEventMap> ? TEventMap[K] : unknown
-  ) => void;
+  bivarianceHack(
+    ...args:
+      | {
+          [K in EventKeys<TEventMap>]: [event: K, payload: TEventMap[K]]
+        }[EventKeys<TEventMap>]
+      | [event: never, payload: unknown]
+  ): void;
 }['bivarianceHack'];
 
 /**
