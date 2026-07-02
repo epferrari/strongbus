@@ -1,15 +1,15 @@
 import {Bus} from './strongbus';
 import {Scanner} from './scanner';
-import {WILDCARD} from './types/events';
+import {WILDCARD, type EventMap, type Subscription} from './types/events';
 import {Lifecycle, type LifecycleSubjectEvent} from './types/lifecycle';
 import {ListenerScope} from './types/listenerScope';
-import type {EventSink, PipeSink} from './types/eventHandlers';
+import type {EventSink, PipeSink, SingleEventHandler} from './types/eventHandlers';
 import type {ListenerSet} from './types/listenerRegistry';
 import type {ControlSurface} from './types/surfaces/controlSurface';
 import type {IntrospectionSurface} from './types/surfaces/introspectionSurface';
 import type {MonitoringSurface} from './types/surfaces/monitoringSurface';
 import type {SubscriptionSurface} from './types/surfaces/subscriptionSurface';
-import type {EventKeys} from './types/utility';
+import type {EventKeys, SubscribableEventKeys, VoidEventKeys} from './types/utility';
 
 /**
  * These specs are primarily *compile-time* assertions. The test pipeline runs
@@ -797,6 +797,364 @@ describe('type safety', () => {
       surface.on('bar', payload => expectType<string>(payload));
       // @ts-expect-error 'baz' is not in the Narrow delegate's event map
       surface.on('baz', () => undefined);
+    });
+  });
+
+  // these cover generic + variance usage: `Bus` wrapped, subclassed, or exposed
+  // over an event map that is still an open generic type parameter.
+  describe('generics', () => {
+    interface Narrow {
+      foo: number;
+      bar: string;
+    }
+    interface Wide {
+      foo: number;
+      bar: string;
+      baz: boolean;
+    }
+
+    // a generic subclass (`class Test<M> extends Bus<M>`) must keep every surface
+    // method correlated over the still-open event map `M` — the motivation for
+    // the overloaded `emit`.
+    it('keeps the full surface correlated in a generic Bus subclass', () => {
+      class Test<M extends EventMap> extends Bus<M> {
+        public relay<K extends EventKeys<M>>(event: K, payload: M[K]): boolean {
+          return this.emit(event, payload);
+        }
+
+        public relayVoid<K extends VoidEventKeys<M>>(event: K): boolean {
+          return this.emit(event, null);
+        }
+
+        public listen<K extends SubscribableEventKeys<M>>(
+          event: K,
+          handler: SingleEventHandler<M, K>
+        ): Subscription {
+          return this.on(event, handler);
+        }
+
+        public relayAll(sink: PipeSink<M>): Subscription {
+          return this.pipe(sink);
+        }
+      }
+
+      const bus = new Test<Wide>();
+      expectType<boolean>(bus.relay('foo', 1));
+      bus.listen('bar', payload => expectType<string>(payload));
+      bus.emit('baz', true);
+      // @ts-expect-error 'foo' still carries a number payload through the subclass
+      bus.relay('foo', 'nope');
+    });
+
+    // a class can build a Bus over a mapped event map and re-expose surface
+    // methods sourced from it, emitting with `(event: TEvent, update: TUpdate)`.
+    it('supports a generic mapped event map with surface methods sourced from the bus', () => {
+      class Test<TEvent extends string, TUpdate> {
+        private readonly bus = new Bus<{[K in TEvent]: TUpdate}>();
+
+        public readonly on: SubscriptionSurface<{[K in TEvent]: TUpdate}>['on'] = this.bus.on;
+        public readonly any: SubscriptionSurface<{[K in TEvent]: TUpdate}>['any'] = this.bus.any;
+        public readonly pipe: SubscriptionSurface<{[K in TEvent]: TUpdate}>['pipe'] = this.bus.pipe;
+        public readonly unpipe: SubscriptionSurface<{[K in TEvent]: TUpdate}>['unpipe'] = this.bus.unpipe;
+
+        public emit(event: TEvent, update: TUpdate): boolean {
+          return this.bus.emit(event, update);
+        }
+      }
+
+      const instance = new Test<'change' | 'reset', {value: number}>();
+      instance.on('change', payload => expectType<{value: number}>(payload));
+      instance.emit('reset', {value: 2});
+      instance.pipe((event, payload) => {
+        expectType<'change' | 'reset'>(event);
+        expectType<unknown>(payload);
+      });
+      // @ts-expect-error 'change' carries the update payload, not a string
+      instance.emit('change', 'nope');
+    });
+
+    // a class can expose a subset of the surface (via `Pick`) backed by a generic
+    // bus, assigning the bus's own methods to satisfy the picked surface.
+    it('exposes a Pick of the surface backed by a generic bus', () => {
+      interface ITest<M extends EventMap> extends Pick<
+        SubscriptionSurface<M>,
+        'on' | 'any' | 'pipe' | 'unpipe'
+      > {
+        readonly name: string;
+      }
+
+      class Test<M extends EventMap> implements ITest<M> {
+        private readonly bus = new Bus<M>();
+        public readonly name = 'test';
+        public readonly on: SubscriptionSurface<M>['on'] = this.bus.on;
+        public readonly any: SubscriptionSurface<M>['any'] = this.bus.any;
+        public readonly pipe: SubscriptionSurface<M>['pipe'] = this.bus.pipe;
+        public readonly unpipe: SubscriptionSurface<M>['unpipe'] = this.bus.unpipe;
+      }
+
+      const instance: ITest<Narrow> = new Test<Narrow>();
+      instance.on('foo', payload => expectType<number>(payload));
+    });
+
+    // an open index-signature map (`{[event: string]: any}`) accepts arbitrary
+    // string events with `any` payloads.
+    it('allows arbitrary string events on an open index-signature map', () => {
+      type OpenEventMap = {[event: string]: any};
+      const bus = new Bus<OpenEventMap>();
+
+      bus.on('anything', payload => expectType<any>(payload));
+      bus.emit('anything', 42);
+      bus.emit('whatever', {a: 1});
+      bus.pipe((event, payload) => {
+        expectType<string | number>(event);
+        expectType<any>(payload);
+      });
+    });
+
+    // a helper can accept a `SubscriptionSurface<M>` and a concrete `Bus` can be
+    // passed in (Bus implements the surface), correlating the handler payload
+    // through the generic key parameter.
+    it('accepts a Bus where a generic SubscriptionSurface parameter is expected', () => {
+      function observe<M extends EventMap, K extends SubscribableEventKeys<M>>(
+        surface: SubscriptionSurface<M>,
+        event: K,
+        handler: SingleEventHandler<M, K>
+      ): Subscription {
+        return surface.on(event, handler);
+      }
+
+      const bus = new Bus<Wide>();
+      observe(bus, 'foo', payload => expectType<number>(payload));
+      observe(bus, 'baz', payload => expectType<boolean>(payload));
+    });
+
+    // a generic subclass must accept wildcard sinks of every arity — nullary
+    // (`pipe(() => …)`), binary (`pipe((event, payload) => …)`), and fully-typed
+    // function references — over its open map.
+    it('accepts nullary, binary, and untyped sinks in a generic subclass', () => {
+      class Test<M extends EventMap> extends Bus<M> {
+        public relayAll(sink: PipeSink<M>): Subscription {
+          return this.pipe(sink);
+        }
+      }
+      const instance = new Test<Wide>();
+
+      instance.pipe(() => undefined);
+      instance.pipe((event, payload) => {
+        expectType<keyof Wide>(event);
+        expectType<unknown>(payload);
+      });
+      const anySink: (...args: any[]) => void = () => undefined;
+      instance.pipe(anySink);
+      instance.relayAll(anySink);
+    });
+
+    // limitation: delegate piping (bus-into-bus) needs a concrete event map. under
+    // an abstract `M` the delegate overload's payload-overlap check can't be
+    // evaluated, and a `Bus<M>` is not a function, so no overload matches.
+    // concrete-map delegate piping is exercised in the `variance` specs above.
+    it('cannot resolve delegate piping over an abstract event map', () => {
+      function bridge<M extends EventMap>(src: Bus<M>, dst: Bus<M>): void {
+        // @ts-expect-error delegate piping requires a concrete map, not an abstract M
+        src.pipe(dst);
+      }
+      expectType<typeof bridge>(bridge);
+
+      // ...but with a concrete map the delegate overload resolves and returns the
+      // delegate's own surface.
+      const from = new Bus<Wide>();
+      const to = new Bus<Wide>();
+      const surface: SubscriptionSurface<Wide> = from.pipe(to);
+      surface.on('foo', payload => expectType<number>(payload));
+    });
+  });
+
+  // these model a layered interface tree: a base interface exposing a
+  // `Pick` of the surface over an extensible event map, a generic sub-interface
+  // that adds its own fixed events, and concretions that back the interface with
+  // a `Bus`. They cover the three recurring pain points such trees hit.
+  describe('layered interface tree composition', () => {
+    // the fixed events every node carries
+    interface BaseEvents {
+      baseMsg: string;
+      baseSignal: void;
+    }
+
+    // a base interface: a `Pick` of a narrower surface over an extensible map
+    interface Base<T extends object = object> extends Pick<
+      SubscriptionSurface<BaseEvents & T>,
+      'on' | 'pipe' | 'next' | 'scan'
+    > {
+      readonly id: string;
+    }
+
+    // a sub-interface adding its own fixed events, still generic over incoming events
+    interface ExtensionEvents {
+      extSignal: void;
+      extData: {success: boolean};
+    }
+    interface Extension<TIncoming extends object> extends Base<ExtensionEvents & TIncoming> {
+      activate(): void;
+    }
+
+    interface LeafEvents {
+      leafData: number;
+    }
+
+    // pain point 1: a concretion whose backing bus carries a superset of the
+    // interface's event map still satisfies the (narrower) interface.
+    it('a superset concretion satisfies a narrower node interface', () => {
+      class Test implements Base<LeafEvents> {
+        private readonly bus = new Bus<BaseEvents & LeafEvents & {internalOnly: boolean}>();
+        public readonly id = 'x';
+        public readonly on: SubscriptionSurface<BaseEvents & LeafEvents>['on'] = this.bus.on;
+        public readonly pipe: SubscriptionSurface<BaseEvents & LeafEvents>['pipe'] = this.bus.pipe;
+        public readonly next: SubscriptionSurface<BaseEvents & LeafEvents>['next'] = this.bus.next;
+        public readonly scan: SubscriptionSurface<BaseEvents & LeafEvents>['scan'] = this.bus.scan;
+      }
+
+      const conn: Base<LeafEvents> = new Test();
+      conn.on('baseMsg', payload => expectType<string>(payload));
+      conn.on('leafData', payload => expectType<number>(payload));
+      // @ts-expect-error 'internalOnly' is backing-bus-only, not on the exposed interface map
+      conn.on('internalOnly', () => undefined);
+    });
+
+    // pain point 2: a subclass generic over its incoming events is assignable to
+    // the base interface, and its surface methods (on/pipe) work.
+    it('a generic extension node is assignable to the base interface', () => {
+      class Test<TIncoming extends object> implements Extension<TIncoming> {
+        private readonly bus = new Bus<BaseEvents & ExtensionEvents & TIncoming>();
+        public readonly id = 'x';
+        public readonly on: SubscriptionSurface<BaseEvents & ExtensionEvents & TIncoming>['on'] = this.bus.on;
+        public readonly pipe: SubscriptionSurface<BaseEvents & ExtensionEvents & TIncoming>['pipe'] = this.bus.pipe;
+        public readonly next: SubscriptionSurface<BaseEvents & ExtensionEvents & TIncoming>['next'] = this.bus.next;
+        public readonly scan: SubscriptionSurface<BaseEvents & ExtensionEvents & TIncoming>['scan'] = this.bus.scan;
+        public activate(): void {
+          return undefined;
+        }
+      }
+
+      const conn = new Test<LeafEvents>();
+      const base: Base<ExtensionEvents & LeafEvents> = conn;
+      base.on('baseMsg', payload => expectType<string>(payload));
+      base.on('leafData', payload => expectType<number>(payload));
+      conn.pipe((event, payload) => {
+        expectType<unknown>(payload);
+        if (event === 'baseMsg') {
+          expectType<string>(payload);
+        }
+      });
+    });
+
+    // pain point 3: a generic base can emit a constraint-guaranteed event — fixed,
+    // void, or forwarded by key — over its own open map, with no casts.
+    it('emits constraint-guaranteed events from a generic base', () => {
+      abstract class Test<T extends BaseEvents> {
+        protected readonly bus = new Bus<T>();
+        public emitRootData(status: T['baseMsg']): boolean {
+          return this.bus.emit('baseMsg', status);
+        }
+        public emitRootSignal(): boolean {
+          return this.bus.emit('baseSignal', null);
+        }
+        public forward<K extends EventKeys<T>>(event: K, payload: T[K]): boolean {
+          return this.bus.emit(event, payload);
+        }
+      }
+      expectType<typeof Test>(Test);
+    });
+
+    // pain point 3 (boundary): when the bus map is `Fixed & TGeneric` — an
+    // intersection with an *open* generic — `M[K]` becomes a deferred type
+    // (e.g. `string & TGeneric['rootData']`), so a plain literal payload
+    // can't be emitted directly. This is the TS limitation behind casting to
+    // `any`. Both hack-free alternatives below compile.
+    it('documents the intersection-map emit limitation and its workarounds', () => {
+      class Intersected<TIncoming extends object> {
+        private readonly bus = new Bus<ExtensionEvents & BaseEvents & TIncoming>();
+        public announce(status: (ExtensionEvents & BaseEvents & TIncoming)['baseMsg']): void {
+          // @ts-expect-error `M[K]` is deferred over the open generic, so a literal won't fit
+          this.bus.emit('baseMsg', 'ok');
+          // a value already typed as `M[K]` is accepted
+          this.bus.emit('baseMsg', status);
+        }
+      }
+      expectType<typeof Intersected>(Intersected);
+
+      // be generic over the *whole* map (constrained to include the fixed
+      // events); payloads flow through parameters typed `M[K]`.
+      class WholeMap<M extends ExtensionEvents & BaseEvents> {
+        private readonly bus = new Bus<M>();
+        public announce(status: M['baseMsg'], child: M['extData']): void {
+          this.bus.emit('baseMsg', status);
+          this.bus.emit('extData', child);
+          this.bus.emit('extSignal', null);
+        }
+      }
+      expectType<typeof WholeMap>(WholeMap);
+    });
+
+    // pain point 3 (resolved): a *flattening* merge (overlapping keys take
+    // `Base`) instead of an intersection lets fixed-key literals emit without
+    // casts — but only when the map is shaped so a fixed key never resolves
+    // *through* a layer that folds in the open generic's keyset. It's the
+    // position of the generic, not the merge operator, that decides this.
+    it('emits fixed-key literals from a generic base via a position-aware flattening merge', () => {
+      // a flattening merge: overlaps take `Base`, unlike `Base & Ext` which
+      // intersects (and thus defers) each payload.
+      type Merge<Base extends object, Ext extends object> = {
+        [K in keyof Base | keyof Ext]: K extends keyof Base
+          ? Base[K]
+          : K extends keyof Ext
+            ? Ext[K]
+            : never;
+      };
+
+      // wrong shape: the open generic is folded into an inner merge layer, so a
+      // fixed key resolving through it stays deferred — the same failure as the
+      // intersection case. Only keys sitting in the outer, fully-concrete Base
+      // escape.
+      class NestedGeneric<TIncoming extends object> {
+        private readonly bus = new Bus<Merge<BaseEvents, Merge<ExtensionEvents, TIncoming>>>();
+        public announce(): void {
+          // rootData sits in the outer, concrete Base -> resolves
+          this.bus.emit('baseMsg', 'ok');
+          // @ts-expect-error extData resolves through the inner merge, whose keyset folds in the open generic, so `M[K]` is deferred
+          this.bus.emit('extData', {success: true});
+        }
+      }
+      expectType<typeof NestedGeneric>(NestedGeneric);
+
+      // right shape: flatten every *concrete* map into one fixed map first (no
+      // generic involved, so it resolves fully), then merge the open generic as
+      // the sole, outermost Ext. Every fixed key now resolves against the
+      // concrete Base before the generic keyset is consulted, so literals emit
+      // with no cast.
+      type FixedEvents = Merge<BaseEvents, ExtensionEvents>;
+      class OuterGeneric<TIncoming extends object> {
+        private readonly bus = new Bus<Merge<FixedEvents, TIncoming>>();
+        public announce(): void {
+          this.bus.emit('baseMsg', 'ok');
+          this.bus.emit('extData', {success: true});
+          this.bus.emit('baseSignal', null);
+          this.bus.emit('extSignal', null);
+        }
+        // forward a genuinely-generic event by typing the payload against the
+        // *map* (not the raw generic) and excluding the fixed keys.
+        public forward<K extends Exclude<Extract<keyof TIncoming, string>, keyof FixedEvents>>(
+          event: K,
+          payload: Merge<FixedEvents, TIncoming>[K]
+        ): boolean {
+          return this.bus.emit(event, payload);
+        }
+      }
+
+      const conn = new OuterGeneric<LeafEvents>();
+      conn.announce();
+      conn.forward('leafData', 1);
+      // @ts-expect-error 'rootData' is a fixed key, excluded from the generic forwarder
+      conn.forward('rootData', 'ok');
     });
   });
 
