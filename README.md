@@ -280,6 +280,43 @@ wireFeature(app);                 // Bus<AppEvents> is a SubscriptionSurface<Fea
 
 Because event-map typing is contravariant on the subscription surface, a bus that emits a wider map can be passed where only a subset of events is relevant. Methods such as `scan`, `any`, `next`, and `pipe` respect the declared map — listening to unknown events are compile errors on the narrowed view.
 
+## Composing event maps
+
+Event maps are plain types, so you can compose them. An intersection (`A & B`) works for concrete maps, but breaks down when one side is an open generic type parameter: indexing `(Fixed & TGeneric)[K]` produces a *deferred* type (e.g. `string & TGeneric[K]`), so a generic base class can't `emit` a fixed event with a plain literal payload without casting.
+
+`Merge<Base, Ext>` is a flattening merge that avoids this — overlapping keys take `Base`, and every key resolves to a single payload rather than an intersection:
+
+```typescript
+import {Bus, type Merge} from 'strongbus';
+
+interface BaseEvents {
+  healthChanged: string;
+  ready: void;
+}
+
+// merge the fixed map as `Base` and the open generic as the sole `Ext`
+abstract class Connection<TIncoming extends object> {
+  protected readonly bus = new Bus<Merge<BaseEvents, TIncoming>>();
+
+  public reportHealth(status: string): void {
+    this.bus.emit('healthChanged', status); // literal payload, no cast
+    this.bus.emit('ready', null);           // void event; see note below
+  }
+
+  // forward a generic event by typing the payload against the merged map
+  public forward<K extends Exclude<Extract<keyof TIncoming, string>, keyof BaseEvents>>(
+    event: K,
+    payload: Merge<BaseEvents, TIncoming>[K]
+  ): void {
+    this.bus.emit(event, payload);
+  }
+}
+```
+
+Position matters: a fixed key emits cleanly only when it resolves in a layer whose *keyset* is concrete, before any layer that folds in the open generic's keyset. When you have several fixed maps, flatten them together first and merge the open generic last — prefer `Merge<Merge<BaseEvents, MoreFixed>, TGeneric>` over nesting the generic in an inner layer such as `Merge<BaseEvents, Merge<MoreFixed, TGeneric>>`.
+
+> **Note:** whenever the event map is still an open generic (whether merged or a bare type parameter like `Bus<T>`), emit `void` events with an explicit `null` (`emit('ready', null)`) rather than the no-argument form (`emit('ready')`). The no-argument overload gates on `VoidEventKeys`, which filters the whole keyset and can't confirm a key is `void` while any part of that keyset is an unresolved generic. The explicit-`null` form rides the correlated overload (gated on `keyof` membership) and always resolves.
+
 ## Introspection
 
 The introspection methods take an optional `{scope?: ListenerScope}` options

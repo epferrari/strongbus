@@ -60,6 +60,11 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   buses attached with `pipe(bus)` only, not function sinks from `pipe(handler)`.
 - **`IntrospectionOptions`** — the `{scope?: ListenerScope}` options object
   accepted by the listener-introspection methods. Exported from the package root.
+- **`Merge<Base, Ext>`** — a flattening event-map merge (overlapping keys take
+  `Base`) for composing event maps. Unlike `Base & Ext`, `Merge` keeps indexed
+  access concrete, so a generic base class (`new Bus<Merge<Fixed, TGeneric>>()`)
+  can `emit` its fixed events with literal payloads without casting to `any`.
+  See [Composing event maps](./README.md#composing-event-maps).
 
 ### Changed (breaking)
 
