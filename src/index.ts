@@ -3,7 +3,7 @@ export {Scanner} from './scanner';
 export {subscriptionWrapper} from './utils/subscriptionWrapper';
 
 export * from './types/events';
-export type {SingleEventHandler, EventSink, PipeSink, PipeMessage, PipeForward} from './types/eventHandlers';
+export type {EventHandler, SingleEventHandler, EventSink, PipeSink, PipeMessage, PipeForward} from './types/eventHandlers';
 export * from './types/lifecycle';
 export type {Logger, LoggerProvider} from './types/logger';
 export * from './types/options';

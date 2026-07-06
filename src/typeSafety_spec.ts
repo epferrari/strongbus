@@ -3,7 +3,7 @@ import {Scanner} from './scanner';
 import {WILDCARD, type EventMap, type Subscription} from './types/events';
 import {Lifecycle, type LifecycleSubjectEvent} from './types/lifecycle';
 import {ListenerScope} from './types/listenerScope';
-import type {EventSink, PipeSink, PipeMessage, SingleEventHandler} from './types/eventHandlers';
+import type {EventHandler, EventSink, PipeSink, PipeMessage} from './types/eventHandlers';
 import type {ListenerSet} from './types/listenerRegistry';
 import type {ControlSurface} from './types/surfaces/controlSurface';
 import type {IntrospectionSurface} from './types/surfaces/introspectionSurface';
@@ -935,7 +935,7 @@ describe('type safety', () => {
 
         public listen<K extends SubscribableEventKeys<M>>(
           event: K,
-          handler: SingleEventHandler<M, K>
+          handler: EventHandler<M, K>
         ): Subscription {
           return this.on(event, handler);
         }
@@ -1025,7 +1025,7 @@ describe('type safety', () => {
       function observe<M extends EventMap, K extends SubscribableEventKeys<M>>(
         surface: SubscriptionSurface<M>,
         event: K,
-        handler: SingleEventHandler<M, K>
+        handler: EventHandler<M, K>
       ): Subscription {
         return surface.on(event, handler);
       }

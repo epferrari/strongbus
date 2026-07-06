@@ -10,9 +10,15 @@ import type {EventMap} from './events';
  * bivariant; this lets a `Bus` over a wider event map satisfy a view over a
  * narrower one.
  */
-export type SingleEventHandler<TEventMap extends EventMap, T extends EventKeys<TEventMap>> = {
+export type EventHandler<TEventMap extends EventMap, T extends EventKeys<TEventMap>> = {
   bivarianceHack(payload: TEventMap[T]): void;
 }['bivarianceHack'];
+
+/**
+ * @deprecated Use {@link EventHandler} instead.
+ */
+export type SingleEventHandler<TEventMap extends EventMap, T extends EventKeys<TEventMap>> =
+  EventHandler<TEventMap, T>;
 
 /**
  * Handler for any event in `TEventMap`. Receives the raised event as its first

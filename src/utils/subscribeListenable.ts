@@ -1,10 +1,10 @@
 import {type EventMap, type Subscription, WILDCARD, type Listenable} from '../types/events';
-import type {SingleEventHandler, EventSink, PipeSink} from '../types/eventHandlers';
+import type {EventHandler, EventSink, PipeSink} from '../types/eventHandlers';
 import type {SubscriptionSurfacePipe} from '../types/surfaces/subscriptionSurface';
 import type {EventKeys, SubscribableEventKeys} from '../types/utility';
 
 export interface ListenableSubscriber<TEventMap extends EventMap> {
-  on<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription;
+  on<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): Subscription;
   any<TEvents extends SubscribableEventKeys<TEventMap>[]>(events: TEvents, handler: EventSink<TEventMap>): Subscription;
   pipe: SubscriptionSurfacePipe<TEventMap>;
 }

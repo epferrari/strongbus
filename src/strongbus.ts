@@ -6,7 +6,7 @@ import {Scanner} from './scanner';
 import {ScannerPools, type ScanParams as InternalScanParams} from './scannerPools';
 import {StrongbusLogger} from './strongbusLogger';
 import {type Subscription, type EventMap, WILDCARD} from './types/events';
-import type {SingleEventHandler, EventSink, PipeSink, PipeMessage, PipeForward, GenericHandler} from './types/eventHandlers';
+import type {EventHandler, EventSink, PipeSink, PipeMessage, PipeForward, GenericHandler} from './types/eventHandlers';
 import {Lifecycle} from './types/lifecycle';
 import type {Logger} from './types/logger';
 import type {Options, ListenerThresholds} from './types/options';
@@ -165,14 +165,14 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   /**
    * Subscribe a callback to an event.
    */
-  public on<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription {
+  public on<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): Subscription {
     return this.addListener(event, handler);
   }
 
   /**
    * Subscribe a callback to an event. Automatically unsubscribes after the first invocation.
    */
-  public once<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription {
+  public once<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): Subscription {
     let sub: Subscription;
     const wrapper = ((payload: TEventMap[T]) => {
       sub();

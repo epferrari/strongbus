@@ -3,7 +3,7 @@ import type {CancelablePromise} from 'jaasync';
 import type {Scanner} from '../../scanner';
 import type {Subscription, EventMap, Listenable, SubscribableListenable} from '../events';
 import type {
-  SingleEventHandler,
+  EventHandler,
   EventSink,
   PipeSink,
   PipeTargetEmit,
@@ -123,9 +123,9 @@ export type NextResult<TEventMap extends EventMap, T> =
  * Subscribe, await, scan, and pipe events on a {@link Bus}.
  */
 export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMap> {
-  on<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription;
+  on<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): Subscription;
 
-  once<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: SingleEventHandler<TEventMap, T>): Subscription;
+  once<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): Subscription;
 
   any: SubscriptionSurfaceAny<TEventMap>;
 
