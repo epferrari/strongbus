@@ -177,6 +177,68 @@ root.emit('message', 'hi');  // `handle` is invoked
 root.unpipe(feature);        // detach
 ```
 
+### `pipe(bus)` vs. a forwarding sink
+
+There are two ways to aggregate events across buses, and they trade off differently.
+
+**`root.pipe(leaf)` — delegate piping.** Reach for this when you need `root` to know *when listeners for
+specific events are added or removed* through `leaf` — its `willAddListener` / `didAddListener` /
+`willRemoveListener` / `didRemoveListener` hooks fire for the delegate's listeners — or when you have a *linear
+chain* of buses. The delegate's listeners count toward `root`'s listener count, and pipes chain
+(`root.pipe(b).pipe(c)`).
+
+```typescript
+const root = new Bus<Events>();
+
+let producing = false;
+const produce = () => {
+  if (producing) {
+    root.emit('foo', payload);
+  }
+};
+
+// `root` reacts to demand for 'foo' anywhere downstream
+root.hook('didAddListener', (event) => { if (event === 'foo') producing = true; });
+root.hook('didRemoveListener', (event) => { if (event === 'foo') producing = false; });
+
+const b = new Bus<Events>();
+b.on('foo', handleFoo);
+const c = new Bus<Events>();
+c.on('foo', handleFoo);
+
+produce();        // producing === false, nothing emitted
+
+root.pipe(b);     // events flow root -> b; 'foo' now has a downstream listener
+produce();        // handleFoo called once
+
+b.pipe(c);        // events flow root -> b -> c
+produce();        // handleFoo called on both b and c
+
+b.unpipe(c);
+root.unpipe(b);   // 'foo' has no downstream listeners again; `producing` flips back to false
+```
+
+**`leaf.pipe((msg, forward) => forward(root))` — forwarding sink.** Reach for this when you *don't* care about
+listener add/remove bookkeeping, or when you have an *inverted tree* of many buses funneling into a single
+`root` and you attach your listeners on `root`. A forwarding sink registers no delegate, so it skips the
+lifecycle-hook and listener-count overhead that `pipe(bus)` incurs.
+
+```typescript
+const root = new Bus<Events>();
+root.on('foo', handleFoo);
+
+const b = new Bus<Events>();
+const c = new Bus<Events>();
+
+b.pipe((msg, forward) => forward(root)); // events flow b -> root
+c.pipe((msg, forward) => forward(root)); // events flow c -> root
+
+b.emit('foo', payload);  // handleFoo called
+c.emit('foo', payload);  // handleFoo called
+```
+
+See [Migrating from v2: `pipe(bus)` vs. forwarding sink](./CHANGELOG.md#pipebus-vs-forwarding-sink).
+
 ## Awaiting events
 
 ### `next(resolutionTrigger, rejectionTrigger?)`

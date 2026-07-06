@@ -170,6 +170,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | v2 (removed or changed) | v3 equivalent |
 | --- | --- |
 | `bus.on('*', handler)` | `bus.pipe(handler)` |
+| `leaf.on('*', root.emit)` | `leaf.pipe((msg, forward) => forward(root))` — see [`pipe(bus)` vs. forwarding sink](#pipebus-vs-forwarding-sink) |
 | `bus.on([...events], handler)` | `bus.any([...events], handler)` |
 | `bus.proxy(handler)` | `bus.pipe(handler)` |
 | `bus.every(handler)` | `bus.pipe(handler)` |
@@ -239,6 +240,24 @@ const sub2 = bus.every((event, payload) => { /* ... */ });
 
 // v3 — the sink receives one correlated { event, payload } message
 const sub = bus.pipe(({event, payload}) => { /* ... */ });
+```
+
+### `pipe(bus)` vs. forwarding sink
+
+The README's [`pipe(bus)` vs. a forwarding sink](./README.md#pipebus-vs-a-forwarding-sink) section
+documents when to use delegate piping versus a forwarding sink. For migration from v2:
+
+In v2, funneling events from a leaf bus into a root was often spelled
+`leaf.on('*', root.emit)`. v3 removes the `'*'` subscription, so a `pipe` sink with `forward` is the
+replacement — and unlike passing a bare `emit`, `forward`'s target is payload-checked (see
+[`pipe(sink)` in the README](./README.md#pipesink--function-sink)).
+
+```typescript
+// v2
+leaf.on('*', root.emit);
+
+// v3
+leaf.pipe((msg, forward) => forward(root));
 ```
 
 ### `next` resolves with `{event, payload}`
