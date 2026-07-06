@@ -176,7 +176,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | `bus.every(handler)` | `bus.pipe(handler)` |
 | `await bus.next('foo')` → payload | `const {payload} = await bus.next('foo')` |
 | `await bus.next([...])` → `undefined` | `const {event, payload} = await bus.next([...])` |
-| `bus.next('*', ...)` | `bus.next([...events])` or `bus.scan({evaluator, trigger: '*'})` — see [Wildcard (`'*'`) triggers on `next`](#wildcard--triggers-on-next) |
+| `bus.next('*', ...)` | `bus.next([...events])` or `bus.scan('*', evaluator, options?)` — see [Wildcard (`'*'`) triggers on `next`](#wildcard--triggers-on-next) |
 | `bus.scan({evaluator, trigger, ...})` | `bus.scan(trigger, evaluator, options?)` — object form deprecated |
 | `bus.scan<typeof evaluator>(...)` | `bus.scan<ResolvedType>(...)` |
 | `generateSubscription(dispose)` | `subscriptionWrapper(dispose)` |
