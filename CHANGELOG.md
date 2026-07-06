@@ -86,6 +86,11 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   can `emit` its fixed events with literal payloads without casting to `any`.
   See [Composing event maps](./README.md#composing-event-maps).
 
+### Deprecated
+
+- **`SingleEventHandler`** — renamed back to **`EventHandler`**, the v2 spelling.
+  `SingleEventHandler` remains exported as a deprecated alias.
+
 ### Changed (breaking)
 
 - **Listener introspection** — scoped methods on `Bus` / `IntrospectionSurface`:
@@ -129,7 +134,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   (single event) or `undefined` (array/wildcard).
 - **`scan<T>(...)`** — the type parameter is now the resolved value type rather
   than the evaluator type. Inference from a typed `evaluator` is unchanged.
-- **Public handler types reduced** to `SingleEventHandler` and `EventSink`.
+- **Public handler types reduced** to `EventHandler` and `EventSink`.
 - **`generateSubscription` is renamed to `subscriptionWrapper`** (exported from
   the package root).
 
@@ -138,8 +143,9 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **`proxy(handler)` and `every(handler)`** — use `pipe(handler)`.
 - **`on('*', handler)` and `on([...], handler)`** overloads — use
   `pipe(handler)` and `any([...], handler)` respectively.
-- **Handler types `EventHandler`, `MultiEventHandler`, `WildcardEventHandler`**
-  — use `EventSink`.
+- **Handler types `MultiEventHandler`, `WildcardEventHandler`**
+  — use `EventSink`. (`EventHandler` is restored as the single-event handler name;
+  `SingleEventHandler` is a deprecated alias.)
 - **`GenericHandler` is no longer exported** — it was an internal type.
 - **Per-event listener helpers (v2)** — `hasListenersFor`, `getListenerCountFor`,
   etc. without a scope parameter.
@@ -180,7 +186,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | `bus.scan({evaluator, trigger, ...})` | `bus.scan(trigger, evaluator, options?)` — object form deprecated |
 | `bus.scan<typeof evaluator>(...)` | `bus.scan<ResolvedType>(...)` |
 | `generateSubscription(dispose)` | `subscriptionWrapper(dispose)` |
-| `EventHandler<Map, 'foo'>` | `SingleEventHandler<Map, 'foo'>` |
+| `EventHandler<Map, 'foo'>` | `EventHandler<Map, 'foo'>` (unchanged; `SingleEventHandler` was a brief v3 alias) |
 | `MultiEventHandler<Map>` | `EventSink<Map>` |
 | `WildcardEventHandler<Map>` | `EventSink<Map>` |
 | `GenericHandler` (exported) | *(internal; not part of the public API)* |
@@ -340,14 +346,15 @@ const ready = await bus.scan({evaluator: myEvaluator, trigger: 'foo'});
 import type {EventHandler, MultiEventHandler, WildcardEventHandler} from 'strongbus';
 
 // v3 — single-event handlers, any sinks, and the pipe message sink
-import type {SingleEventHandler, EventSink, PipeSink} from 'strongbus';
+import type {EventHandler, EventSink, PipeSink} from 'strongbus';
+// `SingleEventHandler` is a deprecated alias for `EventHandler`
 ```
 
 `MultiEventHandler` maps to `EventSink` (the `(event, payload)` handler used by
 `any`). `WildcardEventHandler` maps to `PipeSink`, whose sink now receives a
 single correlated `{event, payload}` message (`pipe((message) => …)`). A
-single-event handler that was typed via `EventHandler<Map, 'foo'>` is now
-`SingleEventHandler<Map, 'foo'>`.
+single-event handler that was typed via `EventHandler<Map, 'foo'>` in v2 is still
+`EventHandler<Map, 'foo'>` in v3.
 
 ### Renamed subscription helper
 
