@@ -18,7 +18,8 @@ export function subscribeListenable<TEventMap extends EventMap>(
     return target.any(listenable as SubscribableEventKeys<TEventMap>[], handler);
   }
   if(listenable === WILDCARD) {
-    return target.pipe(handler as PipeSink<TEventMap>);
+    const sink: PipeSink<TEventMap> = (message) => handler(message.event, message.payload);
+    return target.pipe(sink);
   }
   return target.on(listenable as SubscribableEventKeys<TEventMap>, (payload) => handler(listenable, payload));
 }

@@ -53,7 +53,7 @@ describe('Strongbus.Bus', () => {
 
       bus.emit('foo', 'eagle');
       expect(singleEventHandler).toHaveBeenCalledWith('eagle');
-      expect(eventSink).toHaveBeenCalledWith('foo', 'eagle');
+      expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'eagle'}, jasmine.any(Function));
     });
 
     describe('thresholds', () => {
@@ -580,15 +580,39 @@ describe('Strongbus.Bus', () => {
     describe('#pipe', () => {
       describe('piping into a function sink', () => {
         describe('given any event is emitted', () => {
-          it('invokes the sink with event, payload', () => {
+          it('invokes the sink with a single {event, payload} message', () => {
             bus.on('foo', singleEventHandler);
             bus.pipe(eventSink);
 
             bus.emit('foo', 'cat');
             expect(singleEventHandler).toHaveBeenCalledWith('cat');
             expect(eventSink).toHaveBeenCalledTimes(1);
-            expect(eventSink).toHaveBeenCalledWith('foo', 'cat');
+            expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'cat'}, jasmine.any(Function));
           });
+        });
+
+        it('delivers each raised event as its own correlated message', () => {
+          const messages: {event: EventKeys<TestEventMap>; payload: unknown}[] = [];
+          bus.pipe((msg) => { messages.push(msg); });
+
+          bus.emit('foo', 'cat');
+          bus.emit('baz', 7);
+
+          expect(messages).toEqual([
+            {event: 'foo', payload: 'cat'},
+            {event: 'baz', payload: 7}
+          ]);
+        });
+
+        it('forwards a whole message to another bus via forward(dst)', () => {
+          const dst = new Strongbus.Bus<TestEventMap>();
+          const received = jasmine.createSpy('received');
+          dst.on('foo', received);
+
+          bus.pipe((msg, forward) => { forward(dst); });
+          bus.emit('foo', 'relayed');
+
+          expect(received).toHaveBeenCalledWith('relayed');
         });
       });
 
@@ -673,17 +697,17 @@ describe('Strongbus.Bus', () => {
 
       describe('piping into a function sink', () => {
         describe('and given an event is raised', () => {
-          it('invokes the supplied handler with event and payload', () => {
+          it('invokes the supplied handler with a correlated {event, payload} message', () => {
             bus.pipe(eventSink);
             bus.emit('foo', 'raccoon');
             expect(eventSink).toHaveBeenCalledTimes(1);
-            expect(eventSink).toHaveBeenCalledWith('foo', 'raccoon');
+            expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'raccoon'}, jasmine.any(Function));
             bus.emit('foo', 'squirrel');
             expect(eventSink).toHaveBeenCalledTimes(2);
-            expect(eventSink).toHaveBeenCalledWith('foo', 'squirrel');
+            expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'squirrel'}, jasmine.any(Function));
             bus.emit('baz', 5);
             expect(eventSink).toHaveBeenCalledTimes(3);
-            expect(eventSink).toHaveBeenCalledWith('baz', 5);
+            expect(eventSink).toHaveBeenCalledWith({event: 'baz', payload: 5}, jasmine.any(Function));
           });
         });
 

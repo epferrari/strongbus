@@ -108,16 +108,37 @@ bus.any(['message', 'count'], (event, payload) => {
 
 ### `pipe(sink)` — function sink
 
-Pipe *every* event into a function sink. The sink receives the raised event and its payload. This is the
-wildcard subscription; the returned `Subscription` removes it.
+Pipe *every* event into a function sink. The sink receives the raised event as a single correlated
+`{event, payload}` message, plus a `forward` function bound to that message. This is the wildcard
+subscription; the returned `Subscription` removes it.
 
 ```typescript
-const stop = bus.pipe((event, payload) => {
-  console.log(`${String(event)}:`, payload);
+const stop = bus.pipe((piped) => {
+  console.log(`${String(piped.event)}:`, piped.payload);
 });
 
 stop(); // stop receiving all events
 ```
+
+Keeping the pair as one value means narrowing `piped.event` correlatively narrows `piped.payload`. To send the
+event on to another bus, call `forward(dst)` rather than splitting the pair back into `(event, payload)` — this
+re-emits the whole message on `dst` without registering a delegate (so none of the listener-lifecycle overhead
+a delegate pipe incurs):
+
+```typescript
+bus.pipe((piped, forward) => {
+  if (piped.event === 'didRemoveItem') {
+    cache.delete(piped.payload.id); // payload narrowed to this event's type
+  }
+  forward(other); // re-emit the whole message on a payload-compatible bus
+});
+```
+
+`forward`'s target is constrained exactly like a delegate `pipe(dst)`: every event `dst` declares must either
+be absent from the source or carry the same payload type. It's therefore impossible to land an event on `dst`
+with a payload type `dst` doesn't expect, and source-only events `dst` doesn't declare are simply dropped.
+Because the sink never hands you a bare `(event, payload)` pair to re-`emit`, a mismatched pair can't be
+fabricated — `emit` itself only accepts a correlated `(event, payload)`, never a `{event, payload}` object.
 
 ## Emitting events
 
@@ -302,20 +323,29 @@ abstract class Connection<TIncoming extends object> {
     this.bus.emit('healthChanged', status); // literal payload, no cast
     this.bus.emit('ready', null);           // void event; see note below
   }
-
-  // forward a generic event by typing the payload against the merged map
-  public forward<K extends Exclude<Extract<keyof TIncoming, string>, keyof BaseEvents>>(
-    event: K,
-    payload: Merge<BaseEvents, TIncoming>[K]
-  ): void {
-    this.bus.emit(event, payload);
-  }
 }
 ```
 
 Position matters: a fixed key emits cleanly only when it resolves in a layer whose *keyset* is concrete, before any layer that folds in the open generic's keyset. When you have several fixed maps, flatten them together first and merge the open generic last — prefer `Merge<Merge<BaseEvents, MoreFixed>, TGeneric>` over nesting the generic in an inner layer such as `Merge<BaseEvents, Merge<MoreFixed, TGeneric>>`.
 
 > **Note:** whenever the event map is still an open generic (whether merged or a bare type parameter like `Bus<T>`), emit `void` events with an explicit `null` (`emit('ready', null)`) rather than the no-argument form (`emit('ready')`). The no-argument overload gates on `VoidEventKeys`, which filters the whole keyset and can't confirm a key is `void` while any part of that keyset is an unresolved generic. The explicit-`null` form rides the correlated overload (gated on `keyof` membership) and always resolves.
+
+### Forwarding a generic event key
+
+`emit` proves that `(event, payload)` is a *correlated* pair — you can't pass a union-typed `event` with a union-typed `payload` without first discriminating on `event` (so an un-narrowed pipe sink can't forward a mismatched pair). Forwarding a single *generic* key `emit(event, payload)` still works, but only when the bus map is a **naked type parameter**. TypeScript preserves the `[K, M[K]]` correlation for `Bus<M>`, but drops it when indexing a computed mapped type like `Merge<Fixed, TIncoming>`. So make the whole map the type parameter when you need to forward:
+
+```typescript
+abstract class Relay<M extends BaseEvents> {
+  protected readonly bus = new Bus<M>();
+
+  // `[K, M[K]]` stays correlated over a naked `M`, so this type-checks
+  public forward<K extends keyof M>(event: K, payload: M[K]): boolean {
+    return this.bus.emit(event, payload);
+  }
+}
+```
+
+If you must key the bus off a `Merge`, forward inside a discriminated branch (a `switch`/`if` on `event`) so each arm emits a literal key instead.
 
 ## Introspection
 

@@ -6,7 +6,7 @@ import {Scanner} from './scanner';
 import {ScannerPools, type ScanParams as InternalScanParams} from './scannerPools';
 import {StrongbusLogger} from './strongbusLogger';
 import {type Subscription, type EventMap, WILDCARD} from './types/events';
-import type {SingleEventHandler, EventSink, PipeSink, GenericHandler} from './types/eventHandlers';
+import type {SingleEventHandler, EventSink, PipeSink, PipeMessage, PipeForward, GenericHandler} from './types/eventHandlers';
 import {Lifecycle} from './types/lifecycle';
 import type {Logger} from './types/logger';
 import type {Options, ListenerThresholds} from './types/options';
@@ -33,7 +33,7 @@ import type {
   IntrospectionSurfaceListenerForEvent
 } from './types/surfaces/introspectionSurface';
 import type {MonitoringSurface, MonitoringHook} from './types/surfaces/monitoringSurface';
-import type {EventKeys, SubscribableEventKeys, VoidEventKeys} from './types/utility';
+import type {EventKeys, IsUnion, SubscribableEventKeys, VoidEventKeys} from './types/utility';
 import {over} from './utils/over';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {randomId} from './utils/randomId';
@@ -183,9 +183,18 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   public emit<T extends VoidEventKeys<TEventMap>>(event: T, payload?: null | undefined): boolean;
-  public emit<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T]): boolean;
-  public emit<T extends EventKeys<TEventMap>>(event: T, payload?: TEventMap[T]): boolean {
-    if(event === WILDCARD) {
+  public emit<T extends EventKeys<TEventMap>>(
+    event: IsUnion<T> extends true ? never : T,
+    payload: TEventMap[T]
+  ): boolean;
+  public emit(
+    ...args: {[K in EventKeys<TEventMap>]: [event: K, payload: TEventMap[K]]}[EventKeys<TEventMap>]
+  ): boolean;
+  public emit(
+    event: EventKeys<TEventMap>,
+    payload?: TEventMap[EventKeys<TEventMap>]
+  ): boolean {
+    if((event as EventKeys<TEventMap> | WILDCARD) === WILDCARD) {
       throw new Error(`Do not emit "${String(event)}" manually. Reserved for internal use.`);
     }
 
@@ -193,10 +202,10 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
     handled = this.emitEvent(event, payload) || handled;
     handled = this.emitEvent(WILDCARD, event, payload) || handled;
-    handled = this.forward<T>(event, payload) || handled;
+    handled = this.forward(event, payload) || handled;
 
     if(!handled && !this.options.allowUnhandledEvents) {
-      this.handleUnexpectedEvent<T>(event, payload);
+      this.handleUnexpectedEvent(event, payload);
     }
     return handled;
   }
@@ -348,15 +357,22 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
   /**
    * Pipe events into another bus, or into a function sink.
-   * Function sinks must satisfy {@link PipeSink}: the raised event is the first
-   * argument and the correlated payload is the second.
+   * Function sinks must satisfy {@link PipeSink}: they receive the raised event as
+   * a single correlated `{event, payload}` {@link PipeMessage}, plus a `forward`
+   * function bound to that message. `forward(dst)` re-emits the whole message on a
+   * payload-compatible bus without registering a delegate.
    */
   public pipe: SubscriptionSurfacePipe<TEventMap> = ((
     dest: PipeSink<TEventMap> | PipeTarget<TEventMap>
   ): Subscription | SubscriptionSurface<TEventMap> => {
     if(typeof dest === 'function') {
       const sink = dest as PipeSink<TEventMap>;
-      this.sinks.set(sink, this.addListener(WILDCARD, sink));
+      const wrapper: GenericHandler = (event, payload) => {
+        const forward = ((target: {emit: (e: any, p: any) => boolean}) =>
+          target.emit(event, payload)) as PipeForward<TEventMap>;
+        sink({event, payload} as PipeMessage<TEventMap>, forward);
+      };
+      this.sinks.set(sink, this.addListener(WILDCARD, wrapper));
       return subscriptionWrapper(() => this.unpipe(sink));
     } else {
       const bus = dest as Bus<TEventMap>;

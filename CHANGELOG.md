@@ -18,36 +18,56 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **`once(event, handler)`** — subscribe to a single event and automatically
   unsubscribe after the first emission.
 - **`pipe(sink)` accepts a function sink** in addition to a `Bus`. The sink
-  receives `(event, payload)` for every event raised; the returned
-  `Subscription` removes it. This replaces the removed `proxy`/`every` methods.
-  The sink's parameters are a union of `[event, payload]` tuples, so
-  discriminating on `event` correlatively narrows `payload`:
+  receives the raised event as a single correlated `{event, payload}` message plus
+  a `forward` function bound to that message; the returned `Subscription` removes
+  it. This replaces the removed `proxy`/`every` methods. Because `event` and
+  `payload` travel as one value, discriminating on `message.event` correlatively
+  narrows `message.payload`:
 
   ```ts
-  bus.pipe((event, payload) => {
-    if (event === 'foo') {
-      payload.toUpperCase(); // payload narrowed to the 'foo' payload type
-    } else if (event === 'bar') {
-      payload.toString(2);   // payload narrowed to the 'bar' payload type
+  bus.pipe((piped) => {
+    if (piped.event === 'foo') {
+      piped.payload.toUpperCase(); // narrowed to the 'foo' payload type
+    } else if (piped.event === 'bar') {
+      piped.payload.toString(2);   // narrowed to the 'bar' payload type
     }
   });
   ```
 
-  Before `event` is discriminated, `payload` is `unknown`, so a sink must match a
-  specific event before using its payload. This keeps sinks sound even when
-  payload types coincide (e.g. two `string` events) and means an unexpected event
-  forwarded from a wider source is skipped rather than mistyped.
+  To send the event on to another bus, call `forward(dst)` rather than splitting
+  the pair back into `(event, payload)`. This re-emits the whole message on `dst`
+  without registering a delegate (avoiding the listener-lifecycle overhead a
+  delegate pipe incurs):
 
-  (Previously `PipeSink` typed the handler as generic in the event key with a
-  `string & {}` fallthrough carrying an `unknown` payload; that fallthrough
-  overlapped every string literal and defeated narrowing on both `event` and
-  `payload`.)
+  ```ts
+  bus.pipe((piped, forward) => {
+    if (piped.event === 'didRemoveItem') {
+      cache.delete(piped.payload.id);
+    }
+    forward(other); // re-emit the whole message on a payload-compatible bus
+  });
+  ```
+
+  `forward`'s target is constrained exactly like a delegate `pipe(dst)`: every
+  event `dst` declares must either be absent from the source or carry the same
+  payload type, so it's impossible to land an event on `dst` with a payload it
+  doesn't expect (source-only events are dropped). `PipeSink<TEventMap>` and
+  `PipeForward<TEventMap>` are the exported types for this handler. `emit` itself
+  stays strictly `(event, payload)` — it never accepts a `{event, payload}`
+  object — so a mismatched pair can't be fabricated and re-emitted.
+
+  (Earlier 3.0.0 betas used a 2-arity `(event, payload)` sink whose parameters
+  were a union of `[event, payload]` tuples with an `[never, unknown]` member, and
+  a brief `emit(message)` object form. Both are removed: the 2-arity sink could be
+  destructured and re-emitted as an uncorrelated pair, and the object form invited
+  hand-built messages — the correlated-message-plus-`forward` shape prevents both
+  by construction.)
 - **`next(...)` resolves with `{event, payload}`** — a discriminated pair, so
   multi-event awaits can tell which event fired. Wildcard (`'*'`) triggers are removed
   from `next` only; use `scan` with `trigger: '*'` when you need any-event listening
   with evaluator-side discrimination (see migration guide).
 - **`EventSink<TEventMap>`** handler type — the `(event, payload)` handler shape
-  used by `any` and the function-sink form of `pipe`.
+  used by `any`.
 - **`Logger` and `LoggerProvider`** types are now exported, for typing a custom
   `options.logger`.
 - **`ControlSurface<TEventMap>`** — `emit` and `destroy`.
@@ -85,8 +105,24 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   abstract map. Payload is required for non-void events; void events may still be
   emitted as `emit(event)` or `emit(event, null)`. Anything the type system
   already accepted keeps working; only genuine multi-arg spreads (which were never
-  typeable) are gone. `ControlSurface.emit`, `PipeTargetEmit`, and
-  `handleUnexpectedEvent` adopt the same correlated shape.
+  typeable) are gone. `ControlSurface.emit` and `handleUnexpectedEvent` adopt the
+  same correlated shape.
+- **`emit` rejects an uncorrelated union `(event, payload)` pair.** A union-typed
+  event key can no longer be paired with a union-typed payload without first
+  discriminating on `event`. This closes a soundness hole where a pipe sink that
+  split its message — `(message) => bus.emit(message.event, message.payload)` —
+  forwarded a mismatched pair (both `event` and `payload` widened to unions, so
+  `emit('foo', barPayload)` slipped through). Forward the whole message instead
+  with the sink's `forward(dst)` argument, which keeps the pair correlated end to
+  end. `emit` now layers three overloads: a
+  void no-payload form, a single-key correlated form (`event: T, payload:
+  TEventMap[T]`, guarded so a manifest union key collapses to `never`), and a
+  correlated-tuple form for a genuinely generic key. Single-key emits — literal
+  or a naked type parameter — are unchanged. **Caveat:** generic-key *forwarding*
+  (`forward<K>(event: K, payload) => bus.emit(event, payload)`) is only preserved
+  when the bus map is a naked type parameter (`Bus<M>`); over a computed mapped
+  type such as `Merge<Fixed, TIncoming>`, TypeScript drops the `[K, M[K]]`
+  correlation, so forward via the whole-map pattern instead.
 - **`on(event, handler)` only accepts a single event key.** It no longer
   forwards arrays to `any` or `'*'` to `proxy`.
 - **`next(...)` resolves with `{event, payload}`** instead of the bare payload
@@ -189,7 +225,7 @@ bus.on('*', (event, payload) => { /* ... */ });
 // v3
 bus.on('foo', onFoo);                                       // unchanged
 bus.any(['foo', 'bar'], (event, payload) => { /* ... */ }); // arrays -> any
-bus.pipe((event, payload) => { /* ... */ });                // '*' -> pipe
+bus.pipe(({event, payload}) => { /* ... */ });                       // '*' -> pipe
 ```
 
 ### `proxy` / `every` → `pipe`
@@ -201,8 +237,8 @@ Both are removed; `pipe` with a function sink covers them.
 const sub = bus.proxy((event, payload) => { /* ... */ });
 const sub2 = bus.every((event, payload) => { /* ... */ });
 
-// v3
-const sub = bus.pipe((event, payload) => { /* ... */ });
+// v3 — the sink receives one correlated { event, payload } message
+const sub = bus.pipe(({event, payload}) => { /* ... */ });
 ```
 
 ### `next` resolves with `{event, payload}`
@@ -284,11 +320,13 @@ const ready = await bus.scan({evaluator: myEvaluator, trigger: 'foo'});
 // v2
 import type {EventHandler, MultiEventHandler, WildcardEventHandler} from 'strongbus';
 
-// v3 — single-event handlers and any/wildcard sinks
-import type {SingleEventHandler, EventSink} from 'strongbus';
+// v3 — single-event handlers, any sinks, and the pipe message sink
+import type {SingleEventHandler, EventSink, PipeSink} from 'strongbus';
 ```
 
-`MultiEventHandler` and `WildcardEventHandler` both map to `EventSink`. A
+`MultiEventHandler` maps to `EventSink` (the `(event, payload)` handler used by
+`any`). `WildcardEventHandler` maps to `PipeSink`, whose sink now receives a
+single correlated `{event, payload}` message (`pipe((message) => …)`). A
 single-event handler that was typed via `EventHandler<Map, 'foo'>` is now
 `SingleEventHandler<Map, 'foo'>`.
 

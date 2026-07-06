@@ -27,41 +27,103 @@ export type EventSink<in out TEventMap extends EventMap> = {
 }['bivarianceHack'];
 
 /**
- * Discriminated handler for the function-sink forms of {@link Bus.pipe} and
- * {@link Bus.unpipe}. The parameters are a union of `[event, payload]` tuples —
- * one per key of `TEventMap` — so that narrowing `event` (via `if`/`switch`)
- * correlatively narrows `payload` to that event's type:
+ * A correlated event message: a discriminated union of `{event, payload}` objects,
+ * one per key of `TEventMap`. Because each pair is a single value (a union
+ * member), narrowing `event` narrows `payload`. This is the first argument handed
+ * to a {@link PipeSink}; to forward it onward, call the sink's second argument
+ * (`forward`) rather than splitting it back into `(event, payload)`.
+ */
+export type PipeMessage<TEventMap extends EventMap> = {
+  [K in EventKeys<TEventMap>]: {event: K; payload: TEventMap[K]}
+}[EventKeys<TEventMap>];
+
+/** The `emit` shape a pipe/forward target must expose. */
+export type PipeTargetEmit<TEventMap extends EventMap> = <
+  T extends EventKeys<TEventMap>
+>(
+  event: T,
+  payload: TEventMap[T]
+) => boolean;
+
+type StrongbusEventMapBrand<T> = T extends {strongbusEventMap?: infer M}
+  ? M extends EventMap
+    ? M
+    : never
+  : never;
+
+/** Event map carried by a pipe/forward target, preferring the Bus brand when present. */
+export type InferPipeDelegateMap<TDelegate> = [StrongbusEventMapBrand<TDelegate>] extends [never]
+  ? TDelegate extends {emit: PipeTargetEmit<infer M extends EventMap>} ? M : never
+  : StrongbusEventMapBrand<TDelegate>;
+
+/**
+ * For events shared by the pipe source and target maps, payload types must match
+ * exactly. Source-only events are not required on the target; target-only events
+ * are simply never raised by the source.
+ */
+export type PipePayloadOverlap<TSource extends EventMap, TDelegate extends EventMap> =
+  Extract<EventKeys<TSource>, EventKeys<TDelegate>> extends never
+    ? unknown
+    : {
+        [K in Extract<EventKeys<TSource>, EventKeys<TDelegate>>]: TSource[K] extends TDelegate[K]
+          ? TDelegate[K] extends TSource[K]
+            ? true
+            : false
+          : false;
+      } extends infer Result
+        ? Exclude<Result[keyof Result], true> extends never
+          ? unknown
+          : never
+        : never;
+
+/**
+ * The `forward` function handed to a {@link PipeSink} as its second argument,
+ * bound to the current {@link PipeMessage}. Calling `forward(dst)` re-emits that
+ * message on `dst` — like `src.pipe(dst)` but per-message and without registering
+ * a delegate (so none of the listener-lifecycle overhead a delegate incurs).
+ *
+ * `dst` may be any bus/emitter whose map is *payload-compatible* with the source:
+ * every event `dst` declares must either be absent from the source or carry the
+ * same payload type (see {@link PipePayloadOverlap}). This makes it impossible to
+ * land an event on `dst` with a payload type `dst` doesn't expect. Source events
+ * `dst` doesn't declare are simply dropped by `dst` at runtime.
+ */
+export type PipeForward<in out TEventMap extends EventMap> = {
+  bivarianceHack: <
+    TDelegate,
+    TDelegateMap extends EventMap = InferPipeDelegateMap<TDelegate>
+  >(
+    dest: TDelegate & {
+      emit: PipeTargetEmit<TDelegateMap>;
+    } & PipePayloadOverlap<TEventMap, TDelegateMap>
+  ) => boolean;
+}['bivarianceHack'];
+
+/**
+ * Handler for the function-sink form of {@link Bus.pipe} and {@link Bus.unpipe}.
+ * Receives the raised event as a single correlated {@link PipeMessage} (so
+ * narrowing `message.event` via `if`/`switch` narrows `message.payload` to that
+ * event's type), plus a {@link PipeForward} bound to that message for forwarding
+ * it onward to another bus:
  *
  * ```ts
- * bus.pipe((event, payload) => {
- *   if (event === 'foo') {
- *     payload; // narrowed to TEventMap['foo']
- *   } else if (event === 'bar') {
- *     payload; // narrowed to TEventMap['bar']
+ * bus.pipe((message, forward) => {
+ *   if (message.event === 'didRemoveItem') {
+ *     cache.delete(message.payload.id); // payload narrowed to this event's type
  *   }
+ *   forward(otherBus); // re-emit the whole message on a payload-compatible bus
  * });
  * ```
  *
- * The union includes a `[never, unknown]` member so that, *before* `event` is
- * discriminated, `payload` is `unknown` — you cannot use it until you've matched
- * a specific event. That member is eliminated as soon as `event` is compared to
- * any real key, so each branch still gets the exact payload type. This also
- * keeps the sink sound when the payload types happen to coincide (e.g. two
- * `string` events), where a plain union would collapse to a usable type; and it
- * means unexpected events forwarded from a wider source are simply skipped
- * rather than mistyped.
+ * Because the message is never split back into `(event, payload)`, a mismatched
+ * pair can't be fabricated, and `forward`'s target constraint keeps the payload
+ * sound end-to-end.
  *
  * Declared via the `bivarianceHack` indirection so the parameters are bivariant;
  * this lets a `Bus` over a wider event map satisfy a view over a narrower one.
  */
 export type PipeSink<in out TEventMap extends EventMap> = {
-  bivarianceHack(
-    ...args:
-      | {
-          [K in EventKeys<TEventMap>]: [event: K, payload: TEventMap[K]]
-        }[EventKeys<TEventMap>]
-      | [event: never, payload: unknown]
-  ): void;
+  bivarianceHack(message: PipeMessage<TEventMap>, forward: PipeForward<TEventMap>): void;
 }['bivarianceHack'];
 
 /**

@@ -3,7 +3,7 @@ import {Scanner} from './scanner';
 import {WILDCARD, type EventMap, type Subscription} from './types/events';
 import {Lifecycle, type LifecycleSubjectEvent} from './types/lifecycle';
 import {ListenerScope} from './types/listenerScope';
-import type {EventSink, PipeSink, SingleEventHandler} from './types/eventHandlers';
+import type {EventSink, PipeSink, PipeMessage, SingleEventHandler} from './types/eventHandlers';
 import type {ListenerSet} from './types/listenerRegistry';
 import type {ControlSurface} from './types/surfaces/controlSurface';
 import type {IntrospectionSurface} from './types/surfaces/introspectionSurface';
@@ -298,6 +298,35 @@ describe('type safety', () => {
       bus.emit('qux', 1);
     });
 
+    // soundness: a union-typed event key must not pair with a union-typed
+    // payload without first discriminating on the event. This is the hole a
+    // destructured pipe sink used to slip through -- `(event, payload) =>
+    // bus.emit(event, payload)` forwards an *uncorrelated* pair.
+    it('rejects an uncorrelated union event/payload pair', () => {
+      const bus = new Bus<TestEventMap>();
+      const event = 'foo' as 'foo' | 'bar';
+      const payload = 1 as number | string;
+      // @ts-expect-error the (event, payload) pair is not proven correlated
+      bus.emit(event, payload);
+
+      // once discriminated, the correlated pair is accepted
+      if (event === 'foo') {
+        bus.emit(event, payload as number);
+      }
+    });
+
+    // the correlation guard must not get in the way of forwarding a *single*
+    // generic key: `[K, M[K]]` shares the type parameter, so it stays correlated.
+    it('still forwards a single generic key by (event, payload)', () => {
+      class Relay<M extends EventMap> {
+        private readonly bus = new Bus<M>();
+        public forward<K extends EventKeys<M>>(event: K, payload: M[K]): boolean {
+          return this.bus.emit(event, payload);
+        }
+      }
+      expectType<typeof Relay>(Relay);
+    });
+
     // regression: emitting a correlated payload must type-check even when the
     // event map is a generic type parameter (the motivation for dropping the
     // rest-spread payload). See the `emit` entry in CHANGELOG 3.0.0.
@@ -321,6 +350,88 @@ describe('type safety', () => {
 
       expectType<typeof ClassWithGenericEvents>(ClassWithGenericEvents);
     });
+  });
+
+  describe('#pipe (function sink)', () => {
+    interface Narrow {
+      foo: number;
+      bar: string;
+      baz: void;
+    }
+    interface Other {
+      other: boolean;
+    }
+
+    it('narrows payload by discriminating on message.event', () => {
+      const bus = new Bus<Narrow>();
+      bus.pipe((msg) => {
+        if (msg.event === 'foo') {
+          expectType<number>(msg.payload);
+        } else if (msg.event === 'bar') {
+          expectType<string>(msg.payload);
+        }
+      });
+    });
+
+    it('forwards a whole message to a same-map bus via forward(dst)', () => {
+      const src = new Bus<Narrow>();
+      const dst = new Bus<Narrow>();
+      src.pipe((msg, forward) => {
+        forward(dst); // re-emit the whole correlated message, no cast, no narrowing
+      });
+    });
+
+    it('supports narrowed side-effect then whole-message forward', () => {
+      const src = new Bus<Narrow>();
+      const dst = new Bus<Narrow>();
+      src.pipe((msg, forward) => {
+        if (msg.event === 'foo') {
+          msg.payload.toFixed(2);
+        }
+        forward(dst);
+      });
+    });
+
+    it('rejects the split 2-arg forward (still guarded by emit)', () => {
+      const src = new Bus<Narrow>();
+      const dst = new Bus<Narrow>();
+      src.pipe((msg) => {
+        // @ts-expect-error uncorrelated union event/payload pair
+        dst.emit(msg.event, msg.payload);
+        // ok if we descriminate first
+        if(msg.event === 'foo') {
+          dst.emit(msg.event, msg.payload);
+        }
+      });
+    });
+
+    it('forwards a message to a wider or partially-overlapping bus (like pipe(dst))', () => {
+      const src = new Bus<Narrow>();
+      const noOverlap = new Bus<Other>();
+      const partialOverlap = new Bus<Pick<Narrow, 'foo'> & Pick<Other, 'other'>>();
+      const properSubset = new Bus<Pick<Narrow, 'foo'>>();
+      const wrongFooPayload = new Bus<{foo: string}>();
+
+      // delegate piping already allows overlapping/disjoint targets
+      src.pipe(partialOverlap);
+      src.pipe(properSubset);
+      src.pipe(noOverlap);
+      noOverlap.pipe(partialOverlap);
+      partialOverlap.pipe(properSubset);
+
+      // ...and forward(dst) mirrors delegate piping per-message: shared events
+      // must match, src-only events ('bar'/'baz') are dropped, and a disjoint
+      // target is allowed (nothing lands) just like src.pipe(noOverlap).
+      src.pipe((piped, forward) => {
+        forward(partialOverlap); // shares 'foo'
+        forward(properSubset);   // shares 'foo'
+        forward(noOverlap);      // disjoint: nothing lands
+
+        // @ts-expect-error shared 'foo' payload disagrees (number vs string)
+        forward(wrongFooPayload);
+      });
+    });
+
   });
 
   describe('#hook', () => {
@@ -630,56 +741,61 @@ describe('type safety', () => {
     it('narrows payload by discriminating event in a function sink', () => {
       const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
 
-      narrow.pipe((event, payload) => {
-        expectType<keyof Narrow>(event);
-        if (event === 'foo') {
-          expectType<number>(payload);
+      narrow.pipe((message) => {
+        expectType<keyof Narrow>(message.event);
+        if (message.event === 'foo') {
+          expectType<number>(message.payload);
           // @ts-expect-error 'foo' carries a number payload, not a string
-          expectType<string>(payload);
-        } else if (event === 'bar') {
-          expectType<string>(payload);
+          expectType<string>(message.payload);
+        } else if (message.event === 'bar') {
+          expectType<string>(message.payload);
           // @ts-expect-error 'bar' carries a string payload, not a number
-          expectType<number>(payload);
+          expectType<number>(message.payload);
         }
       });
     });
 
-    it('rejects a function sink whose payload type is too narrow for a shared event', () => {
-      const bus = new Bus<Narrow>();
+    it('accepts a message sink narrowed to a subset of the source events', () => {
+      const bus = new Bus<Wide>();
 
-      // @ts-expect-error 'bar' carries a string payload, which a number-only sink cannot accept
-      bus.pipe((event: 'foo' | 'bar', payload: number) => {
-        expectType<number>(payload);
+      // attaching a foo|bar-only sink to a wider bus is the same wide->narrow
+      // bivariance the read surfaces rely on; payloads stay correlated per branch.
+      bus.pipe((message: PipeMessage<Narrow>) => {
+        if (message.event === 'foo') {
+          expectType<number>(message.payload);
+        } else if (message.event === 'bar') {
+          expectType<string>(message.payload);
+        }
       });
     });
 
     it('supports the documented discriminated pipe sink', () => {
       const bus = new Bus<{foo: string; bar: number}>();
-      bus.pipe((event, payload) => {
-        if (event === 'foo') {
-          payload.toUpperCase();
-        } else if (event === 'bar') {
-          payload.toString(2);
+      bus.pipe((message) => {
+        if (message.event === 'foo') {
+          message.payload.toUpperCase();
+        } else if (message.event === 'bar') {
+          message.payload.toString(2);
         } else {
           // unknown event/payload, ignore
         }
       });
     });
 
-    it('types payload as unknown until the event is discriminated', () => {
+    it('types payload as the correlated union until the event is discriminated', () => {
       const bus = new Bus<{foo: string; bar: number}>();
 
-      bus.pipe((event, payload) => {
-        expectType<unknown>(payload);
-        // @ts-expect-error payload is unknown until event is discriminated
-        expectType<string>(payload);
-        if (event === 'foo') {
-          expectType<string>(payload);
+      bus.pipe((message) => {
+        expectType<string | number>(message.payload);
+        // @ts-expect-error a string-only method can't be called on string | number
+        message.payload.toUpperCase();
+        if (message.event === 'foo') {
+          expectType<string>(message.payload);
         }
       });
     });
 
-    it('keeps pipe sinks sound when a wider source forwards unknown events', () => {
+    it('keeps pipe sinks correlated when a wider source forwards unknown events', () => {
       const wide = new Bus<{foo: string, bar: string, baz: number}>();
       const narrow = new Bus<{foo: string, bar: string}>();
 
@@ -691,43 +807,30 @@ describe('type safety', () => {
 
       // the following are the same assertions, one over the narrow bus itself, and one over the surface returned from pipe;
 
-      narrow.pipe((event, payload) => {
-        // payload is unknown until the event is discriminated...
-        // @ts-expect-error payload is unknown until event is discriminated
-        payload.toLowerCase();
-
-        // ...and a forwarded 'baz' isn't part of narrow's surface, so it can't
-        // be named and simply falls through the known branches rather than being
-        // mistyped as a string.
+      narrow.pipe((message) => {
+        // a forwarded 'baz' isn't part of narrow's surface, so it can't be named
         // @ts-expect-error 'baz' is not part of the delegate's surface
-        if (event === 'baz') {
-          expectType<unknown>(payload);
+        if (message.event === 'baz') {
+          expectType<never>(message);
         }
 
-        if (event === 'foo') {
-          expectType<string>(payload);
-        } else if (event === 'bar') {
-          expectType<string>(payload);
+        if (message.event === 'foo') {
+          expectType<string>(message.payload);
+        } else if (message.event === 'bar') {
+          expectType<string>(message.payload);
         }
       });
 
-      surface.pipe((event, payload) => {
-        // payload is unknown until the event is discriminated...
-        // @ts-expect-error payload is unknown until event is discriminated
-        payload.toLowerCase();
-
-        // ...and a forwarded 'baz' isn't part of narrow's surface, so it can't
-        // be named and simply falls through the known branches rather than being
-        // mistyped as a string.
+      surface.pipe((message) => {
         // @ts-expect-error 'baz' is not part of the delegate's surface
-        if (event === 'baz') {
-          expectType<unknown>(payload);
+        if (message.event === 'baz') {
+          expectType<never>(message);
         }
 
-        if (event === 'foo') {
-          expectType<string>(payload);
-        } else if (event === 'bar') {
-          expectType<string>(payload);
+        if (message.event === 'foo') {
+          expectType<string>(message.payload);
+        } else if (message.event === 'bar') {
+          expectType<string>(message.payload);
         }
       });
     });
@@ -757,31 +860,34 @@ describe('type safety', () => {
       narrow.pipe(wrongSink);
     });
 
-    it('rejects a function sink that omits an event in the source map', () => {
+    it('rejects a function sink whose events are disjoint from the source map', () => {
       const bus = new Bus<Wide>();
-      // @ts-expect-error a Wide sink must also handle 'baz', which this Narrow-only sink cannot
-      bus.pipe((event: keyof Narrow, payload: Narrow[keyof Narrow]) => {
-        expectType<keyof Narrow>(event);
+      interface Disjoint {
+        qux: number;
+      }
+      // @ts-expect-error a Disjoint sink shares no events with Wide
+      bus.pipe((message: PipeMessage<Disjoint>) => {
+        expectType<'qux'>(message.event);
       });
     });
 
     it('narrows payload across every event of the source map', () => {
       const bus = new Bus<Wide>();
-      bus.pipe((event, payload) => {
-        expectType<keyof Wide>(event);
-        expectType<unknown>(payload);
-        switch (event) {
+      bus.pipe((message) => {
+        expectType<keyof Wide>(message.event);
+        expectType<number | string | boolean>(message.payload);
+        switch (message.event) {
           case 'foo':
-            expectType<number>(payload);
+            expectType<number>(message.payload);
             break;
           case 'bar':
-            expectType<string>(payload);
+            expectType<string>(message.payload);
             break;
           case 'baz':
-            expectType<boolean>(payload);
+            expectType<boolean>(message.payload);
             break;
           default:
-            expectType<never>(payload);
+            expectType<never>(message);
         }
       });
     });
@@ -866,9 +972,9 @@ describe('type safety', () => {
       const instance = new Test<'change' | 'reset', {value: number}>();
       instance.on('change', payload => expectType<{value: number}>(payload));
       instance.emit('reset', {value: 2});
-      instance.pipe((event, payload) => {
-        expectType<'change' | 'reset'>(event);
-        expectType<unknown>(payload);
+      instance.pipe((message) => {
+        expectType<'change' | 'reset'>(message.event);
+        expectType<{value: number}>(message.payload);
       });
       // @ts-expect-error 'change' carries the update payload, not a string
       instance.emit('change', 'nope');
@@ -906,9 +1012,9 @@ describe('type safety', () => {
       bus.on('anything', payload => expectType<any>(payload));
       bus.emit('anything', 42);
       bus.emit('whatever', {a: 1});
-      bus.pipe((event, payload) => {
-        expectType<string | number>(event);
-        expectType<any>(payload);
+      bus.pipe((message) => {
+        expectType<string | number>(message.event);
+        expectType<any>(message.payload);
       });
     });
 
@@ -930,9 +1036,9 @@ describe('type safety', () => {
     });
 
     // a generic subclass must accept wildcard sinks of every arity — nullary
-    // (`pipe(() => …)`), binary (`pipe((event, payload) => …)`), and fully-typed
+    // (`pipe(() => …)`), message (`pipe((message) => …)`), and fully-typed
     // function references — over its open map.
-    it('accepts nullary, binary, and untyped sinks in a generic subclass', () => {
+    it('accepts nullary, message, and untyped sinks in a generic subclass', () => {
       class Test<M extends EventMap> extends Bus<M> {
         public relayAll(sink: PipeSink<M>): Subscription {
           return this.pipe(sink);
@@ -941,9 +1047,9 @@ describe('type safety', () => {
       const instance = new Test<Wide>();
 
       instance.pipe(() => undefined);
-      instance.pipe((event, payload) => {
-        expectType<keyof Wide>(event);
-        expectType<unknown>(payload);
+      instance.pipe((message) => {
+        expectType<keyof Wide>(message.event);
+        expectType<number | string | boolean>(message.payload);
       });
       const anySink: (...args: any[]) => void = () => undefined;
       instance.pipe(anySink);
@@ -1040,10 +1146,9 @@ describe('type safety', () => {
       const base: Base<ExtensionEvents & LeafEvents> = conn;
       base.on('baseMsg', payload => expectType<string>(payload));
       base.on('leafData', payload => expectType<number>(payload));
-      conn.pipe((event, payload) => {
-        expectType<unknown>(payload);
-        if (event === 'baseMsg') {
-          expectType<string>(payload);
+      conn.pipe((message) => {
+        if (message.event === 'baseMsg') {
+          expectType<string>(message.payload);
         }
       });
     });
@@ -1092,6 +1197,12 @@ describe('type safety', () => {
           this.bus.emit('extData', child);
           this.bus.emit('extSignal', null);
         }
+        // generic-key forwarding works here because the bus map is a *naked* type
+        // parameter: `[K, M[K]]` keeps its correlation, so the sound `emit`
+        // accepts the pair (while still rejecting an uncorrelated union pair).
+        public forward<K extends EventKeys<M>>(event: K, payload: M[K]): boolean {
+          return this.bus.emit(event, payload);
+        }
       }
       expectType<typeof WholeMap>(WholeMap);
     });
@@ -1134,21 +1245,23 @@ describe('type safety', () => {
           this.bus.emit('baseSignal', null);
           this.bus.emit('extSignal', null);
         }
-        // forward a genuinely-generic event by typing the payload against the
-        // *map* (not the raw generic) and excluding the fixed keys.
+        // caveat: generic-key *forwarding* does NOT survive over a `Merge` map.
+        // `Merge` is a computed mapped type, and the sound `emit` only preserves
+        // the `[K, M[K]]` correlation for a naked type parameter -- so the pair
+        // can't be proven here. Forward via the whole-map pattern (see
+        // `WholeMap`) when you need generic-key forwarding. Literal-key emits
+        // (above) are unaffected.
         public forward<K extends Exclude<Extract<keyof TIncoming, string>, keyof FixedEvents>>(
           event: K,
           payload: Merge<FixedEvents, TIncoming>[K]
         ): boolean {
+          // @ts-expect-error correlation is lost indexing a computed mapped type
           return this.bus.emit(event, payload);
         }
       }
 
       const conn = new OuterGeneric<LeafEvents>();
       conn.announce();
-      conn.forward('leafData', 1);
-      // @ts-expect-error 'rootData' is a fixed key, excluded from the generic forwarder
-      conn.forward('rootData', 'ok');
     });
   });
 

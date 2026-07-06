@@ -2,7 +2,14 @@ import type {CancelablePromise} from 'jaasync';
 
 import type {Scanner} from '../../scanner';
 import type {Subscription, EventMap, Listenable, SubscribableListenable} from '../events';
-import type {SingleEventHandler, EventSink, PipeSink} from '../eventHandlers';
+import type {
+  SingleEventHandler,
+  EventSink,
+  PipeSink,
+  PipeTargetEmit,
+  InferPipeDelegateMap,
+  PipePayloadOverlap
+} from '../eventHandlers';
 import type {ControlSurface} from './controlSurface';
 import type {EventKeys, EventPayloadPair, SubscribableEventKeys} from '../utility';
 
@@ -56,43 +63,6 @@ export type SubscriptionSurfaceAny<in out TEventMap extends EventMap> = {
     TEvents extends SubscribableEventKeys<TMap>[] & SubscribableEventKeys<TEventMap>[]
   >(events: TEvents, handler: EventSink<TMap>): Subscription;
 }['bivarianceHack'];
-
-export type PipeTargetEmit<TEventMap extends EventMap> = <
-  T extends EventKeys<TEventMap>
->(
-  event: T,
-  payload: TEventMap[T]
-) => boolean;
-
-type StrongbusEventMapBrand<T> = T extends {strongbusEventMap?: infer M}
-  ? M extends EventMap
-    ? M
-    : never
-  : never;
-
-/** Event map carried by a pipe delegate, preferring the Bus brand when present. */
-export type InferPipeDelegateMap<TDelegate> = [StrongbusEventMapBrand<TDelegate>] extends [never]
-  ? TDelegate extends {emit: PipeTargetEmit<infer M extends EventMap>} ? M : never
-  : StrongbusEventMapBrand<TDelegate>;
-
-/**
- * For events shared by the pipe source and delegate maps, payload types must
- * match exactly. Source-only events are not required on the delegate.
- */
-export type PipePayloadOverlap<TSource extends EventMap, TDelegate extends EventMap> =
-  Extract<EventKeys<TSource>, EventKeys<TDelegate>> extends never
-    ? unknown
-    : {
-        [K in Extract<EventKeys<TSource>, EventKeys<TDelegate>>]: TSource[K] extends TDelegate[K]
-          ? TDelegate[K] extends TSource[K]
-            ? true
-            : false
-          : false;
-      } extends infer Result
-        ? Exclude<Result[keyof Result], true> extends never
-          ? unknown
-          : never
-        : never;
 
 export type SubscriptionSurfacePipe<in out TEventMap extends EventMap> = {
   bivarianceHack: {

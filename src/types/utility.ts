@@ -2,6 +2,14 @@ import type {EventMap, WILDCARD} from './events';
 
 export type EventKeys<T extends EventMap> = keyof T;
 
+/**
+ * `true` when `T` is a union of more than one member, `false` for a single
+ * member, and deferred for a naked (unresolved) type parameter. Used by
+ * {@link ControlSurface.emit} to reject a union-typed event key — which would
+ * otherwise pair with a union-typed payload without any correlation proof.
+ */
+export type IsUnion<T, U = T> = T extends unknown ? ([U] extends [T] ? false : true) : never;
+
 /** Event keys that may be passed to {@link Bus.on}, {@link Bus.once}, and {@link Bus.any}. */
 export type SubscribableEventKeys<T extends EventMap> = Exclude<EventKeys<T>, WILDCARD>;
 
