@@ -1,5 +1,6 @@
 import type {EventKeys} from './utility';
 import type {EventMap} from './events';
+import type {Bus} from '../strongbus';
 
 /**
  * Handler for a single, specific event `T`. Receives only that event's payload
@@ -57,10 +58,13 @@ type StrongbusEventMapBrand<T> = T extends {strongbusEventMap?: infer M}
     : never
   : never;
 
-/** Event map carried by a pipe/forward target, preferring the Bus brand when present. */
-export type InferPipeDelegateMap<TDelegate> = [StrongbusEventMapBrand<TDelegate>] extends [never]
-  ? TDelegate extends {emit: PipeTargetEmit<infer M extends EventMap>} ? M : never
-  : StrongbusEventMapBrand<TDelegate>;
+/** Event map carried by a pipe/forward target, preferring the Bus generic when present. */
+export type InferPipeDelegateMap<TDelegate> =
+  TDelegate extends Bus<infer M extends EventMap>
+    ? M
+    : [StrongbusEventMapBrand<TDelegate>] extends [never]
+      ? TDelegate extends {emit: PipeTargetEmit<infer _M extends EventMap>} ? _M : never
+      : StrongbusEventMapBrand<TDelegate>;
 
 /**
  * For events shared by the pipe source and target maps, payload types must match
@@ -71,8 +75,8 @@ export type PipePayloadOverlap<TSource extends EventMap, TDelegate extends Event
   Extract<EventKeys<TSource>, EventKeys<TDelegate>> extends never
     ? unknown
     : {
-        [K in Extract<EventKeys<TSource>, EventKeys<TDelegate>>]: TSource[K] extends TDelegate[K]
-          ? TDelegate[K] extends TSource[K]
+        [K in Extract<EventKeys<TSource>, EventKeys<TDelegate>>]: [TSource[K]] extends [TDelegate[K]]
+          ? [TDelegate[K]] extends [TSource[K]]
             ? true
             : false
           : false;

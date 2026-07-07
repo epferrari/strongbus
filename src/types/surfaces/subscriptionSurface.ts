@@ -82,17 +82,15 @@ export type SubscriptionSurfacePipe<in out TEventMap extends EventMap> = {
  * Await the first matching event as a `CancelablePromise` of `{event, payload}`.
  *
  * Triggers must be {@link SubscribableListenable} values (a single event key or
- * array of keys). The `'*'` wildcard accepted by older {@link Listenable}
- * triggers is not supported — it could not keep event and payload types
- * correlated.
+ * array of keys). The `'*'` wildcard is not supported — it cannot keep event
+ * and payload types correlated.
  *
- * **Migrating from `next('*')`**
+ * To resolve on the first of several known events, pass every key:
+ * `next(['foo', 'bar', 'baz'])`. The result discriminates on `event`.
  *
- * - To resolve on the first of several known events, pass every key:
- *   `next(['foo', 'bar', 'baz'])`. The result discriminates on `event`.
- * - When you need to inspect payload shape, filter events, or resolve only under
- *   a condition, use {@link Bus.scan} — including `trigger: '*'` with an
- *   evaluator that discriminates on `resolve.trigger` (see {@link Scanner.Evaluator}).
+ * When you need to inspect payload shape, filter events, or resolve only under a
+ * condition, use {@link Bus.scan} — including `trigger: '*'` with an evaluator
+ * that discriminates on `resolve.trigger` (see {@link Scanner.Evaluator}).
  */
 export type SubscriptionSurfaceNext<in out TEventMap extends EventMap> = {
   bivarianceHack<T extends SubscribableListenable<EventKeys<TEventMap>>>(

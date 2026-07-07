@@ -295,26 +295,24 @@ describe('type safety', () => {
       bus.emit('qux', 1);
     });
 
-    // soundness: a union-typed event key must not pair with a union-typed
-    // payload without first discriminating on the event. This is the hole a
-    // destructured pipe sink used to slip through -- `(event, payload) =>
-    // bus.emit(event, payload)` forwards an *uncorrelated* pair.
-    it('rejects an uncorrelated union event/payload pair', () => {
-      const bus = new Bus<TestEventMap>();
-      const event = 'foo' as 'foo' | 'bar';
-      const payload = 1 as number | string;
-      // @ts-expect-error the (event, payload) pair is not proven correlated
-      bus.emit(event, payload);
-
-      // once discriminated, the correlated pair is accepted
-      if (event === 'foo') {
-        bus.emit(event, payload as number);
+    // `emit(event, payload)` accepts a generic `[K, M[K]]` pair, including when
+    // `M` is concrete. Pipe sinks no longer expose separate `(event, payload)`
+    // arguments, so the old destructured-forward hole is closed at the pipe layer.
+    it('forwards by generic key over a concrete map', () => {
+      interface Concrete {
+        foo: number;
+        bar: string;
       }
+      class RelayService {
+        private readonly bus = new Bus<Concrete>();
+        public sendLocal<T extends keyof Concrete>(event: T, payload: Concrete[T]): void {
+          this.bus.emit(event, payload);
+        }
+      }
+      expectType<typeof RelayService>(RelayService);
     });
 
-    // the correlation guard must not get in the way of forwarding a *single*
-    // generic key: `[K, M[K]]` shares the type parameter, so it stays correlated.
-    it('still forwards a single generic key by (event, payload)', () => {
+    it('forwards a single generic key by (event, payload) over an open map', () => {
       class Relay<M extends EventMap> {
         private readonly bus = new Bus<M>();
         public forward<K extends EventKeys<M>>(event: K, payload: M[K]): boolean {
@@ -389,8 +387,8 @@ describe('type safety', () => {
       });
     });
 
-    it('rejects the split 2-arg forward (still guarded by emit)', () => {
-      const src = new Bus<Narrow>();
+    it('allows split emit from a pipe message; prefer forward(dst) instead', () => {
+      const src = new Bus<Narrow & {goose: number}>();
       const dst = new Bus<Narrow>();
       src.pipe((msg) => {
         // @ts-expect-error uncorrelated union event/payload pair
@@ -1242,17 +1240,11 @@ describe('type safety', () => {
           this.bus.emit('baseSignal', null);
           this.bus.emit('extSignal', null);
         }
-        // caveat: generic-key *forwarding* does NOT survive over a `Merge` map.
-        // `Merge` is a computed mapped type, and the sound `emit` only preserves
-        // the `[K, M[K]]` correlation for a naked type parameter -- so the pair
-        // can't be proven here. Forward via the whole-map pattern (see
-        // `WholeMap`) when you need generic-key forwarding. Literal-key emits
-        // (above) are unaffected.
+        // generic-key forwarding over a Merge map: `[K, M[K]]` shares `K`.
         public forward<K extends Exclude<Extract<keyof TIncoming, string>, keyof FixedEvents>>(
           event: K,
           payload: Merge<FixedEvents, TIncoming>[K]
         ): boolean {
-          // @ts-expect-error correlation is lost indexing a computed mapped type
           return this.bus.emit(event, payload);
         }
       }

@@ -55,17 +55,6 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   `PipeForward<TEventMap>` are the exported types for this handler. `emit` itself
   stays strictly `(event, payload)` — it never accepts a `{event, payload}`
   object — so a mismatched pair can't be fabricated and re-emitted.
-
-  (Earlier 3.0.0 betas used a 2-arity `(event, payload)` sink whose parameters
-  were a union of `[event, payload]` tuples with an `[never, unknown]` member, and
-  a brief `emit(message)` object form. Both are removed: the 2-arity sink could be
-  destructured and re-emitted as an uncorrelated pair, and the object form invited
-  hand-built messages — the correlated-message-plus-`forward` shape prevents both
-  by construction.)
-- **`next(...)` resolves with `{event, payload}`** — a discriminated pair, so
-  multi-event awaits can tell which event fired. Wildcard (`'*'`) triggers are removed
-  from `next` only; use `scan` with `trigger: '*'` when you need any-event listening
-  with evaluator-side discrimination (see migration guide).
 - **`EventSink<TEventMap>`** handler type — the `(event, payload)` handler shape
   used by `any`.
 - **`Logger` and `LoggerProvider`** types are now exported, for typing a custom
@@ -86,12 +75,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   can `emit` its fixed events with literal payloads without casting to `any`.
   See [Composing event maps](./README.md#composing-event-maps).
 
-### Deprecated
-
-- **`SingleEventHandler`** — renamed back to **`EventHandler`**, the v2 spelling.
-  `SingleEventHandler` remains exported as a deprecated alias.
-
-### Changed (breaking)
+### Changed
 
 - **Listener introspection** — scoped methods on `Bus` / `IntrospectionSurface`:
   `hasListeners`, `getListenerCount`, `getListeners`, `getEventCount`,
@@ -110,42 +94,37 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   abstract map. Payload is required for non-void events; void events may still be
   emitted as `emit(event)` or `emit(event, null)`. Anything the type system
   already accepted keeps working; only genuine multi-arg spreads (which were never
-  typeable) are gone. `ControlSurface.emit` and `handleUnexpectedEvent` adopt the
-  same correlated shape.
-- **`emit` rejects an uncorrelated union `(event, payload)` pair.** A union-typed
-  event key can no longer be paired with a union-typed payload without first
-  discriminating on `event`. This closes a soundness hole where a pipe sink that
-  split its message — `(message) => bus.emit(message.event, message.payload)` —
-  forwarded a mismatched pair (both `event` and `payload` widened to unions, so
-  `emit('foo', barPayload)` slipped through). Forward the whole message instead
-  with the sink's `forward(dst)` argument, which keeps the pair correlated end to
-  end. `emit` now layers three overloads: a
-  void no-payload form, a single-key correlated form (`event: T, payload:
-  TEventMap[T]`, guarded so a manifest union key collapses to `never`), and a
-  correlated-tuple form for a genuinely generic key. Single-key emits — literal
-  or a naked type parameter — are unchanged. **Caveat:** generic-key *forwarding*
-  (`forward<K>(event: K, payload) => bus.emit(event, payload)`) is only preserved
-  when the bus map is a naked type parameter (`Bus<M>`); over a computed mapped
-  type such as `Merge<Fixed, TIncoming>`, TypeScript drops the `[K, M[K]]`
-  correlation, so forward via the whole-map pattern instead.
+  typeable) are gone. Generic-key forwarding (`emit<K extends keyof M>(event: K, payload: M[K])`)
+  works over concrete maps. `ControlSurface.emit` and `handleUnexpectedEvent` adopt
+  the same correlated shape. A correlated-tuple overload remains for call sites that
+  discriminated on `event` first. Pipe sinks receive `{event, payload}` as one
+  value and should use `forward(dst)` rather than splitting the pair.
+- **`PipePayloadOverlap` uses tuple equality (`[A] extends [B]`)** so narrow-to-wide
+  `pipe`/`forward` targets type-check when the source map is an open generic and
+  the delegate map is a concrete superset (e.g. `_incomingPushBus.pipe(_bus)`).
 - **`on(event, handler)` only accepts a single event key.** It no longer
   forwards arrays to `any` or `'*'` to `proxy`.
 - **`next(...)` resolves with `{event, payload}`** instead of the bare payload
-  (single event) or `undefined` (array/wildcard).
+  (single event) or `undefined` (array/wildcard). Wildcard (`'*'`) triggers are
+  not accepted; use `scan` with `trigger: '*'` when you need any-event listening
+  with evaluator-side discrimination (see migration guide).
 - **`scan<T>(...)`** — the type parameter is now the resolved value type rather
   than the evaluator type. Inference from a typed `evaluator` is unchanged.
 - **Public handler types reduced** to `EventHandler` and `EventSink`.
 - **`generateSubscription` is renamed to `subscriptionWrapper`** (exported from
   the package root).
 
-### Removed (breaking)
+### Deprecated
+
+- **`SingleEventHandler`** — deprecated alias for **`EventHandler`**.
+
+### Removed
 
 - **`proxy(handler)` and `every(handler)`** — use `pipe(handler)`.
 - **`on('*', handler)` and `on([...], handler)`** overloads — use
   `pipe(handler)` and `any([...], handler)` respectively.
 - **Handler types `MultiEventHandler`, `WildcardEventHandler`**
-  — use `EventSink`. (`EventHandler` is restored as the single-event handler name;
-  `SingleEventHandler` is a deprecated alias.)
+  — use `EventSink` (for `any`) or `PipeSink` (for `pipe` function sinks).
 - **`GenericHandler` is no longer exported** — it was an internal type.
 - **Per-event listener helpers (v2)** — `hasListenersFor`, `getListenerCountFor`,
   etc. without a scope parameter.
@@ -186,9 +165,9 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | `bus.scan({evaluator, trigger, ...})` | `bus.scan(trigger, evaluator, options?)` — object form deprecated |
 | `bus.scan<typeof evaluator>(...)` | `bus.scan<ResolvedType>(...)` |
 | `generateSubscription(dispose)` | `subscriptionWrapper(dispose)` |
-| `EventHandler<Map, 'foo'>` | `EventHandler<Map, 'foo'>` (unchanged; `SingleEventHandler` was a brief v3 alias) |
+| `EventHandler<Map, 'foo'>` | `EventHandler<Map, 'foo'>` (unchanged) |
 | `MultiEventHandler<Map>` | `EventSink<Map>` |
-| `WildcardEventHandler<Map>` | `EventSink<Map>` |
+| `WildcardEventHandler<Map>` | `PipeSink<Map>` |
 | `GenericHandler` (exported) | *(internal; not part of the public API)* |
 | `bus.listeners` | `bus.forEach((event, handlers) => ...)` or `bus.forEach((event, handlers) => ..., {scope: ListenerScope.ANY})` |
 | `bus.listeners.get('foo')` | `bus.getListenersFor('foo')` or `bus.getListenersFor('foo', {scope: ListenerScope.ANY})` |
@@ -282,7 +261,7 @@ const {event, payload} = await bus.next(['foo', 'bar']);
 ### Wildcard (`'*'`) triggers on `next`
 
 `next` no longer accepts `'*'` as a resolution or rejection trigger. `next` always resolves on the first
-matching event. In the type system, the wider events are transparent to the narrower bus, however at runtime they do get piped into the narrower bus, so a wildcard handler could unintentionally resolve/reject a `next` on an event the narrow bus is oblivous to.
+matching event. In the type system, the wider events are transparent to the narrower bus, however at runtime they do get piped into the narrower bus, so a wildcard handler could unintentionally resolve/reject a `next` on an event the narrow bus is oblivious to.
 
 `scan` still accepts `trigger: '*'` because the evaluator can discriminate on `resolve.trigger` before
 resolving.
@@ -291,10 +270,10 @@ resolving.
 // before — compile-time allowed on next, payload typing was unsound
 await bus.next('*');
 
-// after — list events when using next
+// v3 — list events when using next
 await bus.next(['foo', 'bar', 'baz']);
 
-// after — wildcard with conditional resolve via scan
+// v3 — wildcard with conditional resolve via scan
 await bus.scan('*', (resolve) => {
   if (resolve.trigger.type === 'event' && shouldAccept(resolve.trigger)) {
     resolve(resolve.trigger);
@@ -302,41 +281,26 @@ await bus.scan('*', (resolve) => {
 });
 ```
 
-### `scan` signature
+### `scan` signature and type argument
+
+The positional form is preferred. The object form
+`scan({evaluator, trigger, ...options})` is deprecated but still supported. The
+type argument is the resolved value type (not the evaluator type). Inference from
+a typed `evaluator` is unchanged.
 
 ```typescript
+// v2
+bus.scan<typeof myEvaluator>({evaluator: myEvaluator, trigger: 'foo'});
+
 // v3 (preferred)
 bus.scan<boolean>('foo', myEvaluator);
 bus.scan<boolean>('foo', myEvaluator, {eager: false, pool: false, timeout: 1000});
 
 // v3 (deprecated object form — still supported)
 bus.scan<boolean>({evaluator: myEvaluator, trigger: 'foo'});
-```
-
-The type argument is the resolved value type. Inference from a typed `evaluator` is unchanged.
-
-```typescript
-// explicit resolved-value type argument
-bus.scan<boolean>('foo', myEvaluator);
-
-// inference is unchanged in both forms
-const ready = await bus.scan('foo', myEvaluator);
-```
-
-### `scan` type argument (evaluator type parameter removed in v3)
-
-The type argument is now the resolved value type. Inference from a typed
-`evaluator` is unaffected; only an explicit type argument changes.
-
-```typescript
-// v2 — explicit evaluator type argument
-bus.scan<typeof myEvaluator>({evaluator: myEvaluator, trigger: 'foo'});
-
-// v3 — explicit resolved-value type argument
-bus.scan<boolean>({evaluator: myEvaluator, trigger: 'foo'});
 
 // inference is unchanged in both versions
-const ready = await bus.scan({evaluator: myEvaluator, trigger: 'foo'});
+const ready = await bus.scan('foo', myEvaluator);
 ```
 
 ### Renamed handler types
@@ -347,7 +311,6 @@ import type {EventHandler, MultiEventHandler, WildcardEventHandler} from 'strong
 
 // v3 — single-event handlers, any sinks, and the pipe message sink
 import type {EventHandler, EventSink, PipeSink} from 'strongbus';
-// `SingleEventHandler` is a deprecated alias for `EventHandler`
 ```
 
 `MultiEventHandler` maps to `EventSink` (the `(event, payload)` handler used by

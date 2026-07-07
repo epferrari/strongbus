@@ -33,7 +33,7 @@ import type {
   IntrospectionSurfaceListenerForEvent
 } from './types/surfaces/introspectionSurface';
 import type {MonitoringSurface, MonitoringHook} from './types/surfaces/monitoringSurface';
-import type {EventKeys, IsUnion, SubscribableEventKeys, VoidEventKeys} from './types/utility';
+import type {EventKeys, SubscribableEventKeys, VoidEventKeys} from './types/utility';
 import {over} from './utils/over';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {randomId} from './utils/randomId';
@@ -183,10 +183,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   public emit<T extends VoidEventKeys<TEventMap>>(event: T, payload?: null | undefined): boolean;
-  public emit<T extends EventKeys<TEventMap>>(
-    event: IsUnion<T> extends true ? never : T,
-    payload: TEventMap[T]
-  ): boolean;
+  public emit<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T]): boolean;
   public emit(
     ...args: {[K in EventKeys<TEventMap>]: [event: K, payload: TEventMap[K]]}[EventKeys<TEventMap>]
   ): boolean;
@@ -238,17 +235,14 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    *
    * @example
    * ```typescript
-   * // first of several events (replaces `next('*')`)
+   * // resolve on the first of several events
    * const {event, payload} = await bus.next(['message', 'connected', 'count']);
    *
    * // conditional or filtered resolution — use scan (supports trigger: '*')
-   * const ready = await bus.scan({
-   *   evaluator: (resolve) => {
-   *     if (resolve.trigger.type === 'event' && isReady(resolve.trigger)) {
-   *       resolve(true);
-   *     }
-   *   },
-   *   trigger: '*'
+   * const ready = await bus.scan('*', (resolve) => {
+   *   if (resolve.trigger.type === 'event' && isReady(resolve.trigger)) {
+   *     resolve(true);
+   *   }
    * });
    * ```
    */
