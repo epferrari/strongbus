@@ -3,7 +3,7 @@ import {Scanner} from './scanner';
 import {WILDCARD, type EventMap, type Subscription} from './types/events';
 import {Lifecycle, type LifecycleSubjectEvent} from './types/lifecycle';
 import {ListenerScope} from './types/listenerScope';
-import type {EventHandler, EventSink, PipeSink, PipeMessage} from './types/eventHandlers';
+import type {EventHandler, PipeSink, PipeMessage} from './types/eventHandlers';
 import type {ListenerSet} from './types/listenerRegistry';
 import type {ControlSurface} from './types/surfaces/controlSurface';
 import type {IntrospectionSurface} from './types/surfaces/introspectionSurface';
@@ -194,7 +194,7 @@ describe('type safety', () => {
       // @ts-expect-error 'qux' is not a key of TestEventMap
       bus.scan('qux', evaluator);
       // @ts-expect-error 'qux' is not a key of TestEventMap
-      bus.scan({evaluator, trigger: 'qux'});
+      bus.scan('qux', evaluator);
     });
 
     it('result type drives evaluator and promise', () => {
@@ -204,12 +204,9 @@ describe('type safety', () => {
         resolve.resolve(2);
       });
       result.then(value => expectType<number>(value));
-      bus.scan<number>({
-        evaluator: resolve => {
-          resolve(1);
-          resolve.resolve(2);
-        },
-        trigger: 'foo'
+      bus.scan<number>('foo', resolve => {
+        resolve(1);
+        resolve.resolve(2);
       }).then(value => expectType<number>(value));
     });
 
@@ -623,7 +620,7 @@ describe('type safety', () => {
         expectType<keyof Narrow>(event);
         expectType<Narrow[keyof Narrow]>(payload);
       });
-      narrowed.scan({evaluator, trigger: 'foo'});
+      narrowed.scan('foo', evaluator);
       narrowed.next('foo').then(result => {
         expectType<'foo'>(result.event);
         expectType<number>(result.payload);
@@ -714,7 +711,7 @@ describe('type safety', () => {
       // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
       narrow.any(['baz'], () => undefined);
       // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
-      narrow.scan({evaluator, trigger: 'baz'});
+      narrow.scan('baz', evaluator);
       // @ts-expect-error 'baz' is not in the Narrow view, even though the underlying bus is Wide
       narrow.next('baz');
     });
