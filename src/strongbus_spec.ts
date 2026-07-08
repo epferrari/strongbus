@@ -910,6 +910,53 @@ describe('Strongbus.Bus', () => {
       sub2();
     });
 
+    describe('lifecycle hook ordering', () => {
+      const otherEventHandler = jasmine.createSpy('otherEventHandler');
+
+      it('brackets activation before the first listener add when subscribing directly', () => {
+        const order: string[] = [];
+        onWillAddListener.and.callFake((event) => order.push(`willAdd:${event}`));
+        onAddListener.and.callFake((event) => order.push(`didAdd:${event}`));
+        onWillActivate.and.callFake(() => order.push('willActivate'));
+        onActive.and.callFake(() => order.push('active'));
+
+        bus.on('foo', singleEventHandler);
+        bus.on('foo', otherEventHandler);
+
+        expect(order).toEqual([
+          'willActivate',
+          'willAdd:foo',
+          'didAdd:foo',
+          'active',
+          'willAdd:foo',
+          'didAdd:foo'
+        ]);
+      });
+
+      it('brackets idle before the last listener remove when unsubscribing directly', () => {
+        const sub1 = bus.on('foo', singleEventHandler);
+        const sub2 = bus.on('foo', otherEventHandler);
+
+        const order: string[] = [];
+        onWillRemoveListener.and.callFake((event) => order.push(`willRemove:${event}`));
+        onRemoveListener.and.callFake((event) => order.push(`didRemove:${event}`));
+        onWillIdle.and.callFake(() => order.push('willIdle'));
+        onIdle.and.callFake(() => order.push('idle'));
+
+        sub1.unsubscribe();
+        sub2.unsubscribe();
+
+        expect(order).toEqual([
+          'willRemove:foo',
+          'didRemove:foo',
+          'willIdle',
+          'willRemove:foo',
+          'didRemove:foo',
+          'idle'
+        ]);
+      });
+    });
+
     describe('error events', () => {
       it('emits "error" when errors are thrown in the listener', () => {
         const error = new Error('Error in callback');
@@ -1181,6 +1228,57 @@ describe('Strongbus.Bus', () => {
 
         expect(bus.active).toBeFalse();
         expect(onIdle).toHaveBeenCalled();
+      });
+    });
+
+    describe('given delegate sync reconciles pre-existing listeners', () => {
+      const otherEventHandler = jasmine.createSpy('otherEventHandler');
+
+      it('emits all will-add hooks before any did-add hooks when pipe attaches a delegate', () => {
+        const order: string[] = [];
+        onWillAddListener.and.callFake((event) => order.push(`willAdd:${event}`));
+        onAddListener.and.callFake((event) => order.push(`didAdd:${event}`));
+        onWillActivate.and.callFake(() => order.push('willActivate'));
+        onActive.and.callFake(() => order.push('active'));
+
+        const delegate = new DelegateTestBus({});
+        delegate.on('foo', singleEventHandler);
+        delegate.on('foo', otherEventHandler);
+
+        bus.pipe(delegate);
+
+        expect(order).toEqual([
+          'willActivate',
+          'willAdd:foo',
+          'willAdd:foo',
+          'didAdd:foo',
+          'didAdd:foo',
+          'active'
+        ]);
+      });
+
+      it('emits all will-remove hooks before any did-remove hooks when unpipe detaches a delegate', () => {
+        const delegate = new DelegateTestBus({});
+        delegate.on('foo', singleEventHandler);
+        delegate.on('foo', otherEventHandler);
+        bus.pipe(delegate);
+
+        const order: string[] = [];
+        onWillRemoveListener.and.callFake((event) => order.push(`willRemove:${event}`));
+        onRemoveListener.and.callFake((event) => order.push(`didRemove:${event}`));
+        onWillIdle.and.callFake(() => order.push('willIdle'));
+        onIdle.and.callFake(() => order.push('idle'));
+
+        bus.unpipe(delegate);
+
+        expect(order).toEqual([
+          'willIdle',
+          'willRemove:foo',
+          'willRemove:foo',
+          'didRemove:foo',
+          'didRemove:foo',
+          'idle'
+        ]);
       });
     });
   });

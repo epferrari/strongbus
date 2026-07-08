@@ -375,6 +375,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
             bus.hook(Lifecycle.willRemoveListener, (event) => this.willRemoveListener(event as EventKeys<TEventMap>|WILDCARD)),
             bus.hook(Lifecycle.didRemoveListener, (event) => this.didRemoveListener(event as EventKeys<TEventMap>|WILDCARD, bus))
           ]);
+          this.syncDelegateListenersAttached(bus);
         }
       }
       return bus;
@@ -393,8 +394,17 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       this.sinks.delete(dest as PipeSink<TEventMap>);
     } else {
       const bus = dest;
-      over(this.delegates.get(bus) || [])();
-      this.delegates.delete(bus);
+      const hookSubs = this.delegates.get(bus);
+      if(hookSubs) {
+        const snapshot = bus.getCombinedListenersMap() as ReadonlyMap<
+          EventKeys<TEventMap>|WILDCARD,
+          ReadonlySet<GenericHandler>
+        >;
+        over(hookSubs)();
+        this.delegates.delete(bus);
+        this.invalidateCombinedListenerCache();
+        this.syncDelegateListenersDetached(snapshot);
+      }
     }
   }) as SubscriptionSurfaceUnpipe<TEventMap>;
 
@@ -758,13 +768,17 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   private willAddListener(event: EventKeys<TEventMap>|WILDCARD) {
-    this.emitLifecycleEvent(Lifecycle.willAddListener, event);
     if(!this._active) {
       this.emitLifecycleEvent(Lifecycle.willActivate, null);
     }
+    this.emitLifecycleEvent(Lifecycle.willAddListener, event);
   }
 
-  private didAddListener(event: EventKeys<TEventMap>|WILDCARD, bus: Bus<any> = this) {
+  private didAddListener(
+    event: EventKeys<TEventMap>|WILDCARD,
+    bus: Bus<any> = this,
+    options: {suppressActive?: boolean} = {}
+  ) {
 
     this.invalidateCombinedListenerCache();
     if(bus === this) {
@@ -776,7 +790,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     }
 
     this.emitLifecycleEvent(Lifecycle.didAddListener, event);
-    if(!this._active && this.hasListeners()) {
+    if(!options.suppressActive && !this._active && this.hasListeners()) {
       this._active = true;
       this.emitLifecycleEvent(Lifecycle.active, null);
     }
@@ -786,10 +800,10 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   private willRemoveListener(event: EventKeys<TEventMap>|WILDCARD): void {
     const eventHandlerCount = this.getListenerCountFor(event);
     if(eventHandlerCount) {
-      this.emitLifecycleEvent(Lifecycle.willRemoveListener, event);
       if(this._active && this.getListenerCount() === 1 && eventHandlerCount === 1) {
         this.emitLifecycleEvent(Lifecycle.willIdle, null);
       }
+      this.emitLifecycleEvent(Lifecycle.willRemoveListener, event);
     }
   }
 
@@ -808,6 +822,110 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     if(this._active && !this.hasListeners()) {
       this._active = false;
       this.emitLifecycleEvent(Lifecycle.idle, null);
+    }
+  }
+
+  /**
+   * When a delegate link is created, reflect listeners that were already registered
+   * on the delegate (including nested delegates) in this bus's lifecycle hooks and
+   * listener bookkeeping.
+   */
+  private syncDelegateListenersAttached(delegate: Bus<any>): void {
+    const additions: {key: EventKeys<TEventMap>|WILDCARD; count: number}[] = [];
+    let total = 0;
+
+    for(const [event, handlers] of delegate.getCombinedListenersMap()) {
+      if(!handlers.size) {
+        continue;
+      }
+      const key = event as EventKeys<TEventMap>|WILDCARD;
+      additions.push({key, count: handlers.size});
+      total += handlers.size;
+    }
+
+    if(!total) {
+      return;
+    }
+
+    const activationPending = !this._active;
+
+    if(activationPending) {
+      this.emitLifecycleEvent(Lifecycle.willActivate, null);
+    }
+
+    for(const {key, count} of additions) {
+      for(let i = 0; i < count; i++) {
+        this.emitLifecycleEvent(Lifecycle.willAddListener, key);
+      }
+    }
+
+    for(const {key, count} of additions) {
+      for(let i = 0; i < count; i++) {
+        this.didAddListener(key, delegate, {suppressActive: true});
+      }
+    }
+
+    if(activationPending && this.hasListeners()) {
+      this._active = true;
+      this.emitLifecycleEvent(Lifecycle.active, null);
+    }
+  }
+
+  /**
+   * When a delegate link is removed, emit the lifecycle transitions that would have
+   * fired had each downstream handler been removed before the link was detached.
+   */
+  private syncDelegateListenersDetached(
+    listeners: ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>
+  ): void {
+    const removals: (EventKeys<TEventMap>|WILDCARD)[] = [];
+    const perEventRemaining = new Map<EventKeys<TEventMap>|WILDCARD, number>();
+
+    for(const [event, handlers] of listeners) {
+      if(!handlers.size) {
+        continue;
+      }
+      perEventRemaining.set(event, handlers.size);
+      for(let i = 0; i < handlers.size; i++) {
+        removals.push(event);
+      }
+    }
+
+    const ownTotal = this.getListenerCount({scope: ListenerScope.OWN});
+    const idlePending = this._active && ownTotal === 0 && removals.length > 0;
+
+    if(idlePending) {
+      this.emitLifecycleEvent(Lifecycle.willIdle, null);
+    }
+
+    for(const event of removals) {
+      this.emitLifecycleEvent(Lifecycle.willRemoveListener, event);
+    }
+
+    let delegateRemaining = removals.length;
+    for(const [event, handlers] of listeners) {
+      if(handlers.size) {
+        perEventRemaining.set(event, handlers.size);
+      }
+    }
+
+    for(const event of removals) {
+      const eventRemaining = perEventRemaining.get(event)!;
+
+      const currCount = this.delegateListenerCountsByEvent.get(event) ?? 0;
+      this.delegateListenerCountsByEvent.set(event, Math.max(currCount - 1, 0));
+      this._delegateListenerTotalCount = Math.max(this._delegateListenerTotalCount - 1, 0);
+
+      this.invalidateCombinedListenerCache();
+      this.emitLifecycleEvent(Lifecycle.didRemoveListener, event);
+
+      perEventRemaining.set(event, eventRemaining - 1);
+      delegateRemaining--;
+
+      if(this._active && ownTotal + delegateRemaining === 0) {
+        this._active = false;
+        this.emitLifecycleEvent(Lifecycle.idle, null);
+      }
     }
   }
 }
