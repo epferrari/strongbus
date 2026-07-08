@@ -4,7 +4,6 @@ import {WILDCARD, type EventMap, type Subscription} from './types/events';
 import {Lifecycle, type LifecycleSubjectEvent} from './types/lifecycle';
 import {ListenerScope} from './types/listenerScope';
 import type {EventHandler, PipeSink, PipeMessage} from './types/eventHandlers';
-import type {StrongbusEventMapBranded} from './types/strongbusEventMapBrand';
 import type {ListenerSet} from './types/listenerRegistry';
 import type {ControlSurface} from './types/surfaces/controlSurface';
 import type {IntrospectionSurface} from './types/surfaces/introspectionSurface';
@@ -401,23 +400,16 @@ describe('type safety', () => {
       });
     });
 
-    it('forwards a message to a wider or partially-overlapping bus (like pipe(dst))', () => {
+    it('forwards a message to a wider or partially-overlapping bus via forward(dst)', () => {
       const src = new Bus<Narrow>();
       const noOverlap = new Bus<Other>();
       const partialOverlap = new Bus<Pick<Narrow, 'foo'> & Pick<Other, 'other'>>();
       const properSubset = new Bus<Pick<Narrow, 'foo'>>();
       const wrongFooPayload = new Bus<{foo: string}>();
 
-      // delegate piping already allows overlapping/disjoint targets
-      src.pipe(partialOverlap);
-      src.pipe(properSubset);
-      src.pipe(noOverlap);
-      noOverlap.pipe(partialOverlap);
-      partialOverlap.pipe(properSubset);
-
-      // ...and forward(dst) mirrors delegate piping per-message: shared events
-      // must match, src-only events ('bar'/'baz') are dropped, and a disjoint
-      // target is allowed (nothing lands) just like src.pipe(noOverlap).
+      // forward(dst) mirrors delegate piping per-message: shared events must
+      // match, src-only events ('bar'/'baz') are dropped, and a disjoint target
+      // is allowed (nothing lands) just like src.pipe(noOverlap).
       src.pipe((piped, forward) => {
         forward(partialOverlap); // shares 'foo'
         forward(properSubset);   // shares 'foo'
@@ -428,32 +420,75 @@ describe('type safety', () => {
       });
     });
 
-    // pattern: salsa's `TypedMsgBus<M> extends Bus<M>` with an explicit brand
-    // redeclaration so `forward(dst)` keeps the delegate map on branded targets.
-    it('forwards into a subclass that redeclares strongbusEventMap', () => {
-      class TypedBus<M extends EventMap> extends Bus<M> implements StrongbusEventMapBranded<M> {
-        declare readonly strongbusEventMap: M;
-      }
+    it('forwards into a Bus subclass', () => {
+      class DerivedBus<M extends EventMap> extends Bus<M> {}
 
       const src = new Bus<Narrow>();
-      const dst = new TypedBus<Narrow>();
+      const dst = new DerivedBus<Narrow>();
       src.pipe((_msg, forward) => {
         forward(dst);
       });
     });
 
+    it('rejects forward into a non-Bus emit-only object', () => {
+      const src = new Bus<Narrow>();
+      const emitter = {emit: (event: 'foo', payload: number) => true};
+
+      src.pipe((_msg, forward) => {
+        // @ts-expect-error forward requires a Bus instance, not an emit-only object
+        forward(emitter);
+      });
+    });
+
+    it('cannot forward into a delegate typed with an open generic map', () => {
+      class DerivedBus<M extends EventMap> extends Bus<M> {}
+
+      function forwardInto<M extends Narrow>(target: DerivedBus<M>): void {
+        const src = new Bus<Narrow>();
+        src.pipe((_msg, forward) => {
+          // @ts-expect-error open generic map prevents payload-overlap checking
+          forward(target);
+        });
+      }
+
+      forwardInto(new DerivedBus<Narrow>());
+    });
+
+  });
+
+  describe('#pipe (bus delegate)', () => {
+    interface Narrow {
+      foo: number;
+      bar: string;
+      baz: void;
+    }
+    interface Other {
+      other: boolean;
+    }
+
+    it('pipes into a wider, partially-overlapping, or disjoint delegate bus', () => {
+      const src = new Bus<Narrow>();
+      const noOverlap = new Bus<Other>();
+      const partialOverlap = new Bus<Pick<Narrow, 'foo'> & Pick<Other, 'other'>>();
+      const properSubset = new Bus<Pick<Narrow, 'foo'>>();
+
+      src.pipe(partialOverlap);
+      src.pipe(properSubset);
+      src.pipe(noOverlap);
+      noOverlap.pipe(partialOverlap);
+      partialOverlap.pipe(properSubset);
+    });
+
     it('pipe(bus) returns the concrete delegate bus type, including subclasses', () => {
-      class TypedBus<M extends EventMap> extends Bus<M> implements StrongbusEventMapBranded<M> {
-        declare readonly strongbusEventMap: M;
-        public readonly kind = 'typed' as const;
+      class DerivedBus<M extends EventMap> extends Bus<M> {
+        public relayLeaf(): void {}
       }
 
       const src = new Bus<Narrow>();
-      const typed = new TypedBus<Narrow>();
-      const chained = src.pipe(typed);
-      expectType<TypedBus<Narrow>>(chained);
-      expectType<'typed'>(chained.kind);
-      chained.emit('baz', null);
+      const derived = new DerivedBus<Narrow>();
+      const chained = src.pipe(derived);
+      expectType<DerivedBus<Narrow>>(chained);
+      chained.relayLeaf();
     });
 
     it('pipe(bus) returns the delegate Bus', () => {
@@ -484,11 +519,13 @@ describe('type safety', () => {
     });
 
     it('chains pipe(bus) through the returned delegate bus', () => {
+      class DerivedBus<M extends EventMap> extends Bus<M> {}
+
       const a = new Bus<Narrow>();
-      const b = new Bus<Narrow>();
+      const b = new DerivedBus<Narrow>();
       const c = new Bus<Narrow>();
 
-      expectType<Bus<Narrow>>(a.pipe(b));
+      expectType<DerivedBus<Narrow>>(a.pipe(b));
       expectType<Bus<Narrow>>(a.pipe(b).pipe(c));
     });
 
@@ -982,12 +1019,9 @@ describe('type safety', () => {
 
     // a generic subclass (`class Test<M> extends Bus<M>`) must keep every surface
     // method correlated over the still-open event map `M` — the motivation for
-    // the overloaded `emit`. Subclasses that participate in `forward`/`pipe`
-    // delegate inference should also implement {@link StrongbusEventMapBranded}.
+    // the overloaded `emit`.
     it('keeps the full surface correlated in a generic Bus subclass', () => {
-      class Test<M extends EventMap> extends Bus<M> implements StrongbusEventMapBranded<M> {
-        declare readonly strongbusEventMap: M;
-
+      class Test<M extends EventMap> extends Bus<M> {
         public relay<K extends EventKeys<M>>(event: K, payload: M[K]): boolean {
           return this.emit(event, payload);
         }
@@ -1102,9 +1136,7 @@ describe('type safety', () => {
     // (`pipe(() => …)`), message (`pipe((message) => …)`), and fully-typed
     // function references — over its open map.
     it('accepts nullary, message, and untyped sinks in a generic subclass', () => {
-      class Test<M extends EventMap> extends Bus<M> implements StrongbusEventMapBranded<M> {
-        declare readonly strongbusEventMap: M;
-
+      class Test<M extends EventMap> extends Bus<M> {
         public relayAll(sink: PipeSink<M>): Subscription {
           return this.pipe(sink);
         }

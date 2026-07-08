@@ -1,7 +1,6 @@
 import type {EventKeys} from './utility';
 import type {EventMap} from './events';
 import type {Bus} from '../strongbus';
-import type {InferStrongbusEventMap} from './strongbusEventMapBrand';
 
 /**
  * Handler for a single, specific event `T`. Receives only that event's payload
@@ -45,21 +44,9 @@ export type PipeMessage<TEventMap extends EventMap> = {
   [K in EventKeys<TEventMap>]: {event: K; payload: TEventMap[K]}
 }[EventKeys<TEventMap>];
 
-/** The `emit` shape a pipe/forward target must expose. */
-export type PipeTargetEmit<TEventMap extends EventMap> = <
-  T extends EventKeys<TEventMap>
->(
-  event: T,
-  payload: TEventMap[T]
-) => boolean;
-
-/** Event map carried by a pipe/forward target, preferring an explicit brand when present. */
+/** Event map carried by a {@link Bus} delegate passed to {@link Bus.pipe} or {@link PipeForward}. */
 export type InferPipeDelegateMap<TDelegate> =
-  [InferStrongbusEventMap<TDelegate>] extends [never]
-    ? TDelegate extends Bus<infer M extends EventMap>
-      ? M
-      : TDelegate extends {emit: PipeTargetEmit<infer _M extends EventMap>} ? _M : never
-    : InferStrongbusEventMap<TDelegate>;
+  TDelegate extends Bus<infer M extends EventMap> ? M : never;
 
 /**
  * For events shared by the pipe source and target maps, payload types must match
@@ -87,20 +74,15 @@ export type PipePayloadOverlap<TSource extends EventMap, TDelegate extends Event
  * message on `dst` — like `src.pipe(dst)` but per-message and without registering
  * a delegate (so none of the listener-lifecycle overhead a delegate incurs).
  *
- * `dst` may be any bus/emitter whose map is *payload-compatible* with the source:
+ * `dst` must be a {@link Bus} whose map is *payload-compatible* with the source:
  * every event `dst` declares must either be absent from the source or carry the
  * same payload type (see {@link PipePayloadOverlap}). This makes it impossible to
  * land an event on `dst` with a payload type `dst` doesn't expect. Source events
  * `dst` doesn't declare are simply dropped by `dst` at runtime.
  */
 export type PipeForward<in out TEventMap extends EventMap> = {
-  bivarianceHack: <
-    TDelegate,
-    TDelegateMap extends EventMap = InferPipeDelegateMap<TDelegate>
-  >(
-    dest: TDelegate & {
-      emit: PipeTargetEmit<TDelegateMap>;
-    } & PipePayloadOverlap<TEventMap, TDelegateMap>
+  bivarianceHack: <TDelegate extends Bus<any>>(
+    dest: TDelegate & PipePayloadOverlap<TEventMap, InferPipeDelegateMap<TDelegate>>
   ) => boolean;
 }['bivarianceHack'];
 

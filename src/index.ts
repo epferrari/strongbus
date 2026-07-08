@@ -12,7 +12,6 @@ export type {
   PipeForward,
   InferPipeDelegateMap
 } from './types/eventHandlers';
-export type {StrongbusEventMapBranded, InferStrongbusEventMap} from './types/strongbusEventMapBrand';
 export * from './types/lifecycle';
 export type {Logger, LoggerProvider} from './types/logger';
 export * from './types/options';
