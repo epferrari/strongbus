@@ -32,7 +32,6 @@ export type {Scannable} from './types/scannable';
 export type {
   SubscriptionSurface,
   SubscriptionSurfaceScan,
-  PipeTarget,
   ScanParams,
   ScanOptions
 } from './types/surfaces/subscriptionSurface';

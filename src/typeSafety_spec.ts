@@ -442,6 +442,56 @@ describe('type safety', () => {
       });
     });
 
+    it('pipe(bus) returns the concrete delegate bus type, including subclasses', () => {
+      class TypedBus<M extends EventMap> extends Bus<M> implements StrongbusEventMapBranded<M> {
+        declare readonly strongbusEventMap: M;
+        public readonly kind = 'typed' as const;
+      }
+
+      const src = new Bus<Narrow>();
+      const typed = new TypedBus<Narrow>();
+      const chained = src.pipe(typed);
+      expectType<TypedBus<Narrow>>(chained);
+      expectType<'typed'>(chained.kind);
+      chained.emit('baz', null);
+    });
+
+    it('pipe(bus) returns the delegate Bus', () => {
+      const src = new Bus<Narrow>();
+      const dst = new Bus<Narrow>();
+      const chained = src.pipe(dst);
+
+      expectType<Bus<Narrow>>(chained);
+    });
+
+    it('rejects a hand-rolled surface duck type as a Bus delegate', () => {
+      const bus = new Bus<Narrow>();
+      const duck = {
+        on: bus.on.bind(bus),
+        once: bus.once.bind(bus),
+        any: bus.any.bind(bus),
+        next: bus.next.bind(bus),
+        scan: bus.scan.bind(bus),
+        pipe: bus.pipe.bind(bus),
+        unpipe: bus.unpipe.bind(bus),
+        emit: bus.emit.bind(bus),
+        destroy: bus.destroy.bind(bus)
+      };
+
+      // @ts-expect-error bus-to-bus piping requires a Bus instance, not a surface duck type
+      const target: Bus<Narrow> = duck;
+      expectType<typeof duck>(duck);
+    });
+
+    it('chains pipe(bus) through the returned delegate bus', () => {
+      const a = new Bus<Narrow>();
+      const b = new Bus<Narrow>();
+      const c = new Bus<Narrow>();
+
+      expectType<Bus<Narrow>>(a.pipe(b));
+      expectType<Bus<Narrow>>(a.pipe(b).pipe(c));
+    });
+
   });
 
   describe('#hook', () => {
@@ -738,12 +788,12 @@ describe('type safety', () => {
       narrow.getListenerCountFor('baz', {scope: ListenerScope.ANY});
     });
 
-    it('PipeSink<Narrow> accepts Bus<Wide>', () => {
+    it('pipe(bus) returns the delegate Bus instance', () => {
       const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
       const wideBus = new Bus<Wide>();
 
       const delegate = narrow.pipe(wideBus);
-      expectType<SubscriptionSurface<Wide>>(delegate);
+      expectType<Bus<Wide>>(delegate);
       delegate.on('foo', payload => expectType<number>(payload));
       delegate.on('baz', payload => expectType<boolean>(payload));
     });
@@ -810,12 +860,12 @@ describe('type safety', () => {
       const narrow = new Bus<{foo: string, bar: string}>();
 
       // piping wide into narrow forwards 'baz' (number) into narrow at runtime.
-      // pipe returns the delegate's own surface, so a chained sink is identical
+      // pipe returns the delegate bus itself, so a chained sink is identical
       // to piping on `narrow` directly.
-      const surface = wide.pipe(narrow);
-      expectType<SubscriptionSurface<{foo: string; bar: string}>>(surface);
+      const delegate = wide.pipe(narrow);
+      expectType<Bus<{foo: string; bar: string}>>(delegate);
 
-      // the following are the same assertions, one over the narrow bus itself, and one over the surface returned from pipe;
+      // the following are the same assertions, one over the narrow bus itself, and one over the bus returned from pipe;
 
       narrow.pipe((message) => {
         // a forwarded 'baz' isn't part of narrow's surface, so it can't be named
@@ -831,7 +881,7 @@ describe('type safety', () => {
         }
       });
 
-      surface.pipe((message) => {
+      delegate.pipe((message) => {
         // @ts-expect-error 'baz' is not part of the delegate's surface
         if (message.event === 'baz') {
           expectType<never>(message);
@@ -902,18 +952,18 @@ describe('type safety', () => {
       });
     });
 
-    it('piping into a narrower delegate returns the delegate\'s own surface', () => {
+    it('piping into a narrower delegate returns that delegate bus', () => {
       const wide = new Bus<Wide>();
       const narrow = new Bus<Narrow>();
 
-      // pipe returns the delegate's own surface, identical to using narrowBus
-      // directly; source-only events are not surfaced on it.
-      const surface = wide.pipe(narrow);
-      expectType<SubscriptionSurface<Narrow>>(surface);
-      surface.on('foo', payload => expectType<number>(payload));
-      surface.on('bar', payload => expectType<string>(payload));
+      // pipe returns the delegate bus itself, identical to using narrow directly;
+      // source-only events are not surfaced on it.
+      const delegate = wide.pipe(narrow);
+      expectType<Bus<Narrow>>(delegate);
+      delegate.on('foo', payload => expectType<number>(payload));
+      delegate.on('bar', payload => expectType<string>(payload));
       // @ts-expect-error 'baz' is not in the Narrow delegate's event map
-      surface.on('baz', () => undefined);
+      delegate.on('baz', () => undefined);
     });
   });
 
@@ -1083,11 +1133,12 @@ describe('type safety', () => {
       expectType<typeof bridge>(bridge);
 
       // ...but with a concrete map the delegate overload resolves and returns the
-      // delegate's own surface.
+      // delegate bus itself.
       const from = new Bus<Wide>();
       const to = new Bus<Wide>();
-      const surface: SubscriptionSurface<Wide> = from.pipe(to);
-      surface.on('foo', payload => expectType<number>(payload));
+      const chained = from.pipe(to);
+      expectType<Bus<Wide>>(chained);
+      chained.on('foo', payload => expectType<number>(payload));
     });
   });
 

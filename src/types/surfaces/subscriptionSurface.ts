@@ -1,16 +1,15 @@
 import type {CancelablePromise} from 'jaasync';
 
 import type {Scanner} from '../../scanner';
+import type {Bus} from '../../strongbus';
 import type {Subscription, EventMap, Listenable, SubscribableListenable} from '../events';
 import type {
   EventHandler,
   EventSink,
   PipeSink,
-  PipeTargetEmit,
   InferPipeDelegateMap,
   PipePayloadOverlap
 } from '../eventHandlers';
-import type {ControlSurface} from './controlSurface';
 import type {EventKeys, EventPayloadPair, SubscribableEventKeys} from '../utility';
 
 export type AnyEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
@@ -67,14 +66,9 @@ export type SubscriptionSurfaceAny<in out TEventMap extends EventMap> = {
 export type SubscriptionSurfacePipe<in out TEventMap extends EventMap> = {
   bivarianceHack: {
     <TMap extends PipeEventMap<TEventMap>>(sink: PipeSink<TMap>): Subscription;
-    <
-      TDelegate,
-      TDelegateMap extends EventMap = InferPipeDelegateMap<TDelegate>
-    >(
-      delegate: TDelegate & {
-        emit: PipeTargetEmit<TDelegateMap>;
-      } & PipePayloadOverlap<TEventMap, TDelegateMap>
-    ): SubscriptionSurface<TDelegateMap>;
+    <TDelegate extends Bus<any>>(
+      delegate: TDelegate & PipePayloadOverlap<TEventMap, InferPipeDelegateMap<TDelegate>>
+    ): TDelegate;
   };
 }['bivarianceHack'];
 
@@ -106,7 +100,7 @@ export type SubscriptionSurfaceNext<in out TEventMap extends EventMap> = {
 export type SubscriptionSurfaceUnpipe<in out TEventMap extends EventMap> = {
   bivarianceHack: {
     <TMap extends PipeEventMap<TEventMap>>(sink: PipeSink<TMap>): void;
-    <TDelegate extends PipeTarget<TEventMap>>(delegate: TDelegate): void;
+    <TDelegate extends Bus<any>>(delegate: TDelegate): void;
   };
 }['bivarianceHack'];
 
@@ -135,11 +129,3 @@ export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMa
 
   unpipe: SubscriptionSurfaceUnpipe<TEventMap>;
 }
-
-/**
- * A delegate that can receive piped events via {@link Bus.emit}. The returned
- * value is a {@link SubscriptionSurface} over the delegate map for chaining.
- */
-export type PipeTarget<TEventMap extends EventMap> = {
-  bivarianceHack: SubscriptionSurface<TEventMap> & Pick<ControlSurface<TEventMap>, 'emit'>;
-}['bivarianceHack'];

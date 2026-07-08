@@ -21,7 +21,6 @@ import type {
   SubscriptionSurfaceScan,
   SubscriptionSurfaceUnpipe,
   NextResult,
-  PipeTarget,
   ScanOptions
 } from './types/surfaces/subscriptionSurface';
 import type {ControlSurface} from './types/surfaces/controlSurface';
@@ -356,15 +355,18 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }) as SubscriptionSurfaceScan<TEventMap>;
 
   /**
-   * Pipe events into another bus, or into a function sink.
+   * Pipe events into another {@link Bus}, or into a function sink.
    * Function sinks must satisfy {@link PipeSink}: they receive the raised event as
    * a single correlated `{event, payload}` {@link PipeMessage}, plus a `forward`
    * function bound to that message. `forward(dst)` re-emits the whole message on a
    * payload-compatible bus without registering a delegate.
+   *
+   * Bus-to-bus piping returns the delegate bus (for chaining), and requires a real
+   * {@link Bus} instance — not a hand-rolled surface duck type.
    */
   public pipe: SubscriptionSurfacePipe<TEventMap> = ((
-    dest: PipeSink<TEventMap> | PipeTarget<TEventMap>
-  ): Subscription | SubscriptionSurface<TEventMap> => {
+    dest: PipeSink<TEventMap> | Bus<any>
+  ): Subscription | Bus<any> => {
     if(typeof dest === 'function') {
       const sink = dest as PipeSink<TEventMap>;
       const wrapper: GenericHandler = (event, payload) => {
@@ -375,7 +377,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       this.sinks.set(sink, this.addListener(WILDCARD, wrapper));
       return subscriptionWrapper(() => this.unpipe(sink));
     } else {
-      const bus = dest as Bus<TEventMap>;
+      const bus = dest;
       if(bus !== this as any) {
         if(!this.delegates.has(bus)) {
           this.delegates.set(bus, [
@@ -395,13 +397,13 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    * {@link Bus.pipe}. Function sinks must satisfy {@link PipeSink}.
    */
   public unpipe: SubscriptionSurfaceUnpipe<TEventMap> = ((
-    dest: PipeSink<TEventMap> | PipeTarget<TEventMap>
+    dest: PipeSink<TEventMap> | Bus<any>
   ) => {
     if(typeof dest === 'function') {
       this.sinks.get(dest as PipeSink<TEventMap>)?.();
       this.sinks.delete(dest as PipeSink<TEventMap>);
     } else {
-      const bus = dest as Bus<TEventMap>;
+      const bus = dest;
       over(this.delegates.get(bus) || [])();
       this.delegates.delete(bus);
     }
