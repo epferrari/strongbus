@@ -1109,6 +1109,80 @@ describe('Strongbus.Bus', () => {
         expect(onIdle).toHaveBeenCalledTimes(1);
       });
     });
+
+    describe('given a delegate already has listeners before pipe', () => {
+      it('bubbles add-listener hooks when the delegate link is created', () => {
+        const delegate = new DelegateTestBus({});
+        delegate.on('foo', singleEventHandler);
+
+        bus.pipe(delegate);
+
+        expect(onWillAddListener).toHaveBeenCalledWith('foo');
+        expect(onAddListener).toHaveBeenCalledWith('foo');
+        expect(onWillActivate).toHaveBeenCalled();
+        expect(onActive).toHaveBeenCalled();
+        expect(bus.active).toBeTrue();
+      });
+
+      it('bubbles add-listener hooks from nested delegates when the upstream link is created', () => {
+        const node2 = new DelegateTestBus({});
+        const node1 = new DelegateTestBus({});
+        node2.on('foo', singleEventHandler);
+        node1.pipe(node2);
+
+        bus.pipe(node1);
+
+        expect(onAddListener).toHaveBeenCalledWith('foo');
+        expect(onActive).toHaveBeenCalled();
+        expect(bus.active).toBeTrue();
+      });
+    });
+
+    describe('given unpipe disconnects a delegate with listeners', () => {
+      it('bubbles remove-listener hooks when the delegate link is removed', () => {
+        const delegate = new DelegateTestBus({});
+        delegate.on('foo', singleEventHandler);
+        bus.pipe(delegate);
+
+        onWillRemoveListener.calls.reset();
+        onRemoveListener.calls.reset();
+        onWillIdle.calls.reset();
+        onIdle.calls.reset();
+
+        bus.unpipe(delegate);
+
+        expect(onWillRemoveListener).toHaveBeenCalledWith('foo');
+        expect(onRemoveListener).toHaveBeenCalledWith('foo');
+        expect(onWillIdle).toHaveBeenCalled();
+        expect(onIdle).toHaveBeenCalled();
+      });
+
+      it('clears downstream listeners from introspection after unpipe', () => {
+        const delegate = new DelegateTestBus({});
+        delegate.on('foo', singleEventHandler);
+        bus.pipe(delegate);
+
+        expect(bus.hasListenersFor('foo')).toBeTrue();
+
+        bus.unpipe(delegate);
+
+        expect(bus.hasListenersFor('foo')).toBeFalse();
+        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.DELEGATE})).toBe(0);
+      });
+
+      it('marks the upstream bus idle when the delegate was its only downstream demand', () => {
+        const delegate = new DelegateTestBus({});
+        delegate.on('foo', singleEventHandler);
+        bus.pipe(delegate);
+
+        expect(bus.active).toBeTrue();
+
+        bus.unpipe(delegate);
+
+        expect(bus.active).toBeFalse();
+        expect(onIdle).toHaveBeenCalled();
+      });
+    });
   });
 
   describe('#monitor', () => {
