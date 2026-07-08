@@ -57,7 +57,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       error: Infinity
     },
     logger: console,
-    verbose: true // keep legacy behavior in 2.x version
+    verbose: true, // keep legacy behavior in 2.x version
+    coalesceDelegateLifecycle: false
   };
 
   /**
@@ -117,6 +118,16 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   private _cachedCombinedListenersMap: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
   private _cachedOwnListenersMap: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
   private _cachedDelegateListenersMap: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
+  private _coalesceAttachPending: {
+    willAdds: Set<EventKeys<TEventMap>|WILDCARD>;
+    didAdds: Map<EventKeys<TEventMap>|WILDCARD, number>;
+  } | null = null;
+  private _coalesceDetachPending: {
+    willRemoves: Set<EventKeys<TEventMap>|WILDCARD>;
+    didRemoves: Map<EventKeys<TEventMap>|WILDCARD, number>;
+    idlePending: boolean;
+  } | null = null;
+  private _coalesceFlushScheduled = false;
 
 
   constructor(options?: Options) {
@@ -370,10 +381,10 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       if(bus !== this as any) {
         if(!this.delegates.has(bus)) {
           this.delegates.set(bus, [
-            bus.hook(Lifecycle.willAddListener, (event) => this.willAddListener(event as EventKeys<TEventMap>|WILDCARD)),
-            bus.hook(Lifecycle.didAddListener, (event) => this.didAddListener(event as EventKeys<TEventMap>|WILDCARD, bus)),
-            bus.hook(Lifecycle.willRemoveListener, (event) => this.willRemoveListener(event as EventKeys<TEventMap>|WILDCARD)),
-            bus.hook(Lifecycle.didRemoveListener, (event) => this.didRemoveListener(event as EventKeys<TEventMap>|WILDCARD, bus))
+            bus.hook(Lifecycle.willAddListener, (event) => this.onDelegateWillAddListener(event as EventKeys<TEventMap>|WILDCARD)),
+            bus.hook(Lifecycle.didAddListener, (event) => this.onDelegateDidAddListener(event as EventKeys<TEventMap>|WILDCARD)),
+            bus.hook(Lifecycle.willRemoveListener, (event) => this.onDelegateWillRemoveListener(event as EventKeys<TEventMap>|WILDCARD)),
+            bus.hook(Lifecycle.didRemoveListener, (event) => this.onDelegateDidRemoveListener(event as EventKeys<TEventMap>|WILDCARD))
           ]);
           this.syncDelegateListenersAttached(bus);
         }
@@ -784,9 +795,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     if(bus === this) {
       this.invalidateOwnListenerCache();
     } else {
-      const currCount = this.delegateListenerCountsByEvent.get(event) ?? 0;
-      this.delegateListenerCountsByEvent.set(event, Math.max(currCount + 1, 0));
-      this._delegateListenerTotalCount = Math.max(this._delegateListenerTotalCount + 1, 0);
+      this.applyDelegateListenerAdded(event);
     }
 
     this.emitLifecycleEvent(Lifecycle.didAddListener, event);
@@ -813,12 +822,182 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     if(bus === this) {
       this.invalidateOwnListenerCache();
     } else {
-      const currCount = this.delegateListenerCountsByEvent.get(event) ?? 0;
-      this.delegateListenerCountsByEvent.set(event, Math.max(currCount - 1, 0));
-      this._delegateListenerTotalCount = Math.max(this._delegateListenerTotalCount - 1, 0);
+      this.applyDelegateListenerRemoved(event);
     }
 
     this.emitLifecycleEvent(Lifecycle.didRemoveListener, event);
+    if(this._active && !this.hasListeners()) {
+      this._active = false;
+      this.emitLifecycleEvent(Lifecycle.idle, null);
+    }
+  }
+
+  private applyDelegateListenerAdded(event: EventKeys<TEventMap>|WILDCARD): void {
+    const currCount = this.delegateListenerCountsByEvent.get(event) ?? 0;
+    this.delegateListenerCountsByEvent.set(event, Math.max(currCount + 1, 0));
+    this._delegateListenerTotalCount = Math.max(this._delegateListenerTotalCount + 1, 0);
+  }
+
+  private applyDelegateListenerRemoved(event: EventKeys<TEventMap>|WILDCARD): void {
+    const currCount = this.delegateListenerCountsByEvent.get(event) ?? 0;
+    this.delegateListenerCountsByEvent.set(event, Math.max(currCount - 1, 0));
+    this._delegateListenerTotalCount = Math.max(this._delegateListenerTotalCount - 1, 0);
+  }
+
+  private onDelegateWillAddListener(event: EventKeys<TEventMap>|WILDCARD): void {
+    if(!this.options.coalesceDelegateLifecycle) {
+      this.willAddListener(event);
+      return;
+    }
+    this.enqueueCoalesceAttachWillAdd(event);
+    this.scheduleCoalesceFlush();
+  }
+
+  private onDelegateDidAddListener(event: EventKeys<TEventMap>|WILDCARD): void {
+    if(!this.options.coalesceDelegateLifecycle) {
+      this.didAddListener(event);
+      return;
+    }
+    this.enqueueCoalesceAttachDidAdd(event);
+    this.scheduleCoalesceFlush();
+  }
+
+  private onDelegateWillRemoveListener(event: EventKeys<TEventMap>|WILDCARD): void {
+    if(!this.options.coalesceDelegateLifecycle) {
+      this.willRemoveListener(event);
+      return;
+    }
+    this.enqueueCoalesceDetachWillRemove(event);
+    this.scheduleCoalesceFlush();
+  }
+
+  private onDelegateDidRemoveListener(event: EventKeys<TEventMap>|WILDCARD): void {
+    if(!this.options.coalesceDelegateLifecycle) {
+      this.didRemoveListener(event);
+      return;
+    }
+    this.enqueueCoalesceDetachDidRemove(event);
+    this.scheduleCoalesceFlush();
+  }
+
+  private ensureCoalesceAttachPending() {
+    if(!this._coalesceAttachPending) {
+      this._coalesceAttachPending = {
+        willAdds: new Set<EventKeys<TEventMap>|WILDCARD>(),
+        didAdds: new Map<EventKeys<TEventMap>|WILDCARD, number>()
+      };
+    }
+    return this._coalesceAttachPending;
+  }
+
+  private ensureCoalesceDetachPending() {
+    if(!this._coalesceDetachPending) {
+      this._coalesceDetachPending = {
+        willRemoves: new Set<EventKeys<TEventMap>|WILDCARD>(),
+        didRemoves: new Map<EventKeys<TEventMap>|WILDCARD, number>(),
+        idlePending: false
+      };
+    }
+    return this._coalesceDetachPending;
+  }
+
+  private enqueueCoalesceAttachWillAdd(event: EventKeys<TEventMap>|WILDCARD): void {
+    this.ensureCoalesceAttachPending().willAdds.add(event);
+  }
+
+  private enqueueCoalesceAttachDidAdd(event: EventKeys<TEventMap>|WILDCARD): void {
+    const pending = this.ensureCoalesceAttachPending();
+    pending.didAdds.set(event, (pending.didAdds.get(event) ?? 0) + 1);
+  }
+
+  private enqueueCoalesceDetachWillRemove(event: EventKeys<TEventMap>|WILDCARD): void {
+    const pending = this.ensureCoalesceDetachPending();
+    const eventHandlerCount = this.getListenerCountFor(event);
+    if(!eventHandlerCount) {
+      return;
+    }
+    if(this._active && this.getListenerCount() === 1 && eventHandlerCount === 1) {
+      pending.idlePending = true;
+    }
+    pending.willRemoves.add(event);
+  }
+
+  private enqueueCoalesceDetachDidRemove(event: EventKeys<TEventMap>|WILDCARD): void {
+    const pending = this.ensureCoalesceDetachPending();
+    pending.didRemoves.set(event, (pending.didRemoves.get(event) ?? 0) + 1);
+  }
+
+  private scheduleCoalesceFlush(): void {
+    if(this._coalesceFlushScheduled) {
+      return;
+    }
+    this._coalesceFlushScheduled = true;
+    queueMicrotask(() => {
+      this._coalesceFlushScheduled = false;
+      this.flushCoalesceAttach();
+      this.flushCoalesceDetach();
+    });
+  }
+
+  private flushCoalesceAttach(): void {
+    const pending = this._coalesceAttachPending;
+    if(!pending) {
+      return;
+    }
+    this._coalesceAttachPending = null;
+
+    const activationPending = !this._active;
+    if(activationPending) {
+      this.emitLifecycleEvent(Lifecycle.willActivate, null);
+    }
+
+    for(const event of pending.willAdds) {
+      this.emitLifecycleEvent(Lifecycle.willAddListener, event);
+    }
+
+    this.invalidateCombinedListenerCache();
+    for(const [event, count] of pending.didAdds) {
+      for(let i = 0; i < count; i++) {
+        this.applyDelegateListenerAdded(event);
+      }
+    }
+
+    for(const event of pending.didAdds.keys()) {
+      this.emitLifecycleEvent(Lifecycle.didAddListener, event);
+    }
+
+    if(activationPending && this.hasListeners()) {
+      this._active = true;
+      this.emitLifecycleEvent(Lifecycle.active, null);
+    }
+  }
+
+  private flushCoalesceDetach(): void {
+    const pending = this._coalesceDetachPending;
+    if(!pending) {
+      return;
+    }
+    this._coalesceDetachPending = null;
+
+    if(pending.idlePending) {
+      this.emitLifecycleEvent(Lifecycle.willIdle, null);
+    }
+
+    for(const event of pending.willRemoves) {
+      this.emitLifecycleEvent(Lifecycle.willRemoveListener, event);
+    }
+
+    this.invalidateCombinedListenerCache();
+    for(const [event, count] of pending.didRemoves) {
+      for(let i = 0; i < count; i++) {
+        this.applyDelegateListenerRemoved(event);
+      }
+    }
+
+    for(const event of pending.didRemoves.keys()) {
+      this.emitLifecycleEvent(Lifecycle.didRemoveListener, event);
+    }
+
     if(this._active && !this.hasListeners()) {
       this._active = false;
       this.emitLifecycleEvent(Lifecycle.idle, null);
@@ -844,6 +1023,19 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     }
 
     if(!total) {
+      return;
+    }
+
+    if(this.options.coalesceDelegateLifecycle) {
+      const pending = this._coalesceAttachPending = {
+        willAdds: new Set<EventKeys<TEventMap>|WILDCARD>(),
+        didAdds: new Map<EventKeys<TEventMap>|WILDCARD, number>()
+      };
+      for(const {key, count} of additions) {
+        pending.willAdds.add(key);
+        pending.didAdds.set(key, (pending.didAdds.get(key) ?? 0) + count);
+      }
+      this.flushCoalesceAttach();
       return;
     }
 
@@ -878,6 +1070,34 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   private syncDelegateListenersDetached(
     listeners: ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>
   ): void {
+    const ownTotal = this.getListenerCount({scope: ListenerScope.OWN});
+    let removalCount = 0;
+
+    for(const [, handlers] of listeners) {
+      removalCount += handlers.size;
+    }
+
+    if(!removalCount) {
+      return;
+    }
+
+    if(this.options.coalesceDelegateLifecycle) {
+      const pending = this._coalesceDetachPending = {
+        willRemoves: new Set<EventKeys<TEventMap>|WILDCARD>(),
+        didRemoves: new Map<EventKeys<TEventMap>|WILDCARD, number>(),
+        idlePending: this._active && ownTotal === 0
+      };
+      for(const [event, handlers] of listeners) {
+        if(!handlers.size) {
+          continue;
+        }
+        pending.willRemoves.add(event);
+        pending.didRemoves.set(event, handlers.size);
+      }
+      this.flushCoalesceDetach();
+      return;
+    }
+
     const removals: (EventKeys<TEventMap>|WILDCARD)[] = [];
     const perEventRemaining = new Map<EventKeys<TEventMap>|WILDCARD, number>();
 
@@ -891,7 +1111,6 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       }
     }
 
-    const ownTotal = this.getListenerCount({scope: ListenerScope.OWN});
     const idlePending = this._active && ownTotal === 0 && removals.length > 0;
 
     if(idlePending) {
@@ -912,10 +1131,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     for(const event of removals) {
       const eventRemaining = perEventRemaining.get(event)!;
 
-      const currCount = this.delegateListenerCountsByEvent.get(event) ?? 0;
-      this.delegateListenerCountsByEvent.set(event, Math.max(currCount - 1, 0));
-      this._delegateListenerTotalCount = Math.max(this._delegateListenerTotalCount - 1, 0);
-
+      this.applyDelegateListenerRemoved(event);
       this.invalidateCombinedListenerCache();
       this.emitLifecycleEvent(Lifecycle.didRemoveListener, event);
 

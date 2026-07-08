@@ -78,6 +78,11 @@ describe('Strongbus.Bus', () => {
         expect(options.thresholds.warn).toEqual(14);
         expect(options.thresholds.error).toEqual(21);
       });
+
+      it('defaults coalesceDelegateLifecycle to false', () => {
+        const options: Strongbus.Options = (bus as any).options;
+        expect(options.coalesceDelegateLifecycle).toBeFalse();
+      });
     });
 
     describe('given an unhandled event is raised', () => {
@@ -1278,6 +1283,91 @@ describe('Strongbus.Bus', () => {
           'didRemove:foo',
           'didRemove:foo',
           'idle'
+        ]);
+      });
+    });
+
+    describe('given coalesceDelegateLifecycle is enabled', () => {
+      const otherEventHandler = jasmine.createSpy('otherEventHandler');
+      let coalescingBus: Strongbus.Bus<TestEventMap>;
+
+      beforeEach(() => {
+        coalescingBus = new Strongbus.Bus<TestEventMap>({coalesceDelegateLifecycle: true});
+        coalescingBus.hook('willAddListener', onWillAddListener = jasmine.createSpy('onWillAddListener'));
+        coalescingBus.hook('didAddListener', onAddListener = jasmine.createSpy('onAddListener'));
+        coalescingBus.hook('willRemoveListener', onWillRemoveListener = jasmine.createSpy('onWillRemoveListener'));
+        coalescingBus.hook('didRemoveListener', onRemoveListener = jasmine.createSpy('onRemoveListener'));
+        coalescingBus.hook('willActivate', onWillActivate = jasmine.createSpy('onWillActivate'));
+        coalescingBus.hook('active', onActive = jasmine.createSpy('onActive'));
+        coalescingBus.hook('willIdle', onWillIdle = jasmine.createSpy('onWillIdle'));
+        coalescingBus.hook('idle', onIdle = jasmine.createSpy('onIdle'));
+      });
+
+      it('emits one add-listener hook per event when pipe attaches a delegate', () => {
+        const delegate = new DelegateTestBus({});
+        delegate.on('foo', singleEventHandler);
+        delegate.on('foo', otherEventHandler);
+
+        coalescingBus.pipe(delegate);
+
+        expect(onWillAddListener).toHaveBeenCalledOnceWith('foo');
+        expect(onAddListener).toHaveBeenCalledOnceWith('foo');
+        expect(coalescingBus.getListenerCountFor('foo')).toBe(2);
+        expect(onWillActivate).toHaveBeenCalled();
+        expect(onActive).toHaveBeenCalled();
+      });
+
+      it('emits one remove-listener hook per event when unpipe detaches a delegate', () => {
+        const delegate = new DelegateTestBus({});
+        delegate.on('foo', singleEventHandler);
+        delegate.on('foo', otherEventHandler);
+        coalescingBus.pipe(delegate);
+
+        onWillRemoveListener.calls.reset();
+        onRemoveListener.calls.reset();
+        onWillIdle.calls.reset();
+        onIdle.calls.reset();
+
+        coalescingBus.unpipe(delegate);
+
+        expect(onWillRemoveListener).toHaveBeenCalledOnceWith('foo');
+        expect(onRemoveListener).toHaveBeenCalledOnceWith('foo');
+        expect(onWillIdle).toHaveBeenCalled();
+        expect(onIdle).toHaveBeenCalled();
+      });
+
+      it('coalesces delegate listener changes made after pipe within the same turn', async () => {
+        const delegate = new DelegateTestBus({});
+        coalescingBus.pipe(delegate);
+
+        delegate.on('foo', singleEventHandler);
+        delegate.on('foo', otherEventHandler);
+
+        await Promise.resolve();
+
+        expect(onWillAddListener).toHaveBeenCalledOnceWith('foo');
+        expect(onAddListener).toHaveBeenCalledOnceWith('foo');
+        expect(coalescingBus.getListenerCountFor('foo')).toBe(2);
+      });
+
+      it('preserves bracketed hook ordering when pipe attaches multiple listeners', () => {
+        const order: string[] = [];
+        onWillAddListener.and.callFake((event) => order.push(`willAdd:${event}`));
+        onAddListener.and.callFake((event) => order.push(`didAdd:${event}`));
+        onWillActivate.and.callFake(() => order.push('willActivate'));
+        onActive.and.callFake(() => order.push('active'));
+
+        const delegate = new DelegateTestBus({});
+        delegate.on('foo', singleEventHandler);
+        delegate.on('foo', otherEventHandler);
+
+        coalescingBus.pipe(delegate);
+
+        expect(order).toEqual([
+          'willActivate',
+          'willAdd:foo',
+          'didAdd:foo',
+          'active'
         ]);
       });
     });
