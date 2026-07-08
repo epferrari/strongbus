@@ -4,6 +4,7 @@ import {WILDCARD, type EventMap, type Subscription} from './types/events';
 import {Lifecycle, type LifecycleSubjectEvent} from './types/lifecycle';
 import {ListenerScope} from './types/listenerScope';
 import type {EventHandler, PipeSink, PipeMessage} from './types/eventHandlers';
+import type {StrongbusEventMapBranded} from './types/strongbusEventMapBrand';
 import type {ListenerSet} from './types/listenerRegistry';
 import type {ControlSurface} from './types/surfaces/controlSurface';
 import type {IntrospectionSurface} from './types/surfaces/introspectionSurface';
@@ -424,6 +425,20 @@ describe('type safety', () => {
 
         // @ts-expect-error shared 'foo' payload disagrees (number vs string)
         forward(wrongFooPayload);
+      });
+    });
+
+    // pattern: salsa's `TypedMsgBus<M> extends Bus<M>` with an explicit brand
+    // redeclaration so `forward(dst)` keeps the delegate map on branded targets.
+    it('forwards into a subclass that redeclares strongbusEventMap', () => {
+      class TypedBus<M extends EventMap> extends Bus<M> implements StrongbusEventMapBranded<M> {
+        declare readonly strongbusEventMap: M;
+      }
+
+      const src = new Bus<Narrow>();
+      const dst = new TypedBus<Narrow>();
+      src.pipe((_msg, forward) => {
+        forward(dst);
       });
     });
 
@@ -917,9 +932,12 @@ describe('type safety', () => {
 
     // a generic subclass (`class Test<M> extends Bus<M>`) must keep every surface
     // method correlated over the still-open event map `M` — the motivation for
-    // the overloaded `emit`.
+    // the overloaded `emit`. Subclasses that participate in `forward`/`pipe`
+    // delegate inference should also implement {@link StrongbusEventMapBranded}.
     it('keeps the full surface correlated in a generic Bus subclass', () => {
-      class Test<M extends EventMap> extends Bus<M> {
+      class Test<M extends EventMap> extends Bus<M> implements StrongbusEventMapBranded<M> {
+        declare readonly strongbusEventMap: M;
+
         public relay<K extends EventKeys<M>>(event: K, payload: M[K]): boolean {
           return this.emit(event, payload);
         }
@@ -1034,7 +1052,9 @@ describe('type safety', () => {
     // (`pipe(() => …)`), message (`pipe((message) => …)`), and fully-typed
     // function references — over its open map.
     it('accepts nullary, message, and untyped sinks in a generic subclass', () => {
-      class Test<M extends EventMap> extends Bus<M> {
+      class Test<M extends EventMap> extends Bus<M> implements StrongbusEventMapBranded<M> {
+        declare readonly strongbusEventMap: M;
+
         public relayAll(sink: PipeSink<M>): Subscription {
           return this.pipe(sink);
         }

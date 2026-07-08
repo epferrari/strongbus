@@ -33,6 +33,7 @@ import type {
   IntrospectionSurfaceListenerForEvent
 } from './types/surfaces/introspectionSurface';
 import type {MonitoringSurface, MonitoringHook} from './types/surfaces/monitoringSurface';
+import type {StrongbusEventMapBranded} from './types/strongbusEventMapBrand';
 import type {EventKeys, SubscribableEventKeys, VoidEventKeys} from './types/utility';
 import {over} from './utils/over';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
@@ -47,12 +48,17 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   ControlSurface<TEventMap>,
   SubscriptionSurface<TEventMap>,
   IntrospectionSurface<TEventMap>,
-  MonitoringSurface<TEventMap> {
+  MonitoringSurface<TEventMap>,
+  StrongbusEventMapBranded<TEventMap> {
 
   /**
-   * @internal Carries `TEventMap` for pipe delegate inference without relying on bivariant surfaces.
+   * Phantom brand for event-map inference on subclasses and `forward`/`pipe` targets.
+   * Subclasses should redeclare with their map type parameter, e.g.
+   * `declare readonly strongbusEventMap: M`.
+   *
+   * @see {@link StrongbusEventMapBranded}
    */
-  public declare readonly strongbusEventMap?: TEventMap;
+  public declare readonly strongbusEventMap: TEventMap;
 
   private static defaultOptions: Required<Options> & {thresholds: Required<ListenerThresholds>} = {
     name: 'Anonymous',
