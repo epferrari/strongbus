@@ -102,6 +102,8 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **`PipePayloadOverlap` uses tuple equality (`[A] extends [B]`)** so narrow-to-wide
   `pipe`/`forward` targets type-check when the source map is an open generic and
   the delegate map is a concrete superset (e.g. `_incomingPushBus.pipe(_bus)`).
+- **`pipe(bus)` returns the concrete delegate type** (`TDelegate`), preserving
+  subclasses for chaining (e.g. `root.pipe(feature).pipe(child)`).
 - **`on(event, handler)` only accepts a single event key.** It no longer
   forwards arrays to `any` or `'*'` to `proxy`.
 - **`next(...)` resolves with `{event, payload}`** instead of the bare payload
