@@ -64,6 +64,26 @@ bus.on('count', (n: string) => {}); // compile error: 'count' carries a number
 bus.emit('message');                // compile error: 'message' requires a string payload
 ```
 
+## Emitting events
+
+`emit(event, payload)` returns a `boolean` indicating whether the event was handled (by an own listener, a
+wildcard sink, or a delegate bus).
+
+```typescript
+const handled = bus.emit('message', 'hello');
+```
+
+Events mapped to a `void` payload can be emitted with no second argument (or `null`/`undefined`):
+
+```typescript
+bus.emit('connected');
+bus.emit('connected', null);
+```
+
+By default, emitting an event with no listeners is a no-op. Set `allowUnhandledEvents: false` to instead route
+unhandled events through `handleUnexpectedEvent` (which throws by default; override it in a subclass to
+customize).
+
 ## Subscriptions
 
 Every subscriber returns a `Subscription` — a function that releases the subscription. It can be disposed by
@@ -106,6 +126,28 @@ bus.any(['message', 'count'], (event, payload) => {
 });
 ```
 
+## Piping
+
+`pipe` forwards every event from this bus into another `Bus` or into a function sink. Use `unpipe` to
+detach.
+
+### `pipe(bus)` — delegate piping
+
+Pipe into another `Bus`, counting the delegate's listeners as handlers on this bus. Returns the delegate bus
+(so pipes chain and subclasses are preserved). The delegate must be a real `Bus` instance.
+
+```typescript
+const root = new Bus<Events>();
+const feature = new Bus<Events>();
+
+root.pipe(feature);          // events emitted on `root` are observed by `feature`'s listeners
+feature.on('message', handle);
+
+root.emit('message', 'hi');  // `handle` is invoked
+
+root.unpipe(feature);        // detach
+```
+
 ### `pipe(sink)` — function sink
 
 Pipe *every* event into a function sink. The sink receives the raised event as a single correlated
@@ -139,43 +181,6 @@ be absent from the source or carry the same payload type. It's therefore impossi
 with a payload type `dst` doesn't expect, and source-only events `dst` doesn't declare are simply dropped.
 Because the sink never hands you a bare `(event, payload)` pair to re-`emit`, a mismatched pair can't be
 fabricated — `emit` itself only accepts a correlated `(event, payload)`, never a `{event, payload}` object.
-
-## Emitting events
-
-`emit(event, payload)` returns a `boolean` indicating whether the event was handled (by an own listener, a
-wildcard sink, or a delegate bus).
-
-```typescript
-const handled = bus.emit('message', 'hello');
-```
-
-Events mapped to a `void` payload can be emitted with no second argument (or `null`/`undefined`):
-
-```typescript
-bus.emit('connected');
-bus.emit('connected', null);
-```
-
-By default, emitting an event with no listeners is a no-op. Set `allowUnhandledEvents: false` to instead route
-unhandled events through `handleUnexpectedEvent` (which throws by default; override it in a subclass to
-customize).
-
-## Piping buses together
-
-`pipe` also accepts another `Bus`, forwarding this bus's events into the target and counting the target's
-listeners as handlers. It returns the target bus, so pipes can be chained. Use `unpipe` to detach.
-
-```typescript
-const root = new Bus<Events>();
-const feature = new Bus<Events>();
-
-root.pipe(feature);          // events emitted on `root` are observed by `feature`'s listeners
-feature.on('message', handle);
-
-root.emit('message', 'hi');  // `handle` is invoked
-
-root.unpipe(feature);        // detach
-```
 
 ### `pipe(bus)` vs. a forwarding sink
 
