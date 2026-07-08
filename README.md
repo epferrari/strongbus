@@ -137,15 +137,15 @@ Pipe into another `Bus`, counting the delegate's listeners as handlers on this b
 (so pipes chain and subclasses are preserved). The delegate must be a real `Bus` instance.
 
 ```typescript
-const root = new Bus<Events>();
+const producer = new Bus<Events>();
 const leaf = new Bus<Events>();
 
-root.pipe(leaf);             // events emitted on `root` are observed by `leaf`'s listeners
+producer.pipe(leaf);         // events emitted on `producer` are observed by `leaf`'s listeners
 leaf.on('message', handle);
 
-root.emit('message', 'hi');  // `handle` is invoked
+producer.emit('message', 'hi'); // `handle` is invoked
 
-root.unpipe(leaf);           // detach
+producer.unpipe(leaf);       // detach
 ```
 
 ### `pipe(sink)` — function sink
@@ -190,41 +190,53 @@ There are two ways to aggregate events across buses, and they trade off differen
 specific events are added or removed* through `leaf` — its `willAddListener` / `didAddListener` /
 `willRemoveListener` / `didRemoveListener` hooks fire for the delegate's listeners — or when you have a *linear
 chain* of buses. The delegate's listeners count toward `root`'s listener count, and pipes chain
-(`head.pipe(mid).pipe(tail)`).
+(`node1.pipe(node2).pipe(node3)`).
 
 ```typescript
-const root = new Bus<Events>();
+type Events = {foo: number};
+const producer = new Bus<Events>();
 
 let producing = false;
-const produce = () => {
+const produce = (payload: number) => {
   if (producing) {
-    root.emit('foo', payload);
+    producer.emit('foo', payload);
   }
 };
 
-// `root` reacts to demand for 'foo' anywhere downstream
-root.hook('didAddListener', (event) => { if (event === 'foo') producing = true; });
-root.hook('didRemoveListener', (event) => { if (event === 'foo') producing = false; });
+// `producer` reacts to demand for 'foo' anywhere downstream
+producer.hook('didAddListener', (event) => { if (event === 'foo') producing = true; });
+producer.hook('didRemoveListener', (event) => { if (event === 'foo') producing = false; });
 
-const head = new Bus<Events>();
-head.on('foo', handleFoo);
-const mid = new Bus<Events>();
-mid.on('foo', handleFoo);
-const tail = new Bus<Events>();
-tail.on('foo', handleFoo);
+const node1 = new Bus<Events>();
+node1.on('foo', (payload) => console.log(`node 1 received event=foo, payload=${payload}`));
+const node2 = new Bus<Events>();
+node2.on('foo', (payload) => console.log(`node 2 received event=foo, payload=${payload}`));
+const node3 = new Bus<Events>();
+node3.on('foo', (payload) => console.log(`node 3 received event=foo, payload=${payload}`));
 
-produce();        // producing === false, nothing emitted
+produce(1);           // producing === false, nothing emitted
 
-root.pipe(head);  // events flow root -> head; 'foo' now has a downstream listener
-produce();        // handleFoo called once
+producer.pipe(node1); // events flow producer -> node1; 'foo' now has a downstream listener
+produce(1);           // logs "node 1 received event=foo, payload=1"
 
-head.pipe(mid);   // events flow root -> head -> mid
-mid.pipe(tail);   // events flow root -> head -> mid -> tail
-produce();        // handleFoo called on head, mid, and tail
+node1.pipe(node2);   // events flow producer -> node1 -> node2
+node2.pipe(node3);   // events flow producer -> node1 -> node2 -> node3
+produce(6);          // logs:
+// "node 1 received event=foo, payload=6"
+// "node 2 received event=foo, payload=6"
+// "node 3 received event=foo, payload=6"
 
-mid.unpipe(tail);
-head.unpipe(mid);
-root.unpipe(head); // 'foo' has no downstream listeners again; `producing` flips back to false
+node2.unpipe(node3);
+node1.unpipe(node2);
+producer.unpipe(node1); // 'foo' has no downstream listeners again; `producing` flips back to false
+produce(5); // logs nothing
+
+// alternatively, using `hasListenersFor` and no `.hook`s
+const produce = (payload: number) => {
+  if(producer.hasListenersFor('foo')) {
+    producer.emit('foo', payload);
+  }
+}
 ```
 
 **`feeder.pipe((msg, forward) => forward(hub))` — forwarding sink.** Reach for this when you *don't* care about
