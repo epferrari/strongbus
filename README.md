@@ -138,14 +138,14 @@ Pipe into another `Bus`, counting the delegate's listeners as handlers on this b
 
 ```typescript
 const root = new Bus<Events>();
-const feature = new Bus<Events>();
+const leaf = new Bus<Events>();
 
-root.pipe(feature);          // events emitted on `root` are observed by `feature`'s listeners
-feature.on('message', handle);
+root.pipe(leaf);             // events emitted on `root` are observed by `leaf`'s listeners
+leaf.on('message', handle);
 
 root.emit('message', 'hi');  // `handle` is invoked
 
-root.unpipe(feature);        // detach
+root.unpipe(leaf);           // detach
 ```
 
 ### `pipe(sink)` — function sink
@@ -190,7 +190,7 @@ There are two ways to aggregate events across buses, and they trade off differen
 specific events are added or removed* through `leaf` — its `willAddListener` / `didAddListener` /
 `willRemoveListener` / `didRemoveListener` hooks fire for the delegate's listeners — or when you have a *linear
 chain* of buses. The delegate's listeners count toward `root`'s listener count, and pipes chain
-(`root.pipe(b).pipe(c)`).
+(`head.pipe(mid).pipe(tail)`).
 
 ```typescript
 const root = new Bus<Events>();
@@ -206,40 +206,44 @@ const produce = () => {
 root.hook('didAddListener', (event) => { if (event === 'foo') producing = true; });
 root.hook('didRemoveListener', (event) => { if (event === 'foo') producing = false; });
 
-const b = new Bus<Events>();
-b.on('foo', handleFoo);
-const c = new Bus<Events>();
-c.on('foo', handleFoo);
+const head = new Bus<Events>();
+head.on('foo', handleFoo);
+const mid = new Bus<Events>();
+mid.on('foo', handleFoo);
+const tail = new Bus<Events>();
+tail.on('foo', handleFoo);
 
 produce();        // producing === false, nothing emitted
 
-root.pipe(b);     // events flow root -> b; 'foo' now has a downstream listener
+root.pipe(head);  // events flow root -> head; 'foo' now has a downstream listener
 produce();        // handleFoo called once
 
-b.pipe(c);        // events flow root -> b -> c
-produce();        // handleFoo called on both b and c
+head.pipe(mid);   // events flow root -> head -> mid
+mid.pipe(tail);   // events flow root -> head -> mid -> tail
+produce();        // handleFoo called on head, mid, and tail
 
-b.unpipe(c);
-root.unpipe(b);   // 'foo' has no downstream listeners again; `producing` flips back to false
+mid.unpipe(tail);
+head.unpipe(mid);
+root.unpipe(head); // 'foo' has no downstream listeners again; `producing` flips back to false
 ```
 
-**`leaf.pipe((msg, forward) => forward(root))` — forwarding sink.** Reach for this when you *don't* care about
+**`feeder.pipe((msg, forward) => forward(hub))` — forwarding sink.** Reach for this when you *don't* care about
 listener add/remove bookkeeping, or when you have an *inverted tree* of many buses funneling into a single
-`root` and you attach your listeners on `root`. A forwarding sink registers no delegate, so it skips the
+`hub` and you attach your listeners on `hub`. A forwarding sink registers no delegate, so it skips the
 lifecycle-hook and listener-count overhead that `pipe(bus)` incurs.
 
 ```typescript
-const root = new Bus<Events>();
-root.on('foo', handleFoo);
+const hub = new Bus<Events>();
+hub.on('foo', handleFoo);
 
-const b = new Bus<Events>();
-const c = new Bus<Events>();
+const feederA = new Bus<Events>();
+const feederB = new Bus<Events>();
 
-b.pipe((msg, forward) => forward(root)); // events flow b -> root
-c.pipe((msg, forward) => forward(root)); // events flow c -> root
+feederA.pipe((msg, forward) => forward(hub)); // events flow feederA -> hub
+feederB.pipe((msg, forward) => forward(hub)); // events flow feederB -> hub
 
-b.emit('foo', payload);  // handleFoo called
-c.emit('foo', payload);  // handleFoo called
+feederA.emit('foo', payload);  // handleFoo called
+feederB.emit('foo', payload);  // handleFoo called
 ```
 
 See [Migrating from v2: `pipe(bus)` vs. forwarding sink](./CHANGELOG.md#pipebus-vs-forwarding-sink).

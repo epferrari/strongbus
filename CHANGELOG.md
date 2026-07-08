@@ -103,7 +103,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   `pipe`/`forward` targets type-check when the source map is an open generic and
   the delegate map is a concrete superset (e.g. `_incomingPushBus.pipe(_bus)`).
 - **`pipe(bus)` returns the concrete delegate type** (`TDelegate`), preserving
-  subclasses for chaining (e.g. `root.pipe(feature).pipe(child)`).
+  subclasses for chaining (e.g. `head.pipe(mid).pipe(tail)`).
 - **`on(event, handler)` only accepts a single event key.** It no longer
   forwards arrays to `any` or `'*'` to `proxy`.
 - **`next(...)` resolves with `{event, payload}`** instead of the bare payload
@@ -157,7 +157,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | v2 (removed or changed) | v3 equivalent |
 | --- | --- |
 | `bus.on('*', handler)` | `bus.pipe(handler)` |
-| `leaf.on('*', root.emit)` | `leaf.pipe((msg, forward) => forward(root))` — see [`pipe(bus)` vs. forwarding sink](#pipebus-vs-forwarding-sink) |
+| `feeder.on('*', hub.emit)` | `feeder.pipe((msg, forward) => forward(hub))` — see [`pipe(bus)` vs. forwarding sink](#pipebus-vs-forwarding-sink) |
 | `bus.on([...events], handler)` | `bus.any([...events], handler)` |
 | `bus.proxy(handler)` | `bus.pipe(handler)` |
 | `bus.every(handler)` | `bus.pipe(handler)` |
@@ -234,17 +234,17 @@ const sub = bus.pipe(({event, payload}) => { /* ... */ });
 The README's [`pipe(bus)` vs. a forwarding sink](./README.md#pipebus-vs-a-forwarding-sink) section
 documents when to use delegate piping versus a forwarding sink. For migration from v2:
 
-In v2, funneling events from a leaf bus into a root was often spelled
-`leaf.on('*', root.emit)`. v3 removes the `'*'` subscription, so a `pipe` sink with `forward` is the
+In v2, funneling events from a feeder bus into a hub was often spelled
+`feeder.on('*', hub.emit)`. v3 removes the `'*'` subscription, so a `pipe` sink with `forward` is the
 replacement — and unlike passing a bare `emit`, `forward`'s target is payload-checked (see
 [`pipe(sink)` in the README](./README.md#pipesink--function-sink)).
 
 ```typescript
 // v2
-leaf.on('*', root.emit);
+feeder.on('*', hub.emit);
 
 // v3
-leaf.pipe((msg, forward) => forward(root));
+feeder.pipe((msg, forward) => forward(hub));
 ```
 
 ### `next` resolves with `{event, payload}`
