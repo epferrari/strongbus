@@ -1234,6 +1234,24 @@ describe('Strongbus.Bus', () => {
         expect(bus.active).toBeFalse();
         expect(onIdle).toHaveBeenCalled();
       });
+
+      it('does not mark the upstream bus idle when another downstream still has listeners', () => {
+        const downstream1 = new DownstreamTestBus({});
+        const downstream2 = new DownstreamTestBus({});
+        downstream1.on('foo', singleEventHandler);
+        downstream2.on('bar', singleEventHandler);
+        bus.pipe(downstream1);
+        bus.pipe(downstream2);
+
+        onWillIdle.calls.reset();
+        onIdle.calls.reset();
+
+        bus.unpipe(downstream1);
+
+        expect(bus.active).toBeTrue();
+        expect(onWillIdle).not.toHaveBeenCalled();
+        expect(onIdle).not.toHaveBeenCalled();
+      });
     });
 
     describe('given downstream sync reconciles pre-existing listeners', () => {
@@ -1255,10 +1273,10 @@ describe('Strongbus.Bus', () => {
         expect(order).toEqual([
           'willActivate',
           'willAdd:foo',
+          'didAdd:foo',
+          'active',
           'willAdd:foo',
-          'didAdd:foo',
-          'didAdd:foo',
-          'active'
+          'didAdd:foo'
         ]);
       });
 
@@ -1277,10 +1295,10 @@ describe('Strongbus.Bus', () => {
         bus.unpipe(downstream);
 
         expect(order).toEqual([
-          'willIdle',
-          'willRemove:foo',
           'willRemove:foo',
           'didRemove:foo',
+          'willIdle',
+          'willRemove:foo',
           'didRemove:foo',
           'idle'
         ]);
@@ -1336,17 +1354,15 @@ describe('Strongbus.Bus', () => {
         expect(onIdle).toHaveBeenCalled();
       });
 
-      it('coalesces downstream listener changes made after pipe within the same turn', async () => {
+      it('does not coalesce incremental downstream listener changes after pipe', () => {
         const downstream = new DownstreamTestBus({});
         coalescingBus.pipe(downstream);
 
         downstream.on('foo', singleEventHandler);
         downstream.on('foo', otherEventHandler);
 
-        await Promise.resolve();
-
-        expect(onWillAddListener).toHaveBeenCalledOnceWith('foo');
-        expect(onAddListener).toHaveBeenCalledOnceWith('foo');
+        expect(onWillAddListener).toHaveBeenCalledTimes(2);
+        expect(onAddListener).toHaveBeenCalledTimes(2);
         expect(coalescingBus.getListenerCountFor('foo')).toBe(2);
       });
 

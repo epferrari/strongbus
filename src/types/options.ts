@@ -19,7 +19,8 @@ export interface ListenerThresholds {
  * @prop thresholds {@link ListenerThresholds}
  * @prop logger {@link Logger | () => Logger} [`console`] - How to log potential memory leaks, if thresholds are < Infinity
  * @prop verbose - should memory leak warnings be output on every listener added above the thresholds, or only at intervals
- * @prop coalesceDownstreamLifecycle - when true, emit at most one will/did add/remove hook per event key per downstream lifecycle episode on this bus
+ * @prop coalesceDownstreamLifecycle - when true, coalesce will/did add/remove hooks to one
+ * emission per event key during `pipe()` / `unpipe()` reconcile of a heavily-subscribed downstream bus
  */
 export interface Options {
   allowUnhandledEvents?: boolean;
