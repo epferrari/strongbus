@@ -18,7 +18,7 @@ export type PipeEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
 
 export type ScanEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
 
-/** Options for {@link SubscriptionSurfaceScan}. */
+/** Options for {@link SubscriptionSurface.scan}. */
 export interface ScanOptions {
   eager?: boolean;
   pool?: boolean;
@@ -26,7 +26,7 @@ export interface ScanOptions {
 }
 
 /**
- * @deprecated Pass `trigger` and `evaluator` as separate arguments to {@link SubscriptionSurfaceScan}:
+ * @deprecated Pass `trigger` and `evaluator` as separate arguments to {@link SubscriptionSurface.scan}:
  * `scan(trigger, evaluator, options?)`.
  */
 export type ScanParams<T, TEventMap extends EventMap, TMap extends ScanEventMap<TEventMap>> = {

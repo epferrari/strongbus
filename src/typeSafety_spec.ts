@@ -481,7 +481,9 @@ describe('type safety', () => {
 
     it('pipe(bus) returns the concrete downstream bus type, including subclasses', () => {
       class DerivedBus<M extends EventMap> extends Bus<M> {
-        public relayLeaf(): void {}
+        public relayLeaf(): void {
+          return;
+        }
       }
 
       const src = new Bus<Narrow>();

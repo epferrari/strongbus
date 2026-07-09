@@ -44,7 +44,7 @@ export type PipeMessage<TEventMap extends EventMap> = {
   [K in EventKeys<TEventMap>]: {event: K; payload: TEventMap[K]}
 }[EventKeys<TEventMap>];
 
-/** Event map carried by a downstream {@link Bus} passed to {@link Bus.pipe} or {@link PipeForward}. */
+/** @internal Event map carried by a downstream {@link Bus} passed to {@link Bus.pipe} or {@link PipeForward}. */
 export type InferPipeDownstreamMap<TDownstream> =
   TDownstream extends Bus<infer M extends EventMap> ? M : never;
 
@@ -76,7 +76,7 @@ export type PipePayloadOverlap<TSource extends EventMap, TDownstream extends Eve
  *
  * `dst` must be a {@link Bus} whose map is *payload-compatible* with the source:
  * every event `dst` declares must either be absent from the source or carry the
- * same payload type (see {@link PipePayloadOverlap}). This makes it impossible to
+ * same payload type on every event key they share. This makes it impossible to
  * land an event on `dst` with a payload type `dst` doesn't expect. Source events
  * `dst` doesn't declare are simply dropped by `dst` at runtime.
  */

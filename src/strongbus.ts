@@ -249,7 +249,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    * Promise resolves with the triggering event and its payload as `{event, payload}`.
    *
    * Triggers must be {@link SubscribableListenable} values.
-   * The `'*'` wildcard is not accepted (see {@link SubscriptionSurfaceNext}).
+   * The `'*'` wildcard is not accepted (see {@link SubscriptionSurface.next}).
    *
    * @param resolutionTrigger - specific event(s) that resolve the promise
    * @param rejectionTrigger - specific event(s) that reject the promise. Must be mutually disjoint with `resolutionTrigger`
@@ -760,7 +760,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     );
   }
 
-  private accountForDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void {  
+  private accountForDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void {
     const currCount = this.downstreamListenerCountsByEvent.get(event) ?? 0;
     this.downstreamListenerCountsByEvent.set(event, Math.max(currCount + count, 0));
     this._downstreamListenerTotalCount = Math.max(this._downstreamListenerTotalCount + count, 0);

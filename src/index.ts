@@ -9,8 +9,7 @@ export type {
   EventSink,
   PipeSink,
   PipeMessage,
-  PipeForward,
-  InferPipeDownstreamMap
+  PipeForward
 } from './types/eventHandlers';
 export * from './types/lifecycle';
 export type {Logger, LoggerProvider} from './types/logger';
@@ -30,7 +29,6 @@ export type {
 export type {Scannable} from './types/scannable';
 export type {
   SubscriptionSurface,
-  SubscriptionSurfaceScan,
   ScanParams,
   ScanOptions
 } from './types/surfaces/subscriptionSurface';
