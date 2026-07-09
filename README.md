@@ -344,6 +344,56 @@ Shorthand for observing the active/idle transition. The handler receives `true` 
 bus.monitor((isActive) => console.log(isActive ? 'active' : 'idle'));
 ```
 
+### Lifecycle hook ordering
+
+Hooks follow **transition-centric** bracketing: activation and idle bracket the bus
+going from 0→1 and 1→0 listeners.
+
+**Direct `on()` / `unsubscribe()`** — one episode per listener. Adding two handlers
+for the same event:
+
+```
+willActivate → willAdd → didAdd → active → willAdd → didAdd
+```
+
+Removing those two handlers:
+
+```
+willRemove → didRemove → willIdle → willRemove → didRemove → idle
+```
+
+`willActivate` / `willIdle` fire only on the 0↔1 transitions. `active` follows the
+first `didAdd` that gives the bus demand; `willIdle` immediately precedes the
+`willRemove` for the last listener.
+
+**`pipe()` / `unpipe()` with pre-existing downstream listeners** — the upstream bus
+reconciles the downstream snapshot using the same transition rules. With the
+default `coalesceDownstreamLifecycleEvents: true`, reconcile emits one
+`willAdd`/`didAdd` (or `willRemove`/`didRemove`) pair per event key when several
+handlers share that key. Example: piping a downstream that already has two
+listeners on `foo`:
+
+```
+willActivate → willAdd:foo → didAdd:foo → active
+```
+
+Unpiping that downstream when it was the bus's only demand:
+
+```
+willIdle → willRemove:foo → didRemove:foo → idle
+```
+
+Set `options.coalesceDownstreamLifecycleEvents: false` to get one hook pair per listener
+during reconcile (matching the direct `on()` order above). Listener counts are
+the same either way.
+
+**After `pipe()`** — incremental adds/removes on the downstream bus still emit
+hooks per listener; coalescing applies only to the initial `pipe()` / final
+`unpipe()` reconcile.
+
+**Partial `unpipe()`** — when other downstream or own listeners remain,
+`willIdle` / `idle` are not emitted on the upstream bus.
+
 ## Surfaces
 
 `Bus` implements four typed surfaces over the same event map. Compose them when a dependency needs only part of the API.

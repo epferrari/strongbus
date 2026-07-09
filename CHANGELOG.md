@@ -76,12 +76,14 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   access concrete, so a generic base class (`new Bus<Merge<Fixed, TGeneric>>()`)
   can `emit` its fixed events with literal payloads without casting to `any`.
   See [Composing event maps](./README.md#composing-event-maps).
-- **`options.coalesceDownstreamLifecycle`** (default `false`) — when `true`, a
+- **`options.coalesceDownstreamLifecycleEvents`** (default `true`) — when `true`, a
   source bus emits at most one `willAddListener` / `didAddListener` (and matching
-  remove hooks) per event key per downstream lifecycle episode, instead of once per
-  downstream handler. Listener counts and introspection are unchanged; only hook
-  emissions are coalesced. Applies to downstream bubbling after `source.pipe(downstream)` and to
-  reconcile when a downstream already has listeners at pipe time.
+  remove hooks) per event key per downstream lifecycle episode during `pipe()` /
+  `unpipe()` reconcile when the downstream bus already has listeners, instead of once
+  per downstream handler. Listener counts and introspection are unchanged; only hook
+  emissions are coalesced for that reconcile. Incremental downstream listener changes
+  after the link is established still emit hooks per listener. Set to `false` for one
+  hook pair per listener during reconcile (see [Lifecycle hook ordering](./README.md#lifecycle-hook-ordering)).
 
 ### Changed
 
@@ -123,13 +125,8 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **Public handler types reduced** to `EventHandler` and `EventSink`.
 - **`generateSubscription` is renamed to `subscriptionWrapper`** (exported from
   the package root).
-- **Lifecycle hook ordering** — activation and idle transitions are bracketed
-  consistently on every bus: `willActivate` before all `willAddListener` hooks,
-  `willIdle` before all `willRemoveListener` hooks, `active` after all
-  `didAddListener` hooks, and `idle` after all `didRemoveListener` hooks.
-  Direct `on()` / unsubscribe calls remain one episode per listener; downstream
-  reconcile on `pipe()` / `unpipe()` batches pre-existing downstream listeners
-  into a single episode with the same bracket rules.
+- **Lifecycle hook ordering** — transition-centric bracketing on every bus. See
+  [Lifecycle hook ordering](./README.md#lifecycle-hook-ordering) in the README.
 
 ### Deprecated
 
@@ -157,8 +154,9 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   bus now bubbles the corresponding add-listener lifecycle hooks, updates listener
   counts, and transitions to `active` as if those handlers had been present from the
   start. `unpipe` symmetrically bubbles remove hooks, clears downstream-scoped
-  introspection, and marks the upstream bus idle when it was the only downstream
-  demand.
+  introspection, and marks the upstream bus idle when that downstream was its only
+  remaining listener demand. `willIdle` / `idle` are not emitted when another downstream
+  (or own listener) still has demand.
 - **Variance:** a `Bus<Wide>` is assignable to `SubscriptionSurface<Narrow>`,
   `IntrospectionSurface<Narrow>`, and other contravariant views, so consumers can
   declare a narrower event map while still preventing subscription to events
@@ -167,6 +165,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Internal
 
+- Extracted lifecycle orchestration into `LifecycleManager` (`lifecycleManager.ts`).
 - Extracted scanner pooling into a dedicated `ScannerPools` class.
 - Expanded test coverage: logger thresholds and memory-pressure messages,
   error-handler failures, `subscriptionWrapper`, `emit` return value, and
