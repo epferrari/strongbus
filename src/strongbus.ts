@@ -59,7 +59,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       error: Infinity
     },
     logger: console,
-    verbose: true, // keep legacy behavior in 2.x version
+    verbose: false,
     coalesceDownstreamLifecycleEvents: true
   };
 

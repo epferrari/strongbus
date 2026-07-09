@@ -522,7 +522,8 @@ bus.destroy();
   no-op.
 - `thresholds` — per-event listener-count thresholds (`info`/`warn`/`error`) for memory-leak logging.
 - `logger` — a `Logger`, or a `() => Logger` provider.
-- `verbose` — log on every listener past a threshold, or only at threshold boundaries.
+- `verbose` — log on every listener past a threshold (`true`), or only at threshold boundaries
+  (`false`, default).
 
 ```typescript
 const bus = new Bus<Events>({
@@ -543,8 +544,7 @@ Defaults for all instances can be set globally with `Bus.configure()`:
 Bus.configure({
   allowUnhandledEvents: false,
   thresholds: {warn: 50},
-  logger: myLogger,
-  verbose: false
+  logger: myLogger
 });
 ```
 
@@ -554,7 +554,7 @@ Bus.configure({
 
 When the number of listeners for a single event crosses a configured threshold, Strongbus logs a message at the
 corresponding severity (`info`/`warn`/`error`). This surfaces leaks from subscriptions that are never released.
-With `verbose: false`, messages are throttled to threshold boundaries and multiples rather than every listener.
+With `verbose: false` (the default), messages are throttled to threshold boundaries and multiples rather than every listener. Set `verbose: true` to log on every listener added above a threshold.
 
 ## License
 

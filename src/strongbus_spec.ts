@@ -194,7 +194,7 @@ describe('Strongbus.Bus', () => {
       });
 
       describe('when adding a listener and listener count for an event exceeds a configured threshold', () => {
-        describe('given `options.verbose=false`', () => {
+        describe('given `options.verbose=false` (default)', () => {
           it('logs only when a multiple of a threshold is reached', () => {
             bus = new Strongbus.Bus<TestEventMap>({
               name: 'Foo',
@@ -203,8 +203,7 @@ describe('Strongbus.Bus', () => {
                 info: 10,
                 warn: 25,
                 error: 60
-              },
-              verbose: false
+              }
             });
 
             addListeners(10);
@@ -318,10 +317,11 @@ describe('Strongbus.Bus', () => {
           });
         });
 
-        describe('given `options.verbose=true (default)`', () => {
+        describe('given `options.verbose=true`', () => {
           it('logs each time a listener is added', () => {
             bus = new Strongbus.Bus<TestEventMap>({
               logger: provider,
+              verbose: true,
               thresholds: {
                 info: 10,
                 warn: 20,
@@ -369,6 +369,7 @@ describe('Strongbus.Bus', () => {
           it('logs at the highest severity that passes the threshold', () => {
             bus = new Strongbus.Bus<TestEventMap>({
               logger: provider,
+              verbose: true,
               thresholds: {
                 // only warn-level specified, info is at default of 100
                 warn: 20

@@ -130,6 +130,9 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   the package root).
 - **Lifecycle hook ordering** — transition-centric bracketing on every bus. See
   [Lifecycle hook ordering](./README.md#lifecycle-hook-ordering) in the README.
+- **`options.verbose` default is now `false`** — memory-leak threshold messages log at
+  boundaries and multiples only. v2 defaulted to `true` (every listener above a
+  threshold). Set `verbose: true` in constructor or globally with `Bus.configure({verbose: true}` to restore v2-style logging.
 
 ### Deprecated
 
