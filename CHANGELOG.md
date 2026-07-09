@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 v3 tightens the subscription API around a smaller, more explicit set of methods
 and makes `next` and `scan` easier to type. The behavioral core (emitting,
-lifecycle hooks, piping, scanning, memory-leak detection) is unchanged.
+piping, scanning, memory-leak detection) is largely unchanged; lifecycle hook
+ordering and delegate piping behavior are tightened (see **Fixed** and **Changed**
+below).
 
 See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
@@ -74,6 +76,12 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   access concrete, so a generic base class (`new Bus<Merge<Fixed, TGeneric>>()`)
   can `emit` its fixed events with literal payloads without casting to `any`.
   See [Composing event maps](./README.md#composing-event-maps).
+- **`options.coalesceDelegateLifecycle`** (default `false`) — when `true`, a
+  source bus emits at most one `willAddListener` / `didAddListener` (and matching
+  remove hooks) per event key per delegate lifecycle episode, instead of once per
+  downstream handler. Listener counts and introspection are unchanged; only hook
+  emissions are coalesced. Applies to delegate bubbling after `source.pipe(delegate)` and to
+  reconcile when a delegate already has listeners at pipe time.
 
 ### Changed
 
@@ -115,6 +123,13 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **Public handler types reduced** to `EventHandler` and `EventSink`.
 - **`generateSubscription` is renamed to `subscriptionWrapper`** (exported from
   the package root).
+- **Lifecycle hook ordering** — activation and idle transitions are bracketed
+  consistently on every bus: `willActivate` before all `willAddListener` hooks,
+  `willIdle` before all `willRemoveListener` hooks, `active` after all
+  `didAddListener` hooks, and `idle` after all `didRemoveListener` hooks.
+  Direct `on()` / unsubscribe calls remain one episode per listener; delegate
+  reconcile on `pipe()` / `unpipe()` batches pre-existing downstream listeners
+  into a single episode with the same bracket rules.
 
 ### Deprecated
 
@@ -137,6 +152,13 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Fixed
 
+- **Delegate listeners before `pipe()`** — when a delegate already has listeners
+  (including via nested `pipe` links) at the moment `pipe(bus)` runs, the upstream
+  bus now bubbles the corresponding add-listener lifecycle hooks, updates listener
+  counts, and transitions to `active` as if those handlers had been present from the
+  start. `unpipe` symmetrically bubbles remove hooks, clears delegate-scoped
+  introspection, and marks the upstream bus idle when it was the only downstream
+  demand.
 - **Variance:** a `Bus<Wide>` is assignable to `SubscriptionSurface<Narrow>`,
   `IntrospectionSurface<Narrow>`, and other contravariant views, so consumers can
   declare a narrower event map while still preventing subscription to events
