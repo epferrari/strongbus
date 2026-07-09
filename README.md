@@ -537,14 +537,18 @@ See the [`Options`](https://epferrari.github.io/strongbus/interfaces/Options.htm
 [`ListenerThresholds`](https://epferrari.github.io/strongbus/interfaces/ListenerThresholds.html) API docs for the
 canonical defaults and types.
 
-Defaults can be set globally for all instances via static setters:
+Defaults for all instances can be set globally with `Bus.configure()`:
 
 ```typescript
-Bus.defaultAllowUnhandledEvents = false;
-Bus.defaultThresholds = {warn: 50};
-Bus.defaultLogger = myLogger;
-Bus.verbose = false;
+Bus.configure({
+  allowUnhandledEvents: false,
+  thresholds: {warn: 50},
+  logger: myLogger,
+  verbose: false
+});
 ```
+
+`configure` recursively merges onto static defaults.
 
 ## Memory-leak detection
 

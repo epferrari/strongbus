@@ -105,6 +105,52 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('Bus.configure', () => {
+    let baseline: Strongbus.Options;
+
+    beforeAll(() => {
+      baseline = {...(new Strongbus.Bus() as any).options};
+      baseline.thresholds = {...baseline.thresholds};
+    });
+
+    afterEach(() => {
+      Strongbus.Bus.configure(baseline);
+    });
+
+    it('merges partial options onto static defaults for new instances', () => {
+      Strongbus.Bus.configure({
+        allowUnhandledEvents: false,
+        verbose: false,
+        thresholds: {warn: 12}
+      });
+
+      const configured = new Strongbus.Bus<TestEventMap>();
+      const options: Strongbus.Options = (configured as any).options;
+
+      expect(options.allowUnhandledEvents).toBeFalse();
+      expect(options.verbose).toBeFalse();
+      expect(options.thresholds.info).toBe(100);
+      expect(options.thresholds.warn).toBe(12);
+      expect(options.thresholds.error).toBe(Infinity);
+    });
+
+    it('accumulates successive configure calls', () => {
+      Strongbus.Bus.configure({allowUnhandledEvents: false});
+      Strongbus.Bus.configure({verbose: false});
+
+      const options: Strongbus.Options = (new Strongbus.Bus() as any).options;
+      expect(options.allowUnhandledEvents).toBeFalse();
+      expect(options.verbose).toBeFalse();
+    });
+
+    it('does not apply name via configure', () => {
+      Strongbus.Bus.configure({name: 'App'} as Strongbus.Options);
+
+      const options: Strongbus.Options = (new Strongbus.Bus() as any).options;
+      expect(options.name).toBe('Anonymous');
+    });
+  });
+
   describe('listener logging thresholds', () => {
 
     describe('given options.logger is a Logger instance', () => {

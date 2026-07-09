@@ -30,3 +30,6 @@ export interface Options {
   verbose?: boolean;
   coalesceDownstreamLifecycleEvents?: boolean;
 }
+
+/** Options accepted by {@link Bus.configure}; `name` is per-instance only. */
+export type ConfigurableBusOptions = Omit<Partial<Options>, 'name'>;

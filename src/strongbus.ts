@@ -11,7 +11,7 @@ import {type Subscription, type EventMap, WILDCARD} from './types/events';
 import type {EventHandler, EventSink, PipeSink, PipeMessage, PipeForward, GenericHandler} from './types/eventHandlers';
 import {Lifecycle} from './types/lifecycle';
 import type {Logger} from './types/logger';
-import type {Options, ListenerThresholds} from './types/options';
+import type {Options, ListenerThresholds, ConfigurableBusOptions} from './types/options';
 import {ListenerRegistryView, type ListenerRegistry, EMPTY_LISTENER_SET} from './types/listenerRegistry';
 import {ListenerScope, type IntrospectionOptions} from './types/listenerScope';
 import type {
@@ -41,6 +41,7 @@ import {randomId} from './utils/randomId';
 import {subscribeListenable} from './utils/subscribeListenable';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 
+type ResolvedBusOptions = Required<Options> & {thresholds: Required<ListenerThresholds>};
 
 @autobind
 export class Bus<TEventMap extends EventMap = EventMap> implements
@@ -49,7 +50,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   IntrospectionSurface<TEventMap>,
   MonitoringSurface<TEventMap> {
 
-  private static defaultOptions: Required<Options> & {thresholds: Required<ListenerThresholds>} = {
+  private static defaultOptions: ResolvedBusOptions = {
     name: 'Anonymous',
     allowUnhandledEvents: true,
     thresholds: {
@@ -63,34 +64,55 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   };
 
   /**
-   * Set the default for `Bus.options.allowUnhandledEvents` for all instances.
+   * Merge `options` onto {@link Bus} static defaults for all subsequently constructed
+   * instances. Nested `thresholds` are merged recursively. `name` cannot be set here;
+   * pass it to the constructor for per-instance naming.
+   */
+  public static configure(options: ConfigurableBusOptions): void {
+    const {name: _name, ...configurable} = options as Partial<Options>;
+    Bus.defaultOptions = Bus.mergeOptions(Bus.defaultOptions, configurable);
+  }
+
+  /**
+   * @deprecated Use {@link Bus.configure} instead.
    */
   public static set defaultAllowUnhandledEvents(allow: boolean) {
-    Bus.defaultOptions.allowUnhandledEvents = allow;
+    Bus.configure({allowUnhandledEvents: allow});
   }
 
   /**
-   * Set the default `Bus.options.thresholds` for all instances.
+   * @deprecated Use {@link Bus.configure} instead.
    */
   public static set defaultThresholds(thresholds: Partial<ListenerThresholds>) {
-    Bus.defaultOptions.thresholds = {
-      ...Bus.defaultOptions.thresholds,
-      ...thresholds
-    };
+    Bus.configure({thresholds});
   }
 
   /**
-   * Set the default `Bus.options.verbose` for all instances.
+   * @deprecated Use {@link Bus.configure} instead.
    */
-   public static set verbose(verbose: boolean) {
-    Bus.defaultOptions.verbose = verbose;
+  public static set verbose(verbose: boolean) {
+    Bus.configure({verbose});
   }
 
   /**
-   * Set the default logger for all instances to an object that implements the {@link Logger} interface.
+   * @deprecated Use {@link Bus.configure} instead.
    */
   public static set defaultLogger(logger: Logger) {
-    Bus.defaultOptions.logger = logger;
+    Bus.configure({logger});
+  }
+
+  private static mergeOptions(
+    base: ResolvedBusOptions,
+    overrides: Partial<Options> = {}
+  ): ResolvedBusOptions {
+    return {
+      ...base,
+      ...overrides,
+      thresholds: {
+        ...base.thresholds,
+        ...overrides.thresholds
+      }
+    };
   }
 
   private readonly downstreams = new Map<Bus<TEventMap>, VoidFunction>();
@@ -114,7 +136,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   private _cachedDownstreamListenersMap: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
 
   // set on-construct
-  private readonly options!: Required<Options> & {thresholds: Required<ListenerThresholds>};
+  private readonly options!: ResolvedBusOptions;
   private readonly logger!: StrongbusLogger<TEventMap>;
   private readonly listenersRegistry!: ListenerRegistry<TEventMap>;
   private readonly ownListenersRegistry!: ListenerRegistry<TEventMap>;
@@ -126,14 +148,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   public readonly hook!: MonitoringHook<TEventMap>;
 
   constructor(options?: Options) {
-    this.options = {
-      ...Bus.defaultOptions,
-      ...options || {},
-      thresholds: {
-        ...Bus.defaultOptions.thresholds,
-        ...options?.thresholds || {}
-      }
-    };
+    this.options = Bus.mergeOptions(Bus.defaultOptions, options);
     this.logger = new StrongbusLogger<TEventMap>({
       ...this.options,
       provider: this.options.logger,

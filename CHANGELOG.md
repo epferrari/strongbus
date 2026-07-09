@@ -71,6 +71,9 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   buses attached with `pipe(bus)` only, not function sinks from `pipe(handler)`.
 - **`IntrospectionOptions`** — the `{scope?: ListenerScope}` options object
   accepted by the listener-introspection methods. Exported from the package root.
+- **`Bus.configure(options)`** — merge partial `Options` (except `name`) onto static defaults for
+  all subsequently constructed instances. Nested `thresholds` are merged recursively. Use the
+  constructor for per-instance `name`.
 - **`Merge<Base, Ext>`** — a flattening event-map merge (overlapping keys take
   `Base`) for composing event maps. Unlike `Base & Ext`, `Merge` keeps indexed
   access concrete, so a generic base class (`new Bus<Merge<Fixed, TGeneric>>()`)
@@ -131,6 +134,8 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 ### Deprecated
 
 - **`SingleEventHandler`** — deprecated alias for **`EventHandler`**.
+- **`Bus.defaultAllowUnhandledEvents`**, **`Bus.defaultThresholds`**, **`Bus.defaultLogger`**,
+  and **`Bus.verbose`** static setters — use **`Bus.configure()`** instead.
 
 ### Removed
 
