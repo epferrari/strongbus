@@ -407,7 +407,7 @@ describe('type safety', () => {
       const properSubset = new Bus<Pick<Narrow, 'foo'>>();
       const wrongFooPayload = new Bus<{foo: string}>();
 
-      // forward(dst) mirrors delegate piping per-message: shared events must
+      // forward(dst) mirrors downstream piping per-message: shared events must
       // match, src-only events ('bar'/'baz') are dropped, and a disjoint target
       // is allowed (nothing lands) just like src.pipe(noOverlap).
       src.pipe((piped, forward) => {
@@ -440,7 +440,7 @@ describe('type safety', () => {
       });
     });
 
-    it('cannot forward into a delegate typed with an open generic map', () => {
+    it('cannot forward into a downstream typed with an open generic map', () => {
       class DerivedBus<M extends EventMap> extends Bus<M> {}
 
       function forwardInto<M extends Narrow>(target: DerivedBus<M>): void {
@@ -456,7 +456,7 @@ describe('type safety', () => {
 
   });
 
-  describe('#pipe (bus delegate)', () => {
+  describe('#pipe (bus downstream)', () => {
     interface Narrow {
       foo: number;
       bar: string;
@@ -466,7 +466,7 @@ describe('type safety', () => {
       other: boolean;
     }
 
-    it('pipes into a wider, partially-overlapping, or disjoint delegate bus', () => {
+    it('pipes into a wider, partially-overlapping, or disjoint downstream bus', () => {
       const src = new Bus<Narrow>();
       const noOverlap = new Bus<Other>();
       const partialOverlap = new Bus<Pick<Narrow, 'foo'> & Pick<Other, 'other'>>();
@@ -479,7 +479,7 @@ describe('type safety', () => {
       partialOverlap.pipe(properSubset);
     });
 
-    it('pipe(bus) returns the concrete delegate bus type, including subclasses', () => {
+    it('pipe(bus) returns the concrete downstream bus type, including subclasses', () => {
       class DerivedBus<M extends EventMap> extends Bus<M> {
         public relayLeaf(): void {}
       }
@@ -491,7 +491,7 @@ describe('type safety', () => {
       chained.relayLeaf();
     });
 
-    it('pipe(bus) returns the delegate Bus', () => {
+    it('pipe(bus) returns the downstream Bus', () => {
       const src = new Bus<Narrow>();
       const dst = new Bus<Narrow>();
       const chained = src.pipe(dst);
@@ -499,7 +499,7 @@ describe('type safety', () => {
       expectType<Bus<Narrow>>(chained);
     });
 
-    it('rejects a hand-rolled surface duck type as a Bus delegate', () => {
+    it('rejects a hand-rolled surface duck type as a Bus downstream', () => {
       const bus = new Bus<Narrow>();
       const duck = {
         on: bus.on.bind(bus),
@@ -518,7 +518,7 @@ describe('type safety', () => {
       expectType<typeof duck>(duck);
     });
 
-    it('chains pipe(bus) through the returned delegate bus', () => {
+    it('chains pipe(bus) through the returned downstream bus', () => {
       class DerivedBus<M extends EventMap> extends Bus<M> {}
 
       const a = new Bus<Narrow>();
@@ -605,14 +605,14 @@ describe('type safety', () => {
       expectType<number>(bus.getListenerCount());
       expectType<number>(bus.getListenerCount({scope: ListenerScope.OWN}));
       expectType<ListenerSet>(bus.getListeners());
-      expectType<ListenerSet>(bus.getListeners({scope: ListenerScope.DELEGATE}));
+      expectType<ListenerSet>(bus.getListeners({scope: ListenerScope.DOWNSTREAM}));
       expectType<number>(bus.getEventCount());
 
       expectType<boolean>(bus.hasListenersFor('foo'));
       expectType<boolean>(bus.hasListenersFor('foo', {scope: ListenerScope.ANY}));
       expectType<number>(bus.getListenerCountFor('bar', {scope: ListenerScope.OWN}));
       expectType<ListenerSet>(bus.getListenersFor('baz'));
-      expectType<ListenerSet>(bus.getListenersFor('baz', {scope: ListenerScope.DELEGATE}));
+      expectType<ListenerSet>(bus.getListenersFor('baz', {scope: ListenerScope.DOWNSTREAM}));
       expectType<ListenerSet>(bus.getListenersFor(WILDCARD));
 
       bus.forEach((event, handlers) => {
@@ -640,7 +640,7 @@ describe('type safety', () => {
     it('rejects unknown event on has listeners for', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'qux' is not a key of TestEventMap
-      bus.hasListenersFor('qux', {scope: ListenerScope.DELEGATE});
+      bus.hasListenersFor('qux', {scope: ListenerScope.DOWNSTREAM});
     });
 
     it('IntrospectionSurface view accepts known events', () => {
@@ -648,7 +648,7 @@ describe('type safety', () => {
 
       surface.getListenersFor('foo');
       surface.getListenerCountFor('bar', {scope: ListenerScope.OWN});
-      surface.hasListenersFor('baz', {scope: ListenerScope.DELEGATE});
+      surface.hasListenersFor('baz', {scope: ListenerScope.DOWNSTREAM});
       surface.forEach((event, handlers) => {
         expectType<EventKeys<TestEventMap> | typeof WILDCARD>(event);
         expectType<ListenerSet>(handlers);
@@ -825,14 +825,14 @@ describe('type safety', () => {
       narrow.getListenerCountFor('baz', {scope: ListenerScope.ANY});
     });
 
-    it('pipe(bus) returns the delegate Bus instance', () => {
+    it('pipe(bus) returns the downstream Bus instance', () => {
       const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
       const wideBus = new Bus<Wide>();
 
-      const delegate = narrow.pipe(wideBus);
-      expectType<Bus<Wide>>(delegate);
-      delegate.on('foo', payload => expectType<number>(payload));
-      delegate.on('baz', payload => expectType<boolean>(payload));
+      const downstream = narrow.pipe(wideBus);
+      expectType<Bus<Wide>>(downstream);
+      downstream.on('foo', payload => expectType<number>(payload));
+      downstream.on('baz', payload => expectType<boolean>(payload));
     });
 
     it('narrows payload by discriminating event in a function sink', () => {
@@ -897,16 +897,16 @@ describe('type safety', () => {
       const narrow = new Bus<{foo: string, bar: string}>();
 
       // piping wide into narrow forwards 'baz' (number) into narrow at runtime.
-      // pipe returns the delegate bus itself, so a chained sink is identical
+      // pipe returns the downstream bus itself, so a chained sink is identical
       // to piping on `narrow` directly.
-      const delegate = wide.pipe(narrow);
-      expectType<Bus<{foo: string; bar: string}>>(delegate);
+      const downstream = wide.pipe(narrow);
+      expectType<Bus<{foo: string; bar: string}>>(downstream);
 
       // the following are the same assertions, one over the narrow bus itself, and one over the bus returned from pipe;
 
       narrow.pipe((message) => {
         // a forwarded 'baz' isn't part of narrow's surface, so it can't be named
-        // @ts-expect-error 'baz' is not part of the delegate's surface
+        // @ts-expect-error 'baz' is not part of the downstream's surface
         if (message.event === 'baz') {
           expectType<never>(message);
         }
@@ -918,8 +918,8 @@ describe('type safety', () => {
         }
       });
 
-      delegate.pipe((message) => {
-        // @ts-expect-error 'baz' is not part of the delegate's surface
+      downstream.pipe((message) => {
+        // @ts-expect-error 'baz' is not part of the downstream's surface
         if (message.event === 'baz') {
           expectType<never>(message);
         }
@@ -932,7 +932,7 @@ describe('type safety', () => {
       });
     });
 
-    it('PipeSink<Narrow> rejects incompatible delegate', () => {
+    it('PipeSink<Narrow> rejects incompatible downstream', () => {
       const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
 
       interface Incompatible {
@@ -940,7 +940,7 @@ describe('type safety', () => {
         bar: string;
       }
 
-      // @ts-expect-error delegate emit must accept Narrow payloads for shared events
+      // @ts-expect-error downstream emit must accept Narrow payloads for shared events
       narrow.pipe(new Bus<Incompatible>());
     });
 
@@ -989,18 +989,18 @@ describe('type safety', () => {
       });
     });
 
-    it('piping into a narrower delegate returns that delegate bus', () => {
+    it('piping into a narrower downstream returns that downstream bus', () => {
       const wide = new Bus<Wide>();
       const narrow = new Bus<Narrow>();
 
-      // pipe returns the delegate bus itself, identical to using narrow directly;
+      // pipe returns the downstream bus itself, identical to using narrow directly;
       // source-only events are not surfaced on it.
-      const delegate = wide.pipe(narrow);
-      expectType<Bus<Narrow>>(delegate);
-      delegate.on('foo', payload => expectType<number>(payload));
-      delegate.on('bar', payload => expectType<string>(payload));
-      // @ts-expect-error 'baz' is not in the Narrow delegate's event map
-      delegate.on('baz', () => undefined);
+      const downstream = wide.pipe(narrow);
+      expectType<Bus<Narrow>>(downstream);
+      downstream.on('foo', payload => expectType<number>(payload));
+      downstream.on('bar', payload => expectType<string>(payload));
+      // @ts-expect-error 'baz' is not in the Narrow downstream's event map
+      downstream.on('baz', () => undefined);
     });
   });
 
@@ -1153,19 +1153,19 @@ describe('type safety', () => {
       instance.relayAll(anySink);
     });
 
-    // limitation: delegate piping (bus-into-bus) needs a concrete event map. under
-    // an abstract `M` the delegate overload's payload-overlap check can't be
+    // limitation: downstream piping (bus-into-bus) needs a concrete event map. under
+    // an abstract `M` the downstream overload's payload-overlap check can't be
     // evaluated, and a `Bus<M>` is not a function, so no overload matches.
-    // concrete-map delegate piping is exercised in the `variance` specs above.
-    it('cannot resolve delegate piping over an abstract event map', () => {
+    // concrete-map downstream piping is exercised in the `variance` specs above.
+    it('cannot resolve downstream piping over an abstract event map', () => {
       function bridge<M extends EventMap>(src: Bus<M>, dst: Bus<M>): void {
-        // @ts-expect-error delegate piping requires a concrete map, not an abstract M
+        // @ts-expect-error downstream piping requires a concrete map, not an abstract M
         src.pipe(dst);
       }
       expectType<typeof bridge>(bridge);
 
-      // ...but with a concrete map the delegate overload resolves and returns the
-      // delegate bus itself.
+      // ...but with a concrete map the downstream overload resolves and returns the
+      // downstream bus itself.
       const from = new Bus<Wide>();
       const to = new Bus<Wide>();
       const chained = from.pipe(to);

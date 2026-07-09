@@ -67,7 +67,7 @@ bus.emit('message');                // compile error: 'message' requires a strin
 ## Emitting events
 
 `emit(event, payload)` returns a `boolean` indicating whether the event was handled (by an own listener, a
-wildcard sink, or a delegate bus).
+wildcard sink, or a downstream bus).
 
 ```typescript
 const handled = bus.emit('message', 'hello');
@@ -131,10 +131,10 @@ bus.any(['message', 'count'], (event, payload) => {
 `pipe` forwards every event from this bus into another `Bus` or into a function sink. Use `unpipe` to
 detach.
 
-### `pipe(bus)` — delegate piping
+### `pipe(bus)` — downstream piping
 
-Pipe into another `Bus`, counting the delegate's listeners as handlers on this bus. Returns the delegate bus
-(so pipes chain and subclasses are preserved). The delegate must be a real `Bus` instance.
+Pipe into another `Bus`, counting the downstream's listeners as handlers on this bus. Returns the downstream bus
+(so pipes chain and subclasses are preserved). The downstream must be a real `Bus` instance.
 
 ```typescript
 const producer = new Bus<Events>();
@@ -163,9 +163,9 @@ stop(); // stop receiving all events
 ```
 
 Keeping the pair as one value means narrowing `piped.event` correlatively narrows `piped.payload`. To send the
-event on to another bus, call `forward(dst)` rather than splitting the pair back into `(event, payload)` — this
-re-emits the whole message on `dst` without registering a delegate (so none of the listener-lifecycle overhead
-a delegate pipe incurs):
+event on to another bus, call `forward(dest)` rather than splitting the pair back into `(event, payload)` — this
+re-emits the whole message on `dest` without a downstream link (so none of the listener-lifecycle overhead
+`pipe(bus)` incurs):
 
 ```typescript
 bus.pipe((piped, forward) => {
@@ -176,9 +176,9 @@ bus.pipe((piped, forward) => {
 });
 ```
 
-`forward`'s target is constrained exactly like a delegate `pipe(dst)`: every event `dst` declares must either
-be absent from the source or carry the same payload type. It's therefore impossible to land an event on `dst`
-with a payload type `dst` doesn't expect, and source-only events `dst` doesn't declare are simply dropped.
+`forward`'s target is constrained exactly like `pipe(dest)`: every event `dest` declares must either
+be absent from the source or carry the same payload type. It's therefore impossible to land an event on `dest`
+with a payload type `dest` doesn't expect, and source-only events `dest` doesn't declare are simply dropped.
 Because the sink never hands you a bare `(event, payload)` pair to re-`emit`, a mismatched pair can't be
 fabricated — `emit` itself only accepts a correlated `(event, payload)`, never a `{event, payload}` object.
 
@@ -186,10 +186,10 @@ fabricated — `emit` itself only accepts a correlated `(event, payload)`, never
 
 There are two ways to aggregate events across buses, and they trade off differently.
 
-**`root.pipe(leaf)` — delegate piping.** Reach for this when you need `root` to know *when listeners for
+**`root.pipe(leaf)` — downstream piping.** Reach for this when you need `root` to know *when listeners for
 specific events are added or removed* through `leaf` — its `willAddListener` / `didAddListener` /
-`willRemoveListener` / `didRemoveListener` hooks fire for the delegate's listeners — or when you have a *linear
-chain* of buses. The delegate's listeners count toward `root`'s listener count, and pipes chain
+`willRemoveListener` / `didRemoveListener` hooks fire for the downstream's listeners — or when you have a *linear
+chain* of buses. The downstream's listeners count toward `root`'s listener count, and pipes chain
 (`node1.pipe(node2).pipe(node3)`).
 
 ```typescript
@@ -241,7 +241,7 @@ const produce = (payload: number) => {
 
 **`feeder.pipe((msg, forward) => forward(hub))` — forwarding sink.** Reach for this when you *don't* care about
 listener add/remove bookkeeping, or when you have an *inverted tree* of many buses funneling into a single
-`hub` and you attach your listeners on `hub`. A forwarding sink registers no delegate, so it skips the
+`hub` and you attach your listeners on `hub`. A forwarding sink registers no downstream link, so it skips the
 lifecycle-hook and listener-count overhead that `pipe(bus)` incurs.
 
 ```typescript
@@ -437,8 +437,8 @@ argument. `ListenerScope` selects which handlers to include and defaults to
 `ListenerScope.ANY`:
 
 - `OWN` — registered directly on this bus (including function sinks from `pipe(handler)`)
-- `DELEGATE` — on buses attached with `pipe(bus)` only
-- `ANY` — `OWN | DELEGATE` (equivalent alias, the default)
+- `DOWNSTREAM` — on buses attached with `pipe(bus)` only
+- `ANY` — `OWN | DOWNSTREAM` (equivalent alias, the default)
 
 ```typescript
 import {Bus, ListenerScope} from 'strongbus';
@@ -450,14 +450,14 @@ bus.getListeners(/* options? */);                                    // union of
 bus.getEventCount(/* options? */);                                   // events with at least one listener in scope
 
 bus.hasListenersFor('message', {scope: ListenerScope.OWN});
-bus.getListenerCountFor('message', {scope: ListenerScope.DELEGATE});
+bus.getListenerCountFor('message', {scope: ListenerScope.DOWNSTREAM});
 bus.getListenersFor('message', /* options? */);                        // empty set when none
 bus.forEach((event, handlers) => { /* ... */ }, /* options? */);
 ```
 
 ## Teardown
 
-`destroy()` releases all event subscribers, fires `willDestroy`, removes all hooks, and detaches all delegates.
+`destroy()` releases all event subscribers, fires `willDestroy`, removes all hooks, and detaches all downstreams.
 
 ```typescript
 bus.destroy();

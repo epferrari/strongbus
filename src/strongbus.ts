@@ -58,7 +58,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     },
     logger: console,
     verbose: true, // keep legacy behavior in 2.x version
-    coalesceDelegateLifecycle: false
+    coalesceDownstreamLifecycle: false
   };
 
   /**
@@ -92,12 +92,12 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     Bus.defaultOptions.logger = logger;
   }
 
-  private readonly delegates = new Map<Bus<TEventMap>, Subscription[]>();
-  private readonly delegateListenerCountsByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
+  private readonly downstreams = new Map<Bus<TEventMap>, Subscription[]>();
+  private readonly downstreamListenerCountsByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
   private readonly sinks = new WeakMap<PipeSink<TEventMap>, Subscription>();
   private readonly listenersRegistry: ListenerRegistry<TEventMap>;
   private readonly ownListenersRegistry: ListenerRegistry<TEventMap>;
-  private readonly delegateListenersRegistry: ListenerRegistry<TEventMap>;
+  private readonly downstreamListenersRegistry: ListenerRegistry<TEventMap>;
   private readonly subscriptionCache = new Map<string, Subscription>();
   private readonly options: Required<Options> & {thresholds: Required<ListenerThresholds>};
   private readonly bus = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
@@ -114,10 +114,10 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   // volatile internal state
   private _active = false;
   private _purgingUnsubQueue: boolean = false;
-  private _delegateListenerTotalCount: number = 0;
+  private _downstreamListenerTotalCount: number = 0;
   private _cachedCombinedListenersMap: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
   private _cachedOwnListenersMap: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
-  private _cachedDelegateListenersMap: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
+  private _cachedDownstreamListenersMap: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
   private _coalesceAttachPending: {
     willAdds: Set<EventKeys<TEventMap>|WILDCARD>;
     didAdds: Map<EventKeys<TEventMap>|WILDCARD, number>;
@@ -146,7 +146,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     });
     this.listenersRegistry = ListenerRegistryView.create(() => this.getCombinedListenersMap());
     this.ownListenersRegistry = ListenerRegistryView.create(() => this.getOwnListenersMap());
-    this.delegateListenersRegistry = ListenerRegistryView.create(() => this.getDelegateListenersMap());
+    this.downstreamListenersRegistry = ListenerRegistryView.create(() => this.getDownstreamListenersMap());
   }
 
   /**
@@ -359,9 +359,9 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    * Function sinks must satisfy {@link PipeSink}: they receive the raised event as
    * a single correlated `{event, payload}` {@link PipeMessage}, plus a `forward`
    * function bound to that message. `forward(dst)` re-emits the whole message on a
-   * payload-compatible bus without registering a delegate.
+   * payload-compatible bus without a downstream link.
    *
-   * Bus-to-bus piping returns the delegate bus (for chaining), and requires a real
+   * Bus-to-bus piping returns the downstream bus (for chaining), and requires a real
    * {@link Bus} instance — not a hand-rolled surface duck type.
    */
   public pipe: SubscriptionSurfacePipe<TEventMap> = ((
@@ -379,14 +379,14 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     } else {
       const bus = dest;
       if(bus !== this as any) {
-        if(!this.delegates.has(bus)) {
-          this.delegates.set(bus, [
-            bus.hook(Lifecycle.willAddListener, (event) => this.onDelegateWillAddListener(event as EventKeys<TEventMap>|WILDCARD)),
-            bus.hook(Lifecycle.didAddListener, (event) => this.onDelegateDidAddListener(event as EventKeys<TEventMap>|WILDCARD)),
-            bus.hook(Lifecycle.willRemoveListener, (event) => this.onDelegateWillRemoveListener(event as EventKeys<TEventMap>|WILDCARD)),
-            bus.hook(Lifecycle.didRemoveListener, (event) => this.onDelegateDidRemoveListener(event as EventKeys<TEventMap>|WILDCARD))
+        if(!this.downstreams.has(bus)) {
+          this.downstreams.set(bus, [
+            bus.hook(Lifecycle.willAddListener, (event) => this.onDownstreamWillAddListener(event as EventKeys<TEventMap>|WILDCARD)),
+            bus.hook(Lifecycle.didAddListener, (event) => this.onDownstreamDidAddListener(event as EventKeys<TEventMap>|WILDCARD)),
+            bus.hook(Lifecycle.willRemoveListener, (event) => this.onDownstreamWillRemoveListener(event as EventKeys<TEventMap>|WILDCARD)),
+            bus.hook(Lifecycle.didRemoveListener, (event) => this.onDownstreamDidRemoveListener(event as EventKeys<TEventMap>|WILDCARD))
           ]);
-          this.syncDelegateListenersAttached(bus);
+          this.syncDownstreamListenersAttached(bus);
         }
       }
       return bus;
@@ -394,7 +394,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }) as SubscriptionSurfacePipe<TEventMap>;
 
   /**
-   * Stop piping events into a bus delegate or function sink previously passed to
+   * Stop piping events into a bus downstream or function sink previously passed to
    * {@link Bus.pipe}. Function sinks must satisfy {@link PipeSink}.
    */
   public unpipe: SubscriptionSurfaceUnpipe<TEventMap> = ((
@@ -405,16 +405,16 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       this.sinks.delete(dest as PipeSink<TEventMap>);
     } else {
       const bus = dest;
-      const hookSubs = this.delegates.get(bus);
+      const hookSubs = this.downstreams.get(bus);
       if(hookSubs) {
         const snapshot = bus.getCombinedListenersMap() as ReadonlyMap<
           EventKeys<TEventMap>|WILDCARD,
           ReadonlySet<GenericHandler>
         >;
         over(hookSubs)();
-        this.delegates.delete(bus);
+        this.downstreams.delete(bus);
         this.invalidateCombinedListenerCache();
-        this.syncDelegateListenersDetached(snapshot);
+        this.syncDownstreamListenersDetached(snapshot);
       }
     }
   }) as SubscriptionSurfaceUnpipe<TEventMap>;
@@ -443,7 +443,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   /**
-   * The active state of the bus, i.e. does it have any subscribers. Subscribers include delegates and scanners.
+   * The active state of the bus, i.e. does it have any subscribers. Subscribers include downstreams and scanners.
    */
   public get active(): boolean {
     return this._active;
@@ -465,15 +465,15 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
   /**
    * Total handler registrations in `options.scope` (defaults to `ListenerScope.ANY`).
-   * For `ListenerScope.ANY`, sums own and delegate counts (the same handler on both
+   * For `ListenerScope.ANY`, sums own and downstream counts (the same handler on both
    * still counts twice).
    */
   public getListenerCount(options: IntrospectionOptions = {}): number {
     const {scope = ListenerScope.ANY} = options;
     const includesOwn = (scope & ListenerScope.OWN) !== 0;
-    const includesDelegate = (scope & ListenerScope.DELEGATE) !== 0;
-    if(includesOwn && includesDelegate) {
-      return this.getListenerCount({scope: ListenerScope.OWN}) + this.getListenerCount({scope: ListenerScope.DELEGATE});
+    const includesDownstream = (scope & ListenerScope.DOWNSTREAM) !== 0;
+    if(includesOwn && includesDownstream) {
+      return this.getListenerCount({scope: ListenerScope.OWN}) + this.getListenerCount({scope: ListenerScope.DOWNSTREAM});
     }
     let total = 0;
     this.registryForScope(scope).forEach(handlers => {
@@ -511,10 +511,10 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   ) => {
     const {scope = ListenerScope.ANY} = options;
     const includesOwn = (scope & ListenerScope.OWN) !== 0;
-    const includesDelegate = (scope & ListenerScope.DELEGATE) !== 0;
-    if(includesOwn && includesDelegate) {
+    const includesDownstream = (scope & ListenerScope.DOWNSTREAM) !== 0;
+    if(includesOwn && includesDownstream) {
       return this.getListenerCountFor(event, {scope: ListenerScope.OWN})
-        + this.getListenerCountFor(event, {scope: ListenerScope.DELEGATE});
+        + this.getListenerCountFor(event, {scope: ListenerScope.DOWNSTREAM});
     }
     return this.registryForScope(scope).getCount(event);
   }) as IntrospectionSurfaceListenerCountForEvent<TEventMap>;
@@ -542,15 +542,15 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
   private registryForScope(scope: ListenerScope): ListenerRegistry<TEventMap> {
     const includesOwn = (scope & ListenerScope.OWN) !== 0;
-    const includesDelegate = (scope & ListenerScope.DELEGATE) !== 0;
-    if(includesOwn && includesDelegate) {
+    const includesDownstream = (scope & ListenerScope.DOWNSTREAM) !== 0;
+    if(includesOwn && includesDownstream) {
       return this.listenersRegistry;
     }
     if(includesOwn) {
       return this.ownListenersRegistry;
     }
-    if(includesDelegate) {
-      return this.delegateListenersRegistry;
+    if(includesDownstream) {
+      return this.downstreamListenersRegistry;
     }
     return Bus._emptyListenersRegistry;
   }
@@ -558,8 +558,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   private getCombinedListenersMap(): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
     if(!this._cachedCombinedListenersMap) {
       const listenerCache = new Map(this.getOwnListenersMap());
-      for(const [event, delegateListeners] of this.getDelegateListenersMap()) {
-        if(!delegateListeners.size) {
+      for(const [event, downstreamListeners] of this.getDownstreamListenersMap()) {
+        if(!downstreamListeners.size) {
           continue;
         }
         let listeners = listenerCache.get(event);
@@ -567,7 +567,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
           listeners = new Set<GenericHandler>();
           listenerCache.set(event, listeners);
         }
-        for(const listener of delegateListeners) {
+        for(const listener of downstreamListeners) {
           (listeners as Set<any>).add(listener);
         }
       }
@@ -576,27 +576,27 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     return this._cachedCombinedListenersMap;
   }
 
-  private getDelegateListenersMap(): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
-    if(!this._cachedDelegateListenersMap) {
-      const delegateListenerCache = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
-      for(const delegate of this.delegates.keys()) {
-        for(const [event, listeners] of delegate.getCombinedListenersMap()) {
+  private getDownstreamListenersMap(): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
+    if(!this._cachedDownstreamListenersMap) {
+      const downstreamListenerCache = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
+      for(const downstream of this.downstreams.keys()) {
+        for(const [event, listeners] of downstream.getCombinedListenersMap()) {
           if(!listeners.size) {
             continue;
           }
-          let merged = delegateListenerCache.get(event);
+          let merged = downstreamListenerCache.get(event);
           if(!merged) {
             merged = new Set<GenericHandler>();
-            delegateListenerCache.set(event, merged);
+            downstreamListenerCache.set(event, merged);
           }
           for(const listener of listeners) {
             merged.add(listener);
           }
         }
       }
-      this._cachedDelegateListenersMap = delegateListenerCache;
+      this._cachedDownstreamListenersMap = downstreamListenerCache;
     }
-    return this._cachedDelegateListenersMap;
+    return this._cachedDownstreamListenersMap;
   }
 
   private getOwnListenersMap(): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
@@ -614,7 +614,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
   private invalidateCombinedListenerCache(): void {
     this._cachedCombinedListenersMap = null;
-    this._cachedDelegateListenersMap = null;
+    this._cachedDownstreamListenersMap = null;
   }
 
   private invalidateOwnListenerCache(): void {
@@ -622,7 +622,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   /**
-   * Remove all event subscribers, lifecycle subscribers, and delegates.
+   * Remove all event subscribers, lifecycle subscribers, and downstreams.
    * Triggers lifecycle meta events for all subscribed events before removing
    * lifecycle subscribers, emitting {@link Lifecycle.willDestroy} during teardown.
    */
@@ -630,7 +630,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     this.releaseSubscribers();
     this.emitLifecycleEvent(Lifecycle.willDestroy, null);
     this.lifecycle.clear();
-    this.releaseDelegates();
+    this.releaseDownstreams();
   }
 
   private releaseSubscribers(): void {
@@ -641,13 +641,13 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     this.bus.clear();
   }
 
-  private releaseDelegates(): void {
-    for(const subs of Object.values(this.delegates)) {
+  private releaseDownstreams(): void {
+    for(const subs of Object.values(this.downstreams)) {
       for(const sub of subs()) {
         sub();
       }
     }
-    this.delegates.clear();
+    this.downstreams.clear();
   }
 
   private addListener(event: EventKeys<TEventMap>|WILDCARD, handler: GenericHandler): Subscription {
@@ -769,9 +769,9 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   private forward<T extends EventKeys<TEventMap>>(event: T, payload?: TEventMap[T]): boolean {
-    const {delegates: _delegates} = this;
-    if(_delegates.size) {
-      return Array.from(_delegates.keys())
+    const {downstreams: _downstreams} = this;
+    if(_downstreams.size) {
+      return Array.from(_downstreams.keys())
         .reduce((acc, d) => (d.emit(event as any, payload as any) || acc), false);
     } else {
       return false;
@@ -795,7 +795,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     if(bus === this) {
       this.invalidateOwnListenerCache();
     } else {
-      this.applyDelegateListenerAdded(event);
+      this.applyDownstreamListenerAdded(event);
     }
 
     this.emitLifecycleEvent(Lifecycle.didAddListener, event);
@@ -822,7 +822,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     if(bus === this) {
       this.invalidateOwnListenerCache();
     } else {
-      this.applyDelegateListenerRemoved(event);
+      this.applyDownstreamListenerRemoved(event);
     }
 
     this.emitLifecycleEvent(Lifecycle.didRemoveListener, event);
@@ -832,20 +832,20 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     }
   }
 
-  private applyDelegateListenerAdded(event: EventKeys<TEventMap>|WILDCARD): void {
-    const currCount = this.delegateListenerCountsByEvent.get(event) ?? 0;
-    this.delegateListenerCountsByEvent.set(event, Math.max(currCount + 1, 0));
-    this._delegateListenerTotalCount = Math.max(this._delegateListenerTotalCount + 1, 0);
+  private applyDownstreamListenerAdded(event: EventKeys<TEventMap>|WILDCARD): void {
+    const currCount = this.downstreamListenerCountsByEvent.get(event) ?? 0;
+    this.downstreamListenerCountsByEvent.set(event, Math.max(currCount + 1, 0));
+    this._downstreamListenerTotalCount = Math.max(this._downstreamListenerTotalCount + 1, 0);
   }
 
-  private applyDelegateListenerRemoved(event: EventKeys<TEventMap>|WILDCARD): void {
-    const currCount = this.delegateListenerCountsByEvent.get(event) ?? 0;
-    this.delegateListenerCountsByEvent.set(event, Math.max(currCount - 1, 0));
-    this._delegateListenerTotalCount = Math.max(this._delegateListenerTotalCount - 1, 0);
+  private applyDownstreamListenerRemoved(event: EventKeys<TEventMap>|WILDCARD): void {
+    const currCount = this.downstreamListenerCountsByEvent.get(event) ?? 0;
+    this.downstreamListenerCountsByEvent.set(event, Math.max(currCount - 1, 0));
+    this._downstreamListenerTotalCount = Math.max(this._downstreamListenerTotalCount - 1, 0);
   }
 
-  private onDelegateWillAddListener(event: EventKeys<TEventMap>|WILDCARD): void {
-    if(!this.options.coalesceDelegateLifecycle) {
+  private onDownstreamWillAddListener(event: EventKeys<TEventMap>|WILDCARD): void {
+    if(!this.options.coalesceDownstreamLifecycle) {
       this.willAddListener(event);
       return;
     }
@@ -853,8 +853,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     this.scheduleCoalesceFlush();
   }
 
-  private onDelegateDidAddListener(event: EventKeys<TEventMap>|WILDCARD): void {
-    if(!this.options.coalesceDelegateLifecycle) {
+  private onDownstreamDidAddListener(event: EventKeys<TEventMap>|WILDCARD): void {
+    if(!this.options.coalesceDownstreamLifecycle) {
       this.didAddListener(event);
       return;
     }
@@ -862,8 +862,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     this.scheduleCoalesceFlush();
   }
 
-  private onDelegateWillRemoveListener(event: EventKeys<TEventMap>|WILDCARD): void {
-    if(!this.options.coalesceDelegateLifecycle) {
+  private onDownstreamWillRemoveListener(event: EventKeys<TEventMap>|WILDCARD): void {
+    if(!this.options.coalesceDownstreamLifecycle) {
       this.willRemoveListener(event);
       return;
     }
@@ -871,8 +871,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     this.scheduleCoalesceFlush();
   }
 
-  private onDelegateDidRemoveListener(event: EventKeys<TEventMap>|WILDCARD): void {
-    if(!this.options.coalesceDelegateLifecycle) {
+  private onDownstreamDidRemoveListener(event: EventKeys<TEventMap>|WILDCARD): void {
+    if(!this.options.coalesceDownstreamLifecycle) {
       this.didRemoveListener(event);
       return;
     }
@@ -958,7 +958,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     this.invalidateCombinedListenerCache();
     for(const [event, count] of pending.didAdds) {
       for(let i = 0; i < count; i++) {
-        this.applyDelegateListenerAdded(event);
+        this.applyDownstreamListenerAdded(event);
       }
     }
 
@@ -990,7 +990,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     this.invalidateCombinedListenerCache();
     for(const [event, count] of pending.didRemoves) {
       for(let i = 0; i < count; i++) {
-        this.applyDelegateListenerRemoved(event);
+        this.applyDownstreamListenerRemoved(event);
       }
     }
 
@@ -1005,15 +1005,15 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   /**
-   * When a delegate link is created, reflect listeners that were already registered
-   * on the delegate (including nested delegates) in this bus's lifecycle hooks and
+   * When a downstream link is created, reflect listeners that were already registered
+   * on the downstream (including nested downstreams) in this bus's lifecycle hooks and
    * listener bookkeeping.
    */
-  private syncDelegateListenersAttached(delegate: Bus<any>): void {
+  private syncDownstreamListenersAttached(downstream: Bus<any>): void {
     const additions: {key: EventKeys<TEventMap>|WILDCARD; count: number}[] = [];
     let total = 0;
 
-    for(const [event, handlers] of delegate.getCombinedListenersMap()) {
+    for(const [event, handlers] of downstream.getCombinedListenersMap()) {
       if(!handlers.size) {
         continue;
       }
@@ -1026,7 +1026,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       return;
     }
 
-    if(this.options.coalesceDelegateLifecycle) {
+    if(this.options.coalesceDownstreamLifecycle) {
       const pending = this._coalesceAttachPending = {
         willAdds: new Set<EventKeys<TEventMap>|WILDCARD>(),
         didAdds: new Map<EventKeys<TEventMap>|WILDCARD, number>()
@@ -1053,7 +1053,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
     for(const {key, count} of additions) {
       for(let i = 0; i < count; i++) {
-        this.didAddListener(key, delegate, {suppressActive: true});
+        this.didAddListener(key, downstream, {suppressActive: true});
       }
     }
 
@@ -1064,10 +1064,10 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   /**
-   * When a delegate link is removed, emit the lifecycle transitions that would have
+   * When a downstream link is removed, emit the lifecycle transitions that would have
    * fired had each downstream handler been removed before the link was detached.
    */
-  private syncDelegateListenersDetached(
+  private syncDownstreamListenersDetached(
     listeners: ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>
   ): void {
     const ownTotal = this.getListenerCount({scope: ListenerScope.OWN});
@@ -1081,7 +1081,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       return;
     }
 
-    if(this.options.coalesceDelegateLifecycle) {
+    if(this.options.coalesceDownstreamLifecycle) {
       const pending = this._coalesceDetachPending = {
         willRemoves: new Set<EventKeys<TEventMap>|WILDCARD>(),
         didRemoves: new Map<EventKeys<TEventMap>|WILDCARD, number>(),
@@ -1121,7 +1121,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       this.emitLifecycleEvent(Lifecycle.willRemoveListener, event);
     }
 
-    let delegateRemaining = removals.length;
+    let downstreamRemaining = removals.length;
     for(const [event, handlers] of listeners) {
       if(handlers.size) {
         perEventRemaining.set(event, handlers.size);
@@ -1131,14 +1131,14 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     for(const event of removals) {
       const eventRemaining = perEventRemaining.get(event)!;
 
-      this.applyDelegateListenerRemoved(event);
+      this.applyDownstreamListenerRemoved(event);
       this.invalidateCombinedListenerCache();
       this.emitLifecycleEvent(Lifecycle.didRemoveListener, event);
 
       perEventRemaining.set(event, eventRemaining - 1);
-      delegateRemaining--;
+      downstreamRemaining--;
 
-      if(this._active && ownTotal + delegateRemaining === 0) {
+      if(this._active && ownTotal + downstreamRemaining === 0) {
         this._active = false;
         this.emitLifecycleEvent(Lifecycle.idle, null);
       }

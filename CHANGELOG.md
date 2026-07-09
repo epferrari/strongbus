@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 v3 tightens the subscription API around a smaller, more explicit set of methods
 and makes `next` and `scan` easier to type. The behavioral core (emitting,
 piping, scanning, memory-leak detection) is largely unchanged; lifecycle hook
-ordering and delegate piping behavior are tightened (see **Fixed** and **Changed**
+ordering and downstream piping behavior are tightened (see **Fixed** and **Changed**
 below).
 
 See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
@@ -36,10 +36,10 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   });
   ```
 
-  To send the event on to another bus, call `forward(dst)` rather than splitting
-  the pair back into `(event, payload)`. This re-emits the whole message on `dst`
-  without registering a delegate (avoiding the listener-lifecycle overhead a
-  delegate pipe incurs):
+  To send the event on to another bus, call `forward(dest)` rather than splitting
+  the pair back into `(event, payload)`. This re-emits the whole message on `dest`
+  without a downstream link (avoiding the listener-lifecycle overhead
+  `pipe(bus)` incurs):
 
   ```ts
   bus.pipe((piped, forward) => {
@@ -50,9 +50,9 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   });
   ```
 
-  `forward`'s target is constrained exactly like a delegate `pipe(dst)`: every
-  event `dst` declares must either be absent from the source or carry the same
-  payload type, so it's impossible to land an event on `dst` with a payload it
+  `forward`'s target is constrained exactly like `pipe(dest)`: every
+  event `dest` declares must either be absent from the source or carry the same
+  payload type, so it's impossible to land an event on `dest` with a payload it
   doesn't expect (source-only events are dropped). `PipeSink<TEventMap>` and
   `PipeForward<TEventMap>` are the exported types for this handler. `emit` itself
   stays strictly `(event, payload)` — it never accepts a `{event, payload}`
@@ -65,9 +65,9 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **`SubscriptionSurface<TEventMap>`** — subscribe, await, scan, and pipe (`on`, `once`, `any`, `next`, `scan`, `pipe`, `unpipe`). Use when a component should listen but must not raise events.
 - **`IntrospectionSurface<TEventMap>`** — scoped listener introspection (`hasListeners`, `getListenerCount`, `getListeners`, `getEventCount`, `hasListenersFor`, `getListenerCountFor`, `getListenersFor`, `forEach`).
 - **`MonitoringSurface<TEventMap>`** — lifecycle observation (`monitor`, `hook`, `active`).
-- **`ListenerScope`** — selects own, delegate (piped bus), or combined (`ANY`)
+- **`ListenerScope`** — selects own, downstream (piped bus), or combined (`ANY`)
   handlers for listener introspection. `ANY` is equivalent to
-  `ListenerScope.OWN | ListenerScope.DELEGATE`. `DELEGATE` covers listeners on
+  `ListenerScope.OWN | ListenerScope.DOWNSTREAM`. `DOWNSTREAM` covers listeners on
   buses attached with `pipe(bus)` only, not function sinks from `pipe(handler)`.
 - **`IntrospectionOptions`** — the `{scope?: ListenerScope}` options object
   accepted by the listener-introspection methods. Exported from the package root.
@@ -76,12 +76,12 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   access concrete, so a generic base class (`new Bus<Merge<Fixed, TGeneric>>()`)
   can `emit` its fixed events with literal payloads without casting to `any`.
   See [Composing event maps](./README.md#composing-event-maps).
-- **`options.coalesceDelegateLifecycle`** (default `false`) — when `true`, a
+- **`options.coalesceDownstreamLifecycle`** (default `false`) — when `true`, a
   source bus emits at most one `willAddListener` / `didAddListener` (and matching
-  remove hooks) per event key per delegate lifecycle episode, instead of once per
+  remove hooks) per event key per downstream lifecycle episode, instead of once per
   downstream handler. Listener counts and introspection are unchanged; only hook
-  emissions are coalesced. Applies to delegate bubbling after `source.pipe(delegate)` and to
-  reconcile when a delegate already has listeners at pipe time.
+  emissions are coalesced. Applies to downstream bubbling after `source.pipe(downstream)` and to
+  reconcile when a downstream already has listeners at pipe time.
 
 ### Changed
 
@@ -89,7 +89,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   `hasListeners`, `getListenerCount`, `getListeners`, `getEventCount`,
   `hasListenersFor`, `getListenerCountFor`, `getListenersFor`, and `forEach`
   (event-first callback). Each takes an optional `{scope?: ListenerScope}`
-  options argument to select own, delegate, or combined handlers; `scope`
+  options argument to select own, downstream, or combined handlers; `scope`
   defaults to `ListenerScope.ANY`. `getListenersFor` returns an empty set when
   none are registered. `forEach` callback event keys are compile-time narrowed
   only; at runtime all registered keys are visited.
@@ -106,11 +106,11 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   works over concrete maps. `ControlSurface.emit` and `handleUnexpectedEvent` adopt
   the same correlated shape. A correlated-tuple overload remains for call sites that
   discriminated on `event` first. Pipe sinks receive `{event, payload}` as one
-  value and should use `forward(dst)` rather than splitting the pair.
+  value and should use `forward(dest)` rather than splitting the pair.
 - **`PipePayloadOverlap` uses tuple equality (`[A] extends [B]`)** so narrow-to-wide
   `pipe`/`forward` targets type-check when the source map is an open generic and
-  the delegate map is a concrete superset (e.g. `_incomingPushBus.pipe(_bus)`).
-- **`pipe(bus)` returns the concrete delegate type** (`TDelegate`), preserving
+  the downstream map is a concrete superset (e.g. `_incomingPushBus.pipe(_bus)`).
+- **`pipe(bus)` returns the concrete downstream type** (`TDownstream`), preserving
   subclasses for chaining (e.g. `head.pipe(mid).pipe(tail)`).
 - **`on(event, handler)` only accepts a single event key.** It no longer
   forwards arrays to `any` or `'*'` to `proxy`.
@@ -127,7 +127,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   consistently on every bus: `willActivate` before all `willAddListener` hooks,
   `willIdle` before all `willRemoveListener` hooks, `active` after all
   `didAddListener` hooks, and `idle` after all `didRemoveListener` hooks.
-  Direct `on()` / unsubscribe calls remain one episode per listener; delegate
+  Direct `on()` / unsubscribe calls remain one episode per listener; downstream
   reconcile on `pipe()` / `unpipe()` batches pre-existing downstream listeners
   into a single episode with the same bracket rules.
 
@@ -146,17 +146,17 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **Per-event listener helpers (v2)** — `hasListenersFor`, `getListenerCountFor`,
   etc. without a scope parameter.
 - **`listeners` and `ownListeners` `ReadonlyMap` getters (v2).**
-- **`hasListeners` / `hasOwnListeners` / `hasDelegateListeners` properties,
+- **`hasListeners` / `hasOwnListeners` / `hasDownstreamListeners` properties,
   `listenerCount`, and related per-scope method triplets** — use the scoped
   introspection API with `ListenerScope`.
 
 ### Fixed
 
-- **Delegate listeners before `pipe()`** — when a delegate already has listeners
+- **Downstream listeners before `pipe()`** — when a downstream already has listeners
   (including via nested `pipe` links) at the moment `pipe(bus)` runs, the upstream
   bus now bubbles the corresponding add-listener lifecycle hooks, updates listener
   counts, and transitions to `active` as if those handlers had been present from the
-  start. `unpipe` symmetrically bubbles remove hooks, clears delegate-scoped
+  start. `unpipe` symmetrically bubbles remove hooks, clears downstream-scoped
   introspection, and marks the upstream bus idle when it was the only downstream
   demand.
 - **Variance:** a `Bus<Wide>` is assignable to `SubscriptionSurface<Narrow>`,
@@ -198,28 +198,28 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | `bus.ownListeners` | `bus.forEach((event, handlers) => ..., {scope: ListenerScope.OWN})` |
 | `bus.hasListeners` *(property)* | `bus.hasListeners()` or `bus.hasListeners({scope: ListenerScope.ANY})` |
 | `bus.hasOwnListeners` | `bus.hasListeners({scope: ListenerScope.OWN})` |
-| `bus.hasDelegateListeners` | `bus.hasListeners({scope: ListenerScope.DELEGATE})` |
+| `bus.hasDownstreamListeners` | `bus.hasListeners({scope: ListenerScope.DOWNSTREAM})` |
 | `bus.listenerCount` | `bus.getListenerCount()` or `bus.getListenerCount({scope: ListenerScope.ANY})` |
 | `bus.listenerEventCount` | `bus.getEventCount()` or `bus.getEventCount({scope: ListenerScope.ANY})` |
 | `bus.ownListenerEventCount` | `bus.getEventCount({scope: ListenerScope.OWN})` |
-| `bus.delegateListenerEventCount` | `bus.getEventCount({scope: ListenerScope.DELEGATE})` |
+| `bus.downstreamListenerEventCount` | `bus.getEventCount({scope: ListenerScope.DOWNSTREAM})` |
 | `bus.hasListenersFor('foo')` | `bus.hasListenersFor('foo')` or `bus.hasListenersFor('foo', {scope: ListenerScope.ANY})` |
 | `bus.hasOwnListenersFor('foo')` | `bus.hasListenersFor('foo', {scope: ListenerScope.OWN})` |
-| `bus.hasDelegateListenersFor('foo')` | `bus.hasListenersFor('foo', {scope: ListenerScope.DELEGATE})` |
+| `bus.hasDownstreamListenersFor('foo')` | `bus.hasListenersFor('foo', {scope: ListenerScope.DOWNSTREAM})` |
 | `bus.getListenerCountFor('foo')` | `bus.getListenerCountFor('foo')` or `bus.getListenerCountFor('foo', {scope: ListenerScope.ANY})` |
 | `bus.getOwnListenerCountFor('foo')` | `bus.getListenerCountFor('foo', {scope: ListenerScope.OWN})` |
-| `bus.getDelegateListenerCountFor('foo')` | `bus.getListenerCountFor('foo', {scope: ListenerScope.DELEGATE})` |
+| `bus.getDownstreamListenerCountFor('foo')` | `bus.getListenerCountFor('foo', {scope: ListenerScope.DOWNSTREAM})` |
 | `bus.getListener('foo')` | `bus.getListenersFor('foo')` or `bus.getListenersFor('foo', {scope: ListenerScope.ANY})` |
 | `bus.getOwnListener('foo')` | `bus.getListenersFor('foo', {scope: ListenerScope.OWN})` |
-| `bus.getDelegateListener('foo')` | `bus.getListenersFor('foo', {scope: ListenerScope.DELEGATE})` |
+| `bus.getDownstreamListener('foo')` | `bus.getListenersFor('foo', {scope: ListenerScope.DOWNSTREAM})` |
 | `bus.getListenerCount('foo')` | `bus.getListenerCountFor('foo')` or `bus.getListenerCountFor('foo', {scope: ListenerScope.ANY})` |
 | `bus.getOwnListenerCount('foo')` | `bus.getListenerCountFor('foo', {scope: ListenerScope.OWN})` |
-| `bus.getDelegateListenerCount('foo')` | `bus.getListenerCountFor('foo', {scope: ListenerScope.DELEGATE})` |
+| `bus.getDownstreamListenerCount('foo')` | `bus.getListenerCountFor('foo', {scope: ListenerScope.DOWNSTREAM})` |
 | `bus.forEachListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ...)` or `bus.forEach((event, handlers) => ..., {scope: ListenerScope.ANY})` |
 | `bus.forEachOwnListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., {scope: ListenerScope.OWN})` |
-| `bus.forEachDelegateListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., {scope: ListenerScope.DELEGATE})` |
+| `bus.forEachDownstreamListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., {scope: ListenerScope.DOWNSTREAM})` |
 
-Import `ListenerScope` from `'strongbus'` wherever the v3 column uses it. `ListenerScope.ANY` is equivalent to `ListenerScope.OWN | ListenerScope.DELEGATE`. `ListenerScope.DELEGATE` covers listeners on buses attached with `pipe(bus)` only, not function sinks from `pipe(handler)` (those are `ListenerScope.OWN`).
+Import `ListenerScope` from `'strongbus'` wherever the v3 column uses it. `ListenerScope.ANY` is equivalent to `ListenerScope.OWN | ListenerScope.DOWNSTREAM`. `ListenerScope.DOWNSTREAM` covers listeners on buses attached with `pipe(bus)` only, not function sinks from `pipe(handler)` (those are `ListenerScope.OWN`).
 
 ### `on` with arrays or the wildcard
 
@@ -254,7 +254,7 @@ const sub = bus.pipe(({event, payload}) => { /* ... */ });
 ### `pipe(bus)` vs. forwarding sink
 
 The README's [`pipe(bus)` vs. a forwarding sink](./README.md#pipebus-vs-a-forwarding-sink) section
-documents when to use delegate piping versus a forwarding sink. For migration from v2:
+documents when to use downstream piping versus a forwarding sink. For migration from v2:
 
 In v2, funneling events from a feeder bus into a hub was often spelled
 `feeder.on('*', hub.emit)`. v3 removes the `'*'` subscription, so a `pipe` sink with `forward` is the
@@ -387,5 +387,5 @@ const count = bus.getListenerCountFor('foo');
 const handlers = bus.getListenersFor('foo');
 bus.forEach((event, set) => { /* ... */ });
 bus.forEach((event, set) => { /* ... */ }, {scope: ListenerScope.OWN});
-bus.forEach((event, set) => { /* ... */ }, {scope: ListenerScope.DELEGATE});
+bus.forEach((event, set) => { /* ... */ }, {scope: ListenerScope.DOWNSTREAM});
 ```

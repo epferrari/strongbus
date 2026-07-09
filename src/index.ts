@@ -10,7 +10,7 @@ export type {
   PipeSink,
   PipeMessage,
   PipeForward,
-  InferPipeDelegateMap
+  InferPipeDownstreamMap
 } from './types/eventHandlers';
 export * from './types/lifecycle';
 export type {Logger, LoggerProvider} from './types/logger';

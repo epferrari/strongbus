@@ -44,21 +44,21 @@ export type PipeMessage<TEventMap extends EventMap> = {
   [K in EventKeys<TEventMap>]: {event: K; payload: TEventMap[K]}
 }[EventKeys<TEventMap>];
 
-/** Event map carried by a {@link Bus} delegate passed to {@link Bus.pipe} or {@link PipeForward}. */
-export type InferPipeDelegateMap<TDelegate> =
-  TDelegate extends Bus<infer M extends EventMap> ? M : never;
+/** Event map carried by a downstream {@link Bus} passed to {@link Bus.pipe} or {@link PipeForward}. */
+export type InferPipeDownstreamMap<TDownstream> =
+  TDownstream extends Bus<infer M extends EventMap> ? M : never;
 
 /**
  * For events shared by the pipe source and target maps, payload types must match
  * exactly. Source-only events are not required on the target; target-only events
  * are simply never raised by the source.
  */
-export type PipePayloadOverlap<TSource extends EventMap, TDelegate extends EventMap> =
-  Extract<EventKeys<TSource>, EventKeys<TDelegate>> extends never
+export type PipePayloadOverlap<TSource extends EventMap, TDownstream extends EventMap> =
+  Extract<EventKeys<TSource>, EventKeys<TDownstream>> extends never
     ? unknown
     : {
-        [K in Extract<EventKeys<TSource>, EventKeys<TDelegate>>]: [TSource[K]] extends [TDelegate[K]]
-          ? [TDelegate[K]] extends [TSource[K]]
+        [K in Extract<EventKeys<TSource>, EventKeys<TDownstream>>]: [TSource[K]] extends [TDownstream[K]]
+          ? [TDownstream[K]] extends [TSource[K]]
             ? true
             : false
           : false;
@@ -72,7 +72,7 @@ export type PipePayloadOverlap<TSource extends EventMap, TDelegate extends Event
  * The `forward` function handed to a {@link PipeSink} as its second argument,
  * bound to the current {@link PipeMessage}. Calling `forward(dst)` re-emits that
  * message on `dst` — like `src.pipe(dst)` but per-message and without registering
- * a delegate (so none of the listener-lifecycle overhead a delegate incurs).
+ * a downstream link (so none of the listener-lifecycle overhead `pipe(bus)` incurs).
  *
  * `dst` must be a {@link Bus} whose map is *payload-compatible* with the source:
  * every event `dst` declares must either be absent from the source or carry the
@@ -81,8 +81,8 @@ export type PipePayloadOverlap<TSource extends EventMap, TDelegate extends Event
  * `dst` doesn't declare are simply dropped by `dst` at runtime.
  */
 export type PipeForward<in out TEventMap extends EventMap> = {
-  bivarianceHack: <TDelegate extends Bus<any>>(
-    dest: TDelegate & PipePayloadOverlap<TEventMap, InferPipeDelegateMap<TDelegate>>
+  bivarianceHack: <TDownstream extends Bus<any>>(
+    dest: TDownstream & PipePayloadOverlap<TEventMap, InferPipeDownstreamMap<TDownstream>>
   ) => boolean;
 }['bivarianceHack'];
 

@@ -7,7 +7,7 @@ import type {
   EventHandler,
   EventSink,
   PipeSink,
-  InferPipeDelegateMap,
+  InferPipeDownstreamMap,
   PipePayloadOverlap
 } from '../eventHandlers';
 import type {EventKeys, EventPayloadPair, SubscribableEventKeys} from '../utility';
@@ -66,9 +66,9 @@ export type SubscriptionSurfaceAny<in out TEventMap extends EventMap> = {
 export type SubscriptionSurfacePipe<in out TEventMap extends EventMap> = {
   bivarianceHack: {
     <TMap extends PipeEventMap<TEventMap>>(sink: PipeSink<TMap>): Subscription;
-    <TDelegate extends Bus<any>>(
-      delegate: TDelegate & PipePayloadOverlap<TEventMap, InferPipeDelegateMap<TDelegate>>
-    ): TDelegate;
+    <TDownstream extends Bus<any>>(
+      downstream: TDownstream & PipePayloadOverlap<TEventMap, InferPipeDownstreamMap<TDownstream>>
+    ): TDownstream;
   };
 }['bivarianceHack'];
 
@@ -100,7 +100,7 @@ export type SubscriptionSurfaceNext<in out TEventMap extends EventMap> = {
 export type SubscriptionSurfaceUnpipe<in out TEventMap extends EventMap> = {
   bivarianceHack: {
     <TMap extends PipeEventMap<TEventMap>>(sink: PipeSink<TMap>): void;
-    <TDelegate extends Bus<any>>(delegate: TDelegate): void;
+    <TDownstream extends Bus<any>>(downstream: TDownstream): void;
   };
 }['bivarianceHack'];
 

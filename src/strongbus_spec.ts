@@ -19,7 +19,7 @@ type TestEventMap = {
 
 const ALL_TEST_EVENTS: EventKeys<TestEventMap>[] = ['foo', 'bar', 'baz', 'quo'];
 
-class DelegateTestBus<T extends EventMap = TestEventMap> extends Strongbus.Bus<T> {
+class DownstreamTestBus<T extends EventMap = TestEventMap> extends Strongbus.Bus<T> {
   private readonly emulateListenerCount: boolean = false;
   constructor(options: Strongbus.Options & {emulateListenerCount?: boolean}) {
     super(options);
@@ -79,9 +79,9 @@ describe('Strongbus.Bus', () => {
         expect(options.thresholds.error).toEqual(21);
       });
 
-      it('defaults coalesceDelegateLifecycle to false', () => {
+      it('defaults coalesceDownstreamLifecycle to false', () => {
         const options: Strongbus.Options = (bus as any).options;
-        expect(options.coalesceDelegateLifecycle).toBeFalse();
+        expect(options.coalesceDownstreamLifecycle).toBeFalse();
       });
     });
 
@@ -435,19 +435,19 @@ describe('Strongbus.Bus', () => {
         expect(bus.emit('foo', 'eagle')).toBeTrue();
       });
 
-      it('returns true when only a delegate handles the event', () => {
-        const delegate = new Strongbus.Bus<TestEventMap>();
-        delegate.on('foo', singleEventHandler);
-        bus.pipe(delegate);
+      it('returns true when only a downstream handles the event', () => {
+        const downstream = new Strongbus.Bus<TestEventMap>();
+        downstream.on('foo', singleEventHandler);
+        bus.pipe(downstream);
 
         expect(bus.emit('foo', 'eagle')).toBeTrue();
         expect(singleEventHandler).toHaveBeenCalledWith('eagle');
       });
 
-      it('returns false when a delegate exists but has no listener for the event', () => {
-        const delegate = new Strongbus.Bus<TestEventMap>();
-        delegate.on('bar', singleEventHandler);
-        bus.pipe(delegate);
+      it('returns false when a downstream exists but has no listener for the event', () => {
+        const downstream = new Strongbus.Bus<TestEventMap>();
+        downstream.on('bar', singleEventHandler);
+        bus.pipe(downstream);
 
         expect(bus.emit('foo', 'eagle')).toBeFalse();
       });
@@ -579,8 +579,8 @@ describe('Strongbus.Bus', () => {
   });
 
   describe('event delegation', () => {
-    let bus2: DelegateTestBus;
-    let bus3: DelegateTestBus;
+    let bus2: DownstreamTestBus;
+    let bus3: DownstreamTestBus;
 
     describe('#pipe', () => {
       describe('piping into a function sink', () => {
@@ -623,11 +623,11 @@ describe('Strongbus.Bus', () => {
 
       describe('piping into another bus', () => {
         beforeEach(() => {
-          bus2 = new DelegateTestBus({emulateListenerCount: true});
+          bus2 = new DownstreamTestBus({emulateListenerCount: true});
         });
 
         describe('given an event is raised from the parent bus', () => {
-          it('handles the event on the parent bus AND the delegate bus', () => {
+          it('handles the event on the parent bus AND the downstream bus', () => {
             spyOn(bus2, 'emit');
             bus.pipe(bus2);
 
@@ -651,23 +651,23 @@ describe('Strongbus.Bus', () => {
           expect((bus as any).handleUnexpectedEvent).not.toHaveBeenCalled();
           bus.unpipe(bus2);
 
-          // removed the delegate, bus has no listeners again
+          // removed the downstream, bus has no listeners again
           bus.emit('foo', null);
           expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
           (bus as any).handleUnexpectedEvent.calls.reset();
 
-          // emulate a delegate bus with no listeners attached
-          bus3 = new DelegateTestBus({emulateListenerCount: false});
+          // emulate a downstream bus with no listeners attached
+          bus3 = new DownstreamTestBus({emulateListenerCount: false});
           bus.pipe(bus3);
 
           bus.emit('foo', null);
           expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
         });
 
-        it('bubbles unhandled events to the parent regardless of whether the delegate allows them', () => {
+        it('bubbles unhandled events to the parent regardless of whether the downstream allows them', () => {
           bus = new Strongbus.Bus({allowUnhandledEvents: false});
-          bus2 = new DelegateTestBus({allowUnhandledEvents: true});
-          bus3 = new DelegateTestBus({allowUnhandledEvents: false, emulateListenerCount: false});
+          bus2 = new DownstreamTestBus({allowUnhandledEvents: true});
+          bus3 = new DownstreamTestBus({allowUnhandledEvents: false, emulateListenerCount: false});
           spyOn(bus as any, 'handleUnexpectedEvent');
           spyOn(bus2 as any, 'handleUnexpectedEvent');
           spyOn(bus3 as any, 'handleUnexpectedEvent');
@@ -681,8 +681,8 @@ describe('Strongbus.Bus', () => {
         });
 
         it('can be chained', () => {
-          bus2 = new DelegateTestBus({});
-          bus3 = new DelegateTestBus({});
+          bus2 = new DownstreamTestBus({});
+          bus3 = new DownstreamTestBus({});
 
           spyOn(bus, 'emit').and.callThrough();
           spyOn(bus2, 'emit').and.callThrough();
@@ -730,7 +730,7 @@ describe('Strongbus.Bus', () => {
     describe('#unpipe', () => {
       describe('unpiping another bus', () => {
         beforeEach(() => {
-          bus2 = new DelegateTestBus({emulateListenerCount: true});
+          bus2 = new DownstreamTestBus({emulateListenerCount: true});
         });
 
         it('removes a piped msg bus', () => {
@@ -749,7 +749,7 @@ describe('Strongbus.Bus', () => {
         });
 
         it('breaks the a chain of piped buses', () => {
-          bus3 = new DelegateTestBus({});
+          bus3 = new DownstreamTestBus({});
           spyOn(bus2, 'emit').and.callThrough();
           spyOn(bus3, 'emit').and.callThrough();
 
@@ -1071,69 +1071,69 @@ describe('Strongbus.Bus', () => {
       });
     });
 
-    describe('given bus has delegates', () => {
-      let delegate: DelegateTestBus;
-      let onDelegateWillAddListener: jasmine.Spy;
-      let onDelegateDidAddListener: jasmine.Spy;
-      let onDelegateWillRemoveListener: jasmine.Spy;
-      let onDelegateDidRemoveListener: jasmine.Spy;
-      let onDelegateWillActivate: jasmine.Spy;
-      let onDelegateActive: jasmine.Spy;
-      let onDelegateWillIdle: jasmine.Spy;
-      let onDelegateIdle: jasmine.Spy;
+    describe('given bus has downstreams', () => {
+      let downstream: DownstreamTestBus;
+      let onDownstreamWillAddListener: jasmine.Spy;
+      let onDownstreamDidAddListener: jasmine.Spy;
+      let onDownstreamWillRemoveListener: jasmine.Spy;
+      let onDownstreamDidRemoveListener: jasmine.Spy;
+      let onDownstreamWillActivate: jasmine.Spy;
+      let onDownstreamActive: jasmine.Spy;
+      let onDownstreamWillIdle: jasmine.Spy;
+      let onDownstreamIdle: jasmine.Spy;
 
       beforeEach(() => {
-        delegate = new DelegateTestBus({});
-        bus.pipe(delegate);
+        downstream = new DownstreamTestBus({});
+        bus.pipe(downstream);
 
-        delegate.hook('willAddListener', onDelegateWillAddListener = jasmine.createSpy('onDelegateWillAddListener'));
-        delegate.hook('didAddListener', onDelegateDidAddListener = jasmine.createSpy('onDelegateDidAddListener'));
-        delegate.hook('willRemoveListener', onDelegateWillRemoveListener = jasmine.createSpy('onDelegateWillRemoveListener'));
-        delegate.hook('didRemoveListener', onDelegateDidRemoveListener = jasmine.createSpy('onDelegateDidRemoveListener'));
-        delegate.hook('willActivate', onDelegateWillActivate = jasmine.createSpy('onDelegateWillActivate'));
-        delegate.hook('active', onDelegateActive = jasmine.createSpy('onDelegateActive'));
-        delegate.hook('willIdle', onDelegateWillIdle = jasmine.createSpy('onDelegateWillIdle'));
-        delegate.hook('idle', onDelegateIdle = jasmine.createSpy('onDelegateIdle'));
+        downstream.hook('willAddListener', onDownstreamWillAddListener = jasmine.createSpy('onDownstreamWillAddListener'));
+        downstream.hook('didAddListener', onDownstreamDidAddListener = jasmine.createSpy('onDownstreamDidAddListener'));
+        downstream.hook('willRemoveListener', onDownstreamWillRemoveListener = jasmine.createSpy('onDownstreamWillRemoveListener'));
+        downstream.hook('didRemoveListener', onDownstreamDidRemoveListener = jasmine.createSpy('onDownstreamDidRemoveListener'));
+        downstream.hook('willActivate', onDownstreamWillActivate = jasmine.createSpy('onDownstreamWillActivate'));
+        downstream.hook('active', onDownstreamActive = jasmine.createSpy('onDownstreamActive'));
+        downstream.hook('willIdle', onDownstreamWillIdle = jasmine.createSpy('onDownstreamWillIdle'));
+        downstream.hook('idle', onDownstreamIdle = jasmine.createSpy('onDownstreamIdle'));
       });
 
-      it('bubbles events from delegates', () => {
-        const sub = delegate.on('foo', singleEventHandler);
-        expect(onDelegateWillAddListener).toHaveBeenCalledWith('foo');
+      it('bubbles events from downstreams', () => {
+        const sub = downstream.on('foo', singleEventHandler);
+        expect(onDownstreamWillAddListener).toHaveBeenCalledWith('foo');
         expect(onWillAddListener).toHaveBeenCalledWith('foo');
 
-        expect(onDelegateDidAddListener).toHaveBeenCalledWith('foo');
+        expect(onDownstreamDidAddListener).toHaveBeenCalledWith('foo');
         expect(onAddListener).toHaveBeenCalledWith('foo');
 
-        expect(onDelegateWillActivate).toHaveBeenCalled();
+        expect(onDownstreamWillActivate).toHaveBeenCalled();
         expect(onWillActivate).toHaveBeenCalled();
 
-        expect(onDelegateActive).toHaveBeenCalled();
+        expect(onDownstreamActive).toHaveBeenCalled();
         expect(onActive).toHaveBeenCalled();
 
 
         sub.unsubscribe();
-        expect(onDelegateWillRemoveListener).toHaveBeenCalledWith('foo');
+        expect(onDownstreamWillRemoveListener).toHaveBeenCalledWith('foo');
         expect(onRemoveListener).toHaveBeenCalledWith('foo');
 
-        expect(onDelegateDidRemoveListener).toHaveBeenCalledWith('foo');
+        expect(onDownstreamDidRemoveListener).toHaveBeenCalledWith('foo');
         expect(onRemoveListener).toHaveBeenCalledWith('foo');
 
-        expect(onDelegateWillIdle).toHaveBeenCalled();
+        expect(onDownstreamWillIdle).toHaveBeenCalled();
         expect(onWillIdle).toHaveBeenCalled();
 
-        expect(onDelegateIdle).toHaveBeenCalled();
+        expect(onDownstreamIdle).toHaveBeenCalled();
         expect(onIdle).toHaveBeenCalled();
       });
 
 
-      it('raises "active" events independently of delegates', () => {
+      it('raises "active" events independently of downstreams', () => {
         expect(onActive).toHaveBeenCalledTimes(0);
-        expect(onDelegateActive).toHaveBeenCalledTimes(0);
+        expect(onDownstreamActive).toHaveBeenCalledTimes(0);
         bus.on('foo', singleEventHandler);
         expect(onActive).toHaveBeenCalledTimes(1);
-        expect(onDelegateActive).toHaveBeenCalledTimes(0);
-        delegate.on('foo', singleEventHandler);
-        expect(onDelegateActive).toHaveBeenCalledTimes(1);
+        expect(onDownstreamActive).toHaveBeenCalledTimes(0);
+        downstream.on('foo', singleEventHandler);
+        expect(onDownstreamActive).toHaveBeenCalledTimes(1);
         expect(onActive).toHaveBeenCalledTimes(1);
       });
 
@@ -1147,27 +1147,27 @@ describe('Strongbus.Bus', () => {
         expect(onIdle).toHaveBeenCalledTimes(1);
       });
 
-      it('raises "idle" events independently of delegates', () => {
+      it('raises "idle" events independently of downstreams', () => {
         const foosub = bus.on('foo', singleEventHandler);
-        const fooSub2 = delegate.on('foo', singleEventHandler);
+        const fooSub2 = downstream.on('foo', singleEventHandler);
 
         fooSub2.unsubscribe();
-        expect(onDelegateIdle).toHaveBeenCalledTimes(1);
-        onDelegateIdle.calls.reset();
+        expect(onDownstreamIdle).toHaveBeenCalledTimes(1);
+        onDownstreamIdle.calls.reset();
         expect(onIdle).toHaveBeenCalledTimes(0);
 
         foosub.unsubscribe();
-        expect(onDelegateIdle).toHaveBeenCalledTimes(0);
+        expect(onDownstreamIdle).toHaveBeenCalledTimes(0);
         expect(onIdle).toHaveBeenCalledTimes(1);
       });
     });
 
-    describe('given a delegate already has listeners before pipe', () => {
-      it('bubbles add-listener hooks when the delegate link is created', () => {
-        const delegate = new DelegateTestBus({});
-        delegate.on('foo', singleEventHandler);
+    describe('given a downstream already has listeners before pipe', () => {
+      it('bubbles add-listener hooks when the downstream link is created', () => {
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
 
-        bus.pipe(delegate);
+        bus.pipe(downstream);
 
         expect(onWillAddListener).toHaveBeenCalledWith('foo');
         expect(onAddListener).toHaveBeenCalledWith('foo');
@@ -1176,9 +1176,9 @@ describe('Strongbus.Bus', () => {
         expect(bus.active).toBeTrue();
       });
 
-      it('bubbles add-listener hooks from nested delegates when the upstream link is created', () => {
-        const node2 = new DelegateTestBus({});
-        const node1 = new DelegateTestBus({});
+      it('bubbles add-listener hooks from nested downstreams when the upstream link is created', () => {
+        const node2 = new DownstreamTestBus({});
+        const node1 = new DownstreamTestBus({});
         node2.on('foo', singleEventHandler);
         node1.pipe(node2);
 
@@ -1190,18 +1190,18 @@ describe('Strongbus.Bus', () => {
       });
     });
 
-    describe('given unpipe disconnects a delegate with listeners', () => {
-      it('bubbles remove-listener hooks when the delegate link is removed', () => {
-        const delegate = new DelegateTestBus({});
-        delegate.on('foo', singleEventHandler);
-        bus.pipe(delegate);
+    describe('given unpipe disconnects a downstream with listeners', () => {
+      it('bubbles remove-listener hooks when the downstream link is removed', () => {
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+        bus.pipe(downstream);
 
         onWillRemoveListener.calls.reset();
         onRemoveListener.calls.reset();
         onWillIdle.calls.reset();
         onIdle.calls.reset();
 
-        bus.unpipe(delegate);
+        bus.unpipe(downstream);
 
         expect(onWillRemoveListener).toHaveBeenCalledWith('foo');
         expect(onRemoveListener).toHaveBeenCalledWith('foo');
@@ -1210,47 +1210,47 @@ describe('Strongbus.Bus', () => {
       });
 
       it('clears downstream listeners from introspection after unpipe', () => {
-        const delegate = new DelegateTestBus({});
-        delegate.on('foo', singleEventHandler);
-        bus.pipe(delegate);
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+        bus.pipe(downstream);
 
         expect(bus.hasListenersFor('foo')).toBeTrue();
 
-        bus.unpipe(delegate);
+        bus.unpipe(downstream);
 
         expect(bus.hasListenersFor('foo')).toBeFalse();
-        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.DELEGATE})).toBe(0);
+        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.DOWNSTREAM})).toBe(0);
       });
 
-      it('marks the upstream bus idle when the delegate was its only downstream demand', () => {
-        const delegate = new DelegateTestBus({});
-        delegate.on('foo', singleEventHandler);
-        bus.pipe(delegate);
+      it('marks the upstream bus idle when the downstream was its only downstream demand', () => {
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+        bus.pipe(downstream);
 
         expect(bus.active).toBeTrue();
 
-        bus.unpipe(delegate);
+        bus.unpipe(downstream);
 
         expect(bus.active).toBeFalse();
         expect(onIdle).toHaveBeenCalled();
       });
     });
 
-    describe('given delegate sync reconciles pre-existing listeners', () => {
+    describe('given downstream sync reconciles pre-existing listeners', () => {
       const otherEventHandler = jasmine.createSpy('otherEventHandler');
 
-      it('emits all will-add hooks before any did-add hooks when pipe attaches a delegate', () => {
+      it('emits all will-add hooks before any did-add hooks when pipe attaches a downstream', () => {
         const order: string[] = [];
         onWillAddListener.and.callFake((event) => order.push(`willAdd:${event}`));
         onAddListener.and.callFake((event) => order.push(`didAdd:${event}`));
         onWillActivate.and.callFake(() => order.push('willActivate'));
         onActive.and.callFake(() => order.push('active'));
 
-        const delegate = new DelegateTestBus({});
-        delegate.on('foo', singleEventHandler);
-        delegate.on('foo', otherEventHandler);
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+        downstream.on('foo', otherEventHandler);
 
-        bus.pipe(delegate);
+        bus.pipe(downstream);
 
         expect(order).toEqual([
           'willActivate',
@@ -1262,11 +1262,11 @@ describe('Strongbus.Bus', () => {
         ]);
       });
 
-      it('emits all will-remove hooks before any did-remove hooks when unpipe detaches a delegate', () => {
-        const delegate = new DelegateTestBus({});
-        delegate.on('foo', singleEventHandler);
-        delegate.on('foo', otherEventHandler);
-        bus.pipe(delegate);
+      it('emits all will-remove hooks before any did-remove hooks when unpipe detaches a downstream', () => {
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+        downstream.on('foo', otherEventHandler);
+        bus.pipe(downstream);
 
         const order: string[] = [];
         onWillRemoveListener.and.callFake((event) => order.push(`willRemove:${event}`));
@@ -1274,7 +1274,7 @@ describe('Strongbus.Bus', () => {
         onWillIdle.and.callFake(() => order.push('willIdle'));
         onIdle.and.callFake(() => order.push('idle'));
 
-        bus.unpipe(delegate);
+        bus.unpipe(downstream);
 
         expect(order).toEqual([
           'willIdle',
@@ -1287,12 +1287,12 @@ describe('Strongbus.Bus', () => {
       });
     });
 
-    describe('given coalesceDelegateLifecycle is enabled', () => {
+    describe('given coalesceDownstreamLifecycle is enabled', () => {
       const otherEventHandler = jasmine.createSpy('otherEventHandler');
       let coalescingBus: Strongbus.Bus<TestEventMap>;
 
       beforeEach(() => {
-        coalescingBus = new Strongbus.Bus<TestEventMap>({coalesceDelegateLifecycle: true});
+        coalescingBus = new Strongbus.Bus<TestEventMap>({coalesceDownstreamLifecycle: true});
         coalescingBus.hook('willAddListener', onWillAddListener = jasmine.createSpy('onWillAddListener'));
         coalescingBus.hook('didAddListener', onAddListener = jasmine.createSpy('onAddListener'));
         coalescingBus.hook('willRemoveListener', onWillRemoveListener = jasmine.createSpy('onWillRemoveListener'));
@@ -1303,12 +1303,12 @@ describe('Strongbus.Bus', () => {
         coalescingBus.hook('idle', onIdle = jasmine.createSpy('onIdle'));
       });
 
-      it('emits one add-listener hook per event when pipe attaches a delegate', () => {
-        const delegate = new DelegateTestBus({});
-        delegate.on('foo', singleEventHandler);
-        delegate.on('foo', otherEventHandler);
+      it('emits one add-listener hook per event when pipe attaches a downstream', () => {
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+        downstream.on('foo', otherEventHandler);
 
-        coalescingBus.pipe(delegate);
+        coalescingBus.pipe(downstream);
 
         expect(onWillAddListener).toHaveBeenCalledOnceWith('foo');
         expect(onAddListener).toHaveBeenCalledOnceWith('foo');
@@ -1317,18 +1317,18 @@ describe('Strongbus.Bus', () => {
         expect(onActive).toHaveBeenCalled();
       });
 
-      it('emits one remove-listener hook per event when unpipe detaches a delegate', () => {
-        const delegate = new DelegateTestBus({});
-        delegate.on('foo', singleEventHandler);
-        delegate.on('foo', otherEventHandler);
-        coalescingBus.pipe(delegate);
+      it('emits one remove-listener hook per event when unpipe detaches a downstream', () => {
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+        downstream.on('foo', otherEventHandler);
+        coalescingBus.pipe(downstream);
 
         onWillRemoveListener.calls.reset();
         onRemoveListener.calls.reset();
         onWillIdle.calls.reset();
         onIdle.calls.reset();
 
-        coalescingBus.unpipe(delegate);
+        coalescingBus.unpipe(downstream);
 
         expect(onWillRemoveListener).toHaveBeenCalledOnceWith('foo');
         expect(onRemoveListener).toHaveBeenCalledOnceWith('foo');
@@ -1336,12 +1336,12 @@ describe('Strongbus.Bus', () => {
         expect(onIdle).toHaveBeenCalled();
       });
 
-      it('coalesces delegate listener changes made after pipe within the same turn', async () => {
-        const delegate = new DelegateTestBus({});
-        coalescingBus.pipe(delegate);
+      it('coalesces downstream listener changes made after pipe within the same turn', async () => {
+        const downstream = new DownstreamTestBus({});
+        coalescingBus.pipe(downstream);
 
-        delegate.on('foo', singleEventHandler);
-        delegate.on('foo', otherEventHandler);
+        downstream.on('foo', singleEventHandler);
+        downstream.on('foo', otherEventHandler);
 
         await Promise.resolve();
 
@@ -1357,11 +1357,11 @@ describe('Strongbus.Bus', () => {
         onWillActivate.and.callFake(() => order.push('willActivate'));
         onActive.and.callFake(() => order.push('active'));
 
-        const delegate = new DelegateTestBus({});
-        delegate.on('foo', singleEventHandler);
-        delegate.on('foo', otherEventHandler);
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+        downstream.on('foo', otherEventHandler);
 
-        coalescingBus.pipe(delegate);
+        coalescingBus.pipe(downstream);
 
         expect(order).toEqual([
           'willActivate',
@@ -1413,10 +1413,10 @@ describe('Strongbus.Bus', () => {
   });
 
   describe('#getListener', () => {
-    let bus2: DelegateTestBus;
+    let bus2: DownstreamTestBus;
 
     beforeEach(() => {
-      bus2 = new DelegateTestBus({emulateListenerCount: true});
+      bus2 = new DownstreamTestBus({emulateListenerCount: true});
     });
 
     describe('given there are event listeners on the instance', () => {
@@ -1424,7 +1424,7 @@ describe('Strongbus.Bus', () => {
         bus.on('foo', singleEventHandler);
       });
 
-      describe('and the instance has no delegates', () => {
+      describe('and the instance has no downstreams', () => {
         it('lists the listeners on the instance', () => {
           expect(combinedListenersToMap(bus)).toEqual(new Map([[
             'foo', new Set([singleEventHandler])
@@ -1435,7 +1435,7 @@ describe('Strongbus.Bus', () => {
         });
       });
 
-      describe('and the instance has delegates with no listeners', () => {
+      describe('and the instance has downstreams with no listeners', () => {
         it("lists the instance's listeners", () => {
           bus.pipe(bus2);
           expect(combinedListenersToMap(bus)).toEqual(new Map([[
@@ -1444,8 +1444,8 @@ describe('Strongbus.Bus', () => {
         });
       });
 
-      describe('and the instance has delegates with listeners', () => {
-        it("lists the instance's listeners and the delegate listeners", () => {
+      describe('and the instance has downstreams with listeners', () => {
+        it("lists the instance's listeners and the downstream listeners", () => {
           bus.pipe(bus2);
           bus2.on('foo', eventSink);
           expect(combinedListenersToMap(bus)).toEqual(new Map([[
@@ -1456,8 +1456,8 @@ describe('Strongbus.Bus', () => {
     });
 
     describe('given there are no event listeners on the instance', () => {
-      describe('and the instance has delegates with listeners', () => {
-        it('lists the delegate listeners', () => {
+      describe('and the instance has downstreams with listeners', () => {
+        it('lists the downstream listeners', () => {
           bus.pipe(bus2);
           bus2.on('foo', eventSink);
           expect(combinedListenersToMap(bus)).toEqual(new Map([[
@@ -1466,14 +1466,14 @@ describe('Strongbus.Bus', () => {
         });
       });
 
-      describe('and the instance has delegates with no listeners', () => {
+      describe('and the instance has downstreams with no listeners', () => {
         it('lists no listeners', () => {
           bus.pipe(bus2);
           expect(bus.getEventCount()).toEqual(0);
         });
       });
 
-      describe('and the instance has no delegates', () => {
+      describe('and the instance has no downstreams', () => {
         it('lists no listeners', () => {
           expect(bus.getEventCount()).toEqual(0);
         });
@@ -1496,19 +1496,19 @@ describe('Strongbus.Bus', () => {
         expect(bus.getEventCount()).toEqual(1);
       });
 
-      describe('given the instance has delegates', () => {
+      describe('given the instance has downstreams', () => {
         beforeEach(() => {
           bus.pipe(bus2);
         });
 
-        it('reflects listeners added on a delegate', () => {
+        it('reflects listeners added on a downstream', () => {
           bus.on('foo', singleEventHandler);
           expect(bus.getEventCount()).toEqual(1);
           bus2.on('bar', singleEventHandler);
           expect(bus.getEventCount()).toEqual(2);
         });
 
-        it('reflects listeners removed from a delegate', () => {
+        it('reflects listeners removed from a downstream', () => {
           bus.on('foo', singleEventHandler);
           const sub = bus2.on('bar', singleEventHandler);
           expect(bus.getEventCount()).toEqual(2);
@@ -1520,10 +1520,10 @@ describe('Strongbus.Bus', () => {
   });
 
   describe('#getOwnListener', () => {
-    let bus2: DelegateTestBus;
+    let bus2: DownstreamTestBus;
 
     beforeEach(() => {
-      bus2 = new DelegateTestBus({emulateListenerCount: true});
+      bus2 = new DownstreamTestBus({emulateListenerCount: true});
     });
 
     describe('given there are event listeners on the instance', () => {
@@ -1531,7 +1531,7 @@ describe('Strongbus.Bus', () => {
         bus.on('foo', singleEventHandler);
       });
 
-      describe('and the instance has no delegates', () => {
+      describe('and the instance has no downstreams', () => {
         it("lists the instance's listeners", () => {
           expect(ownListenersToMap(bus)).toEqual(new Map([[
             'foo', new Set([singleEventHandler])
@@ -1542,7 +1542,7 @@ describe('Strongbus.Bus', () => {
         });
       });
 
-      describe('and the instance has delegates with no listeners', () => {
+      describe('and the instance has downstreams with no listeners', () => {
         it("lists the instance's listeners", () => {
           bus.pipe(bus2);
           expect(ownListenersToMap(bus)).toEqual(new Map([[
@@ -1551,7 +1551,7 @@ describe('Strongbus.Bus', () => {
         });
       });
 
-      describe('and the instance has delegates with listeners', () => {
+      describe('and the instance has downstreams with listeners', () => {
         it("lists only the instance's listeners", () => {
           bus.pipe(bus2);
           bus2.on('foo', eventSink);
@@ -1563,7 +1563,7 @@ describe('Strongbus.Bus', () => {
     });
 
     describe('given there are no event listeners on the instance', () => {
-      describe('and the instance has delegates with listeners', () => {
+      describe('and the instance has downstreams with listeners', () => {
         it('lists no listeners', () => {
           bus.pipe(bus2);
           bus2.on('foo', eventSink);
@@ -1571,14 +1571,14 @@ describe('Strongbus.Bus', () => {
         });
       });
 
-      describe('and the instance has delegates with no listeners', () => {
+      describe('and the instance has downstreams with no listeners', () => {
         it('lists no listeners', () => {
           bus.pipe(bus2);
           expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(0);
         });
       });
 
-      describe('and the instance has no delegates', () => {
+      describe('and the instance has no downstreams', () => {
         it('lists no listeners', () => {
           expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(0);
         });
@@ -1593,7 +1593,7 @@ describe('Strongbus.Bus', () => {
         expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(2);
       });
 
-      it('is unaffected by delegate listener changes', () => {
+      it('is unaffected by downstream listener changes', () => {
         bus.pipe(bus2);
         bus.on('foo', singleEventHandler);
         expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(1);
@@ -1610,10 +1610,10 @@ describe('Strongbus.Bus', () => {
         expect(bus.getListenerCountFor('foo')).toBe(0);
       });
 
-      describe('given an instance has delegates registered for an event', () => {
+      describe('given an instance has downstreams registered for an event', () => {
         it('returns a positive count', () => {
           bus.destroy();
-          const bus2 = new DelegateTestBus({emulateListenerCount: true});
+          const bus2 = new DownstreamTestBus({emulateListenerCount: true});
           bus.pipe(bus2);
           bus2.on('foo', () => {return; });
           expect(bus.getListenerCountFor('foo')).toBeGreaterThan(0);
@@ -1639,10 +1639,10 @@ describe('Strongbus.Bus', () => {
         expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.OWN})).toBe(0);
       });
 
-      describe('given an instance has delegates registered for an event', () => {
+      describe('given an instance has downstreams registered for an event', () => {
         it('returns 0', () => {
           bus.destroy();
-          const bus2 = new DelegateTestBus({emulateListenerCount: true});
+          const bus2 = new DownstreamTestBus({emulateListenerCount: true});
           bus.pipe(bus2);
           bus2.on('foo', () => {return; });
           expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.OWN})).toBe(0);
@@ -1661,35 +1661,35 @@ describe('Strongbus.Bus', () => {
     });
   });
 
-  describe('#getDelegateListenerCount', () => {
-    describe('given an instance has no delegate listeners for an event', () => {
+  describe('#getDownstreamListenerCount', () => {
+    describe('given an instance has no downstream listeners for an event', () => {
       it('returns 0', () => {
         bus.destroy();
-        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.DELEGATE})).toBe(0);
+        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.DOWNSTREAM})).toBe(0);
       });
 
       describe('given an instance has only own listeners for an event', () => {
         it('returns 0', () => {
           bus.destroy();
           bus.on('foo', () => undefined);
-          expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.DELEGATE})).toBe(0);
+          expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.DOWNSTREAM})).toBe(0);
         });
       });
     });
 
-    describe('given a piped delegate has listeners for an event', () => {
+    describe('given a piped downstream has listeners for an event', () => {
       it('returns a positive count', () => {
         bus.destroy();
-        const bus2 = new DelegateTestBus({emulateListenerCount: true});
+        const bus2 = new DownstreamTestBus({emulateListenerCount: true});
         bus.pipe(bus2);
         bus2.on('foo', () => undefined);
-        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.DELEGATE})).toBeGreaterThan(0);
+        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.DOWNSTREAM})).toBeGreaterThan(0);
       });
     });
   });
 
   describe('#getListenerCount', () => {
-    describe('given an instance has no delegates', () => {
+    describe('given an instance has no downstreams', () => {
       it('counts listeners for the instance', () => {
         bus.on('foo', singleEventHandler);
         bus.on('bar', () => ({}));
@@ -1698,15 +1698,15 @@ describe('Strongbus.Bus', () => {
       });
     });
 
-    describe('given an instance has delegates', () => {
-      let bus2: DelegateTestBus;
+    describe('given an instance has downstreams', () => {
+      let bus2: DownstreamTestBus;
       beforeEach(() => {
-        bus2 = new DelegateTestBus({emulateListenerCount: true});
+        bus2 = new DownstreamTestBus({emulateListenerCount: true});
         bus.pipe(bus2);
       });
 
-      describe('and a delegate has listeners', () => {
-        it('counts listeners for the instance and its delegates', () => {
+      describe('and a downstream has listeners', () => {
+        it('counts listeners for the instance and its downstreams', () => {
           bus.on('foo', singleEventHandler);
           bus.on('bar', () => ({}));
           bus2.on('foo', singleEventHandler);
@@ -1715,8 +1715,8 @@ describe('Strongbus.Bus', () => {
         });
       });
 
-      describe('and delegates have no listeners', () => {
-        it('counts listeners for the instance and its delegates', () => {
+      describe('and downstreams have no listeners', () => {
+        it('counts listeners for the instance and its downstreams', () => {
           bus.on('foo', singleEventHandler);
           bus.on('bar', () => ({}));
 
@@ -1727,7 +1727,7 @@ describe('Strongbus.Bus', () => {
   });
 
   describe('#getListenerCount', () => {
-    describe('given an instance has no delegates', () => {
+    describe('given an instance has no downstreams', () => {
       it('counts listeners for the instance', () => {
         const sub1 = bus.on('foo', singleEventHandler);
         const sub2 = bus.on('bar', () => ({}));
@@ -1740,15 +1740,15 @@ describe('Strongbus.Bus', () => {
       });
     });
 
-    describe('given an instance has delegates', () => {
-      let bus2: DelegateTestBus;
+    describe('given an instance has downstreams', () => {
+      let bus2: DownstreamTestBus;
       beforeEach(() => {
-        bus2 = new DelegateTestBus({emulateListenerCount: true});
+        bus2 = new DownstreamTestBus({emulateListenerCount: true});
         bus.pipe(bus2);
       });
 
-      describe('and a delegate has listeners', () => {
-        it('counts listeners for the instance and its delegates', () => {
+      describe('and a downstream has listeners', () => {
+        it('counts listeners for the instance and its downstreams', () => {
           const sub1 = bus.on('foo', singleEventHandler);
           const sub2 = bus.on('bar', () => ({}));
           const sub3 = bus2.on('foo', singleEventHandler);
@@ -1765,8 +1765,8 @@ describe('Strongbus.Bus', () => {
         });
       });
 
-      describe('and delegates have no listeners', () => {
-        it('counts listeners for the instance and its delegates', () => {
+      describe('and downstreams have no listeners', () => {
+        it('counts listeners for the instance and its downstreams', () => {
           bus.on('foo', singleEventHandler);
           bus.on('bar', () => ({}));
 
@@ -1815,8 +1815,8 @@ describe('Strongbus.Bus', () => {
       expect(didAddListenerSpy).not.toHaveBeenCalled();
     });
 
-    it('clears all delegates', () => {
-      const bus2 = new DelegateTestBus({});
+    it('clears all downstreams', () => {
+      const bus2 = new DownstreamTestBus({});
       bus2.on('foo', singleEventHandler);
       bus2.pipe(eventSink);
 
