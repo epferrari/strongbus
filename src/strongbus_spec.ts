@@ -79,9 +79,9 @@ describe('Strongbus.Bus', () => {
         expect(options.thresholds.error).toEqual(21);
       });
 
-      it('defaults coalesceDownstreamLifecycle to false', () => {
+      it('defaults coalesceDownstreamLifecycleEvents to true', () => {
         const options: Strongbus.Options = (bus as any).options;
-        expect(options.coalesceDownstreamLifecycle).toBeFalse();
+        expect(options.coalesceDownstreamLifecycleEvents).toBeTrue();
       });
     });
 
@@ -1256,6 +1256,19 @@ describe('Strongbus.Bus', () => {
 
     describe('given downstream sync reconciles pre-existing listeners', () => {
       const otherEventHandler = jasmine.createSpy('otherEventHandler');
+      let nonCoalescingBus: Strongbus.Bus<TestEventMap>;
+
+      beforeEach(() => {
+        nonCoalescingBus = new Strongbus.Bus<TestEventMap>({coalesceDownstreamLifecycleEvents: false});
+        nonCoalescingBus.hook('willAddListener', onWillAddListener = jasmine.createSpy('onWillAddListener'));
+        nonCoalescingBus.hook('didAddListener', onAddListener = jasmine.createSpy('onAddListener'));
+        nonCoalescingBus.hook('willRemoveListener', onWillRemoveListener = jasmine.createSpy('onWillRemoveListener'));
+        nonCoalescingBus.hook('didRemoveListener', onRemoveListener = jasmine.createSpy('onRemoveListener'));
+        nonCoalescingBus.hook('willActivate', onWillActivate = jasmine.createSpy('onWillActivate'));
+        nonCoalescingBus.hook('active', onActive = jasmine.createSpy('onActive'));
+        nonCoalescingBus.hook('willIdle', onWillIdle = jasmine.createSpy('onWillIdle'));
+        nonCoalescingBus.hook('idle', onIdle = jasmine.createSpy('onIdle'));
+      });
 
       it('emits all will-add hooks before any did-add hooks when pipe attaches a downstream', () => {
         const order: string[] = [];
@@ -1268,7 +1281,7 @@ describe('Strongbus.Bus', () => {
         downstream.on('foo', singleEventHandler);
         downstream.on('foo', otherEventHandler);
 
-        bus.pipe(downstream);
+        nonCoalescingBus.pipe(downstream);
 
         expect(order).toEqual([
           'willActivate',
@@ -1284,7 +1297,7 @@ describe('Strongbus.Bus', () => {
         const downstream = new DownstreamTestBus({});
         downstream.on('foo', singleEventHandler);
         downstream.on('foo', otherEventHandler);
-        bus.pipe(downstream);
+        nonCoalescingBus.pipe(downstream);
 
         const order: string[] = [];
         onWillRemoveListener.and.callFake((event) => order.push(`willRemove:${event}`));
@@ -1292,7 +1305,7 @@ describe('Strongbus.Bus', () => {
         onWillIdle.and.callFake(() => order.push('willIdle'));
         onIdle.and.callFake(() => order.push('idle'));
 
-        bus.unpipe(downstream);
+        nonCoalescingBus.unpipe(downstream);
 
         expect(order).toEqual([
           'willRemove:foo',
@@ -1305,12 +1318,12 @@ describe('Strongbus.Bus', () => {
       });
     });
 
-    describe('given coalesceDownstreamLifecycle is enabled', () => {
+    describe('given coalesceDownstreamLifecycleEvents is enabled (default)', () => {
       const otherEventHandler = jasmine.createSpy('otherEventHandler');
       let coalescingBus: Strongbus.Bus<TestEventMap>;
 
       beforeEach(() => {
-        coalescingBus = new Strongbus.Bus<TestEventMap>({coalesceDownstreamLifecycle: true});
+        coalescingBus = new Strongbus.Bus<TestEventMap>();
         coalescingBus.hook('willAddListener', onWillAddListener = jasmine.createSpy('onWillAddListener'));
         coalescingBus.hook('didAddListener', onAddListener = jasmine.createSpy('onAddListener'));
         coalescingBus.hook('willRemoveListener', onWillRemoveListener = jasmine.createSpy('onWillRemoveListener'));

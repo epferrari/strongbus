@@ -34,7 +34,7 @@ describe('LifecycleManager', () => {
         thresholds: {info: 100, warn: 500, error: Infinity},
         verbose: false
       }),
-      coalesceDownstreamLifecycle: false
+      coalesceDownstreamLifecycleEvents: false
     });
 
     manager.hook('willAddListener', (event) => order.push(`willAdd:${event}`));
@@ -90,7 +90,7 @@ describe('LifecycleManager', () => {
         thresholds: {info: 100, warn: 500, error: Infinity},
         verbose: false
       }),
-      coalesceDownstreamLifecycle: true
+      coalesceDownstreamLifecycleEvents: true
     });
     coalescing.hook('willAddListener', (event) => order.push(`willAdd:${event}`));
     coalescing.hook('didAddListener', (event) => order.push(`didAdd:${event}`));

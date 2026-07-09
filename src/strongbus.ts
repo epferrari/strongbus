@@ -59,7 +59,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     },
     logger: console,
     verbose: true, // keep legacy behavior in 2.x version
-    coalesceDownstreamLifecycle: false
+    coalesceDownstreamLifecycleEvents: true
   };
 
   /**
@@ -145,7 +145,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     this.lifecycle = new LifecycleManager<TEventMap>({
       host: this.createLifecycleHost(),
       logger: this.logger,
-      coalesceDownstreamLifecycle: this.options.coalesceDownstreamLifecycle
+      coalesceDownstreamLifecycleEvents: this.options.coalesceDownstreamLifecycleEvents
     });
     this.hook = this.lifecycle.hook;
   }
@@ -409,10 +409,10 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       const unhook = this.downstreams.get(downstream);
       if(unhook) {
         const snapshot = this.buildDownstreamSnapshot(downstream);
+        this.lifecycle.onDownstreamDetached(snapshot);
         unhook();
         this.downstreams.delete(downstream);
         this.invalidateCombinedListenerCache();
-        this.lifecycle.onDownstreamDetached(snapshot);
       }
     }
   }) as SubscriptionSurfaceUnpipe<TEventMap>;

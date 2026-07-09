@@ -10,7 +10,6 @@ import type {EventKeys} from './types/utility';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {normalizeError} from './utils/normalizeError';
 import {over} from './utils/over';
-import { ListenerScope } from './types/listenerScope';
 
 export type DownstreamSnapshotEntry<TEventMap extends EventMap> = {
   event: EventKeys<TEventMap>|WILDCARD;
@@ -25,18 +24,18 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
   private readonly handlers = new Map<Lifecycle, Set<GenericHandler>>();
   private readonly host: LifecycleHost<TEventMap>;
   private readonly logger: StrongbusLogger<TEventMap>;
-  private readonly coalesceDownstreamLifecycle: boolean;
+  private readonly coalesceDownstreamLifecycleEvents: boolean;
 
   private _active = false;
 
   constructor(params: {
     host: LifecycleHost<TEventMap>;
     logger: StrongbusLogger<TEventMap>;
-    coalesceDownstreamLifecycle: boolean;
+    coalesceDownstreamLifecycleEvents: boolean;
   }) {
     this.host = params.host;
     this.logger = params.logger;
-    this.coalesceDownstreamLifecycle = params.coalesceDownstreamLifecycle;
+    this.coalesceDownstreamLifecycleEvents = params.coalesceDownstreamLifecycleEvents;
   }
 
   public get active(): boolean {
@@ -133,8 +132,8 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
     }
 
     for(const {event, count} of snapshot) {
-      const addEmissions = this.coalesceDownstreamLifecycle ? 1 : count;
-      const listenersPerAdd = this.coalesceDownstreamLifecycle ? count : 1;
+      const addEmissions = this.coalesceDownstreamLifecycleEvents ? 1 : count;
+      const listenersPerAdd = this.coalesceDownstreamLifecycleEvents ? count : 1;
 
       for(let i = 0; i < addEmissions; i++) {
         this.emitLifecycleEvent(Lifecycle.willAddListener, event);
@@ -167,8 +166,8 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
     let remaining = removalCount;
 
     for(const {event, count} of snapshot) {
-      const removeEmissions = this.coalesceDownstreamLifecycle ? 1 : count;
-      const listenersPerRemove = this.coalesceDownstreamLifecycle ? count : 1;
+      const removeEmissions = this.coalesceDownstreamLifecycleEvents ? 1 : count;
+      const listenersPerRemove = this.coalesceDownstreamLifecycleEvents ? count : 1;
 
       for(let i = 0; i < removeEmissions; i++) {
         if(idlePending && remaining === listenersPerRemove) {

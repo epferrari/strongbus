@@ -1,5 +1,4 @@
 import type {EventMap, WILDCARD} from './events';
-import { IntrospectionOptions } from './listenerScope';
 import type {EventKeys} from './utility';
 
 /**

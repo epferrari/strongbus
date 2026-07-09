@@ -19,7 +19,7 @@ export interface ListenerThresholds {
  * @prop thresholds {@link ListenerThresholds}
  * @prop logger {@link Logger | () => Logger} [`console`] - How to log potential memory leaks, if thresholds are < Infinity
  * @prop verbose - should memory leak warnings be output on every listener added above the thresholds, or only at intervals
- * @prop coalesceDownstreamLifecycle - when true, coalesce will/did add/remove hooks to one
+ * @prop coalesceDownstreamLifecycleEvents [true] - when true, coalesce will/did add/remove hooks to one
  * emission per event key during `pipe()` / `unpipe()` reconcile of a heavily-subscribed downstream bus
  */
 export interface Options {
@@ -28,5 +28,5 @@ export interface Options {
   thresholds?: Partial<ListenerThresholds>;
   logger?: LoggerProvider;
   verbose?: boolean;
-  coalesceDownstreamLifecycle?: boolean;
+  coalesceDownstreamLifecycleEvents?: boolean;
 }
