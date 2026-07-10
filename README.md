@@ -182,7 +182,7 @@ with a payload type `dest` doesn't expect, and source-only events `dest` doesn't
 Because the sink never hands you a bare `(event, payload)` pair to re-`emit`, a mismatched pair can't be
 fabricated — `emit` itself only accepts a correlated `(event, payload)`, never a `{event, payload}` object.
 
-### `pipe(bus)` vs. a forwarding sink
+### `pipe(bus)` vs. `pipe(sink)`
 
 There are two ways to aggregate events across buses, and they trade off differently.
 
