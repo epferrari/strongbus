@@ -3,7 +3,7 @@ import {type CancelablePromise, cancelable} from 'jaasync';
 import {Scanner} from './scanner';
 import {type EventMap, type Listenable, WILDCARD} from './types/events';
 import type {Scannable} from './types/scannable';
-import type {SubscribeOptions} from './types/surfaces/subscriptionSurface';
+import type {ScanOptions, SubscribeOptions} from './types/surfaces/subscriptionSurface';
 import type {EventKeys} from './types/utility';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import { autobind } from 'core-decorators';
@@ -24,10 +24,6 @@ type PoolKey = `${LazyOrEager}:${PoolMode}`;
 interface Pool<TEventMap extends EventMap> {
   wildcard: Promise<any>|undefined;
   event: Map<Promise<any>, Set<EventKeys<TEventMap>>>[];
-}
-
-function toPoolKey(lazyOrEager: LazyOrEager, incognito: boolean): PoolKey {
-  return `${lazyOrEager}:${incognito ? 'incognito' : 'monitored'}`;
 }
 
 /**
@@ -214,4 +210,35 @@ export class ScannerPools<TEventMap extends EventMap> {
       }
     }
   }
+}
+
+/**
+ * @ignore
+ */
+function toPoolKey(lazyOrEager: LazyOrEager, incognito: boolean): PoolKey {
+  return `${lazyOrEager}:${incognito ? 'incognito' : 'monitored'}`;
+}
+
+/**
+ * @ignore
+ */
+export function normalizeScanParams<TEventMap extends EventMap>(
+  args: readonly unknown[]
+): ScanParams<any, TEventMap> {
+  const [first, second, third] = args;
+  if(
+    args.length === 1 &&
+    typeof first === 'object' &&
+    first !== null &&
+    'evaluator' in first &&
+    'trigger' in first
+  ) {
+    return first as ScanParams<any, TEventMap>;
+  }
+
+  return {
+    trigger: first as ScanParams<any, TEventMap>['trigger'],
+    evaluator: second as ScanParams<any, TEventMap>['evaluator'],
+    ...(third as ScanOptions | undefined)
+  };
 }

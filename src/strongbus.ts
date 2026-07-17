@@ -3,7 +3,7 @@ import {autobind} from 'core-decorators';
 import {type CancelablePromise, cancelable, timeout} from 'jaasync';
 
 import {Scanner} from './scanner';
-import {ScannerPools, type ScanParams as InternalScanParams} from './scannerPools';
+import {normalizeScanParams, ScannerPools, type ScanParams} from './scannerPools';
 import {StrongbusLogger, StrongbusLogMessages} from './strongbusLogger';
 import {DownstreamSnapshot, LifecycleManager} from './lifecycleManager';
 import type {LifecycleHost} from './types/lifecycleHost';
@@ -45,28 +45,16 @@ import {over} from './utils/over';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {subscribeListenable} from './utils/subscribeListenable';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
+import { isSubscribeOptions } from './utils/isSubscribeOptions';
+import { Forwards } from './forwards';
 
-type ResolvedBusOptions = Omit<Required<Options>, 'duplicateSubscriptionStrategy' | 'thresholds'> & {
-  thresholds: Required<ListenerThresholds>;
-  duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy;
-};
 
-type HandlerIntent = {
-  frames: Subscription[];
-  invokeCount: number;
-  observabilityCount: number;
-  /** Handler placed in {@link handlersByEvent} for emit. */
-  emitHandler: GenericHandler;
-  incognito: boolean;
-};
 
-type IntentFrameMeta = {
-  honorDisposalConfig: boolean;
-  onFullyCleared: () => void;
-  adjustStackedObservability: (delta: number) => void;
-  fireLifecycleOwnListenerWillRemove: () => void;
-  fireLifecycleOwnListenerDidRemove: () => void;
-};
+export interface Bus<TEventMap extends EventMap = EventMap> extends
+  ControlSurface<TEventMap>,
+  SubscriptionSurface<TEventMap>,
+  IntrospectionSurface<TEventMap>,
+  MonitoringSurface<TEventMap> {}
 
 @autobind
 export class Bus<TEventMap extends EventMap = EventMap> implements
@@ -473,7 +461,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     ...args: unknown[]
   ): CancelablePromise<any> => {
     const params = normalizeScanParams<TEventMap>(args);
-    const scanParams = params as unknown as InternalScanParams<any, TEventMap>;
+    const scanParams = params as unknown as ScanParams<any, TEventMap>;
 
     const subscribeOptions: SubscribeOptions | undefined = params.incognito
       ? {incognito: true}
@@ -911,7 +899,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     handler: EventSink<TEventMap>,
     options?: SubscribeOptions
   ): Subscription {
-    const uniqueEvents = canonicalizeEventKeys(events);
+    const uniqueEvents = Bus.canonicalizeEventKeys(events);
     const eventsKey = uniqueEvents.map(String).join('\0');
     const strategy = this.duplicateSubscriptionStrategy;
     let byKey = this.anyIntents.get(handler as GenericHandler);
@@ -1460,7 +1448,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   private buildDownstreamSnapshot(downstream: Bus<any>) {
-    return downstreamSnapshotFromListenersMap<TEventMap>(
+    return Bus.downstreamSnapshotFromListenersMap<TEventMap>(
       downstream.getCombinedListenersMap(false) as ReadonlyMap<
         EventKeys<TEventMap>|WILDCARD,
         ReadonlySet<GenericHandler>
@@ -1481,118 +1469,59 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     this._downstreamListenerTotalCount = Math.max(this._downstreamListenerTotalCount - count, 0);
     this.invalidateCombinedListenerCache();
   }
-}
 
-
-export interface Bus<TEventMap extends EventMap = EventMap> extends
-  ControlSurface<TEventMap>,
-  SubscriptionSurface<TEventMap>,
-  IntrospectionSurface<TEventMap>,
-  MonitoringSurface<TEventMap> {}
-
-
-/**
- * @ignore
- */
-function isSubscribeOptions(value: unknown): value is SubscribeOptions {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/**
- * @ignore
- * Stable unique event keys for {@link Bus.any} intent identity (order-independent).
- */
-function canonicalizeEventKeys<T extends string | number | symbol>(events: T[]): T[] {
-  const seen = new Set<T>();
-  const unique: T[] = [];
-  for(const e of events) {
-    if(!seen.has(e)) {
-      seen.add(e);
-      unique.push(e);
+  /**
+  * @ignore
+  * Stable unique event keys for {@link Bus.any} intent identity (order-independent).
+  */
+  private static canonicalizeEventKeys<T extends string | number | symbol>(events: T[]): T[] {
+    const seen = new Set<T>();
+    const unique: T[] = [];
+    for(const e of events) {
+      if(!seen.has(e)) {
+        seen.add(e);
+        unique.push(e);
+      }
     }
+    return unique.sort((a, b) => String(a).localeCompare(String(b)));
   }
-  return unique.sort((a, b) => String(a).localeCompare(String(b)));
+
+  /**
+  * @ignore
+  */
+  private static downstreamSnapshotFromListenersMap<TEventMap extends EventMap>(
+    listeners: ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>
+  ): DownstreamSnapshot<TEventMap> {
+    const snapshot: DownstreamSnapshot<TEventMap> = [];
+    for(const [event, handlers] of listeners) {
+      if(!handlers.size) {
+        continue;
+      }
+      snapshot.push({event, count: handlers.size});
+    }
+    return snapshot;
+  }
 }
 
-/**
- * @ignore
- */
-function normalizeScanParams<TEventMap extends EventMap>(
-  args: readonly unknown[]
-): InternalScanParams<any, TEventMap> {
-  const [first, second, third] = args;
-  if(
-    args.length === 1 &&
-    typeof first === 'object' &&
-    first !== null &&
-    'evaluator' in first &&
-    'trigger' in first
-  ) {
-    return first as InternalScanParams<any, TEventMap>;
-  }
+type ResolvedBusOptions = Omit<Required<Options>, 'duplicateSubscriptionStrategy' | 'thresholds'> & {
+  thresholds: Required<ListenerThresholds>;
+  duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy;
+};
 
-  return {
-    trigger: first as InternalScanParams<any, TEventMap>['trigger'],
-    evaluator: second as InternalScanParams<any, TEventMap>['evaluator'],
-    ...(third as ScanOptions | undefined)
-  };
-}
+type HandlerIntent = {
+  frames: Subscription[];
+  invokeCount: number;
+  observabilityCount: number;
+  /** Handler placed in {@link handlersByEvent} for emit. */
+  emitHandler: GenericHandler;
+  incognito: boolean;
+};
 
-/**
- * @ignore
- */
-function downstreamSnapshotFromListenersMap<TEventMap extends EventMap>(
-  listeners: ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>
-): DownstreamSnapshot<TEventMap> {
-  const snapshot: DownstreamSnapshot<TEventMap> = [];
-  for(const [event, handlers] of listeners) {
-    if(!handlers.size) {
-      continue;
-    }
-    snapshot.push({event, count: handlers.size});
-  }
-  return snapshot;
-}
+type IntentFrameMeta = {
+  honorDisposalConfig: boolean;
+  onFullyCleared: () => void;
+  adjustStackedObservability: (delta: number) => void;
+  fireLifecycleOwnListenerWillRemove: () => void;
+  fireLifecycleOwnListenerDidRemove: () => void;
+};
 
-class Forwards {
-  private turn: number = 0;
-  private accepting: boolean = false;
-  private readonly queue: {
-    turn: number;
-    delegateEmit: () => boolean;
-    resolve: (handled: boolean) => void;
-  }[] = [];
-
-  public begin(): void {
-    this.accepting = true;
-  }
-
-  public enqueue(delegateEmit: () => boolean): Promise<boolean> {
-    if(!this.accepting) {
-      return Promise.resolve(false);
-    }
-    const {turn} = this;
-    return new Promise<boolean>((resolve) => {
-      this.queue.push({turn, delegateEmit, resolve});
-    });
-  }
-
-  public flush(): void {
-    const curr = this.turn;
-    this.turn++;
-    const records = this.queue.slice();
-    this.queue.length = 0;
-    for(const {turn, delegateEmit, resolve} of records) {
-      resolve(turn === curr ? delegateEmit() : false);
-    }
-  }
-
-  public end(): void {
-    this.accepting = false;
-    const leftovers = this.queue.slice();
-    this.queue.length = 0;
-    for(const {resolve} of leftovers) {
-      resolve(false);
-    }
-  }
-}
