@@ -1,5 +1,6 @@
 import {autobind} from 'core-decorators';
 
+import type {DownstreamManager} from './downstreamManager';
 import type {SubscriptionManager} from './subscriptionManager';
 import type {EventMap, WILDCARD} from './types/events';
 import type {GenericHandler} from './types/eventHandlers';
@@ -12,22 +13,6 @@ import type {
   IntrospectionSurfaceListenerForEvent
 } from './types/surfaces/introspectionSurface';
 import type {EventKeys} from './types/utility';
-
-/**
- * Downstream graph callbacks supplied to {@link IntrospectionManager}.
- * Shared resources (`subscriptions`) are constructor deps, not host fields.
- * @internal
- */
-export type IntrospectionHost<TEventMap extends EventMap> = {
-  forEachDownstream(
-    fn: (downstream: {
-      getCombinedListenersMap(
-        includeIncognito: boolean
-      ): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
-      incognito: boolean;
-    }) => void
-  ): void;
-};
 
 /**
  * @ignore
@@ -49,18 +34,18 @@ export class IntrospectionManager<TEventMap extends EventMap = EventMap> {
   private readonly downstreamListenersRegistry: ListenerRegistry<TEventMap>;
   private readonly downstreamListenersRegistryWithIncognito: ListenerRegistry<TEventMap>;
 
-  private readonly host: IntrospectionHost<TEventMap>;
   private readonly subscriptions: SubscriptionManager<TEventMap>;
+  private readonly downstream: DownstreamManager<TEventMap>;
 
   private static readonly _emptyListenersRegistry: ListenerRegistry<any> =
     ListenerRegistryView.create(() => new Map());
 
   constructor(params: {
-    host: IntrospectionHost<TEventMap>;
     subscriptions: SubscriptionManager<TEventMap>;
+    downstream: DownstreamManager<TEventMap>;
   }) {
-    this.host = params.host;
     this.subscriptions = params.subscriptions;
+    this.downstream = params.downstream;
     this.listenersRegistry = ListenerRegistryView.create(() => this.getCombinedListenersMap(false));
     this.listenersRegistryWithIncognito = ListenerRegistryView.create(() => this.getCombinedListenersMap(true));
     this.ownListenersRegistry = ListenerRegistryView.create(() => this.getOwnListenersMap(false));
@@ -208,7 +193,7 @@ export class IntrospectionManager<TEventMap extends EventMap = EventMap> {
       : this._cachedDownstreamListeners;
     if(!cached) {
       const downstreamListenerCache = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
-      this.host.forEachDownstream(({getCombinedListenersMap, incognito}) => {
+      this.downstream.forEach(({getCombinedListenersMap, incognito}) => {
         if(incognito && !includeIncognito) {
           return;
         }
