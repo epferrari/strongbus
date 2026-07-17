@@ -1,6 +1,6 @@
 import {type Subscription, type EventMap, WILDCARD} from './types/events';
 import type {EventSink, PipeSink, PipeMessage, PipeForward, GenericHandler} from './types/eventHandlers';
-import type {DuplicateSubscriptionStrategy} from './types/options';
+import type {MaterializedBusOptions} from './types/options';
 import type {SubscribeOptions} from './types/surfaces/subscriptionSurface';
 import type {EventKeys} from './types/utility';
 import type {LifecycleManager} from './lifecycleManager';
@@ -28,13 +28,10 @@ type IntentFrameMeta = {
 
 /**
  * @ignore
- * Host surface {@link SubscriptionRegistry} needs from {@link Bus} (lifecycle, logging, caches).
+ * Bus identity / callbacks {@link SubscriptionRegistry} needs.
+ * Shared resources (`options`, `logger`, `forwards`, `lifecycle`) are constructor deps.
  */
-export type SubscriptionHost<TEventMap extends EventMap> = {
-  readonly duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy;
-  readonly lifecycle: LifecycleManager<TEventMap>;
-  readonly logger: StrongbusLogger<TEventMap>;
-  readonly forwards: Forwards;
+export type SubscriptionHost = {
   readonly name: string;
   invalidateOwnListenerCache(): void;
   invalidateCombinedListenerCache(): void;
@@ -77,11 +74,24 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
   }[] = [];
   private _purgingUnsubQueue: boolean = false;
 
+  private readonly host: SubscriptionHost;
+  private readonly options: Pick<MaterializedBusOptions, 'duplicateSubscriptionStrategy'>;
+  private readonly logger: StrongbusLogger<TEventMap>;
+  private readonly forwards: Forwards;
+  private readonly lifecycle: LifecycleManager<TEventMap>;
 
-  private readonly host: SubscriptionHost<TEventMap>;
-
-  constructor(host: SubscriptionHost<TEventMap>) {
-    this.host = host;
+  constructor(params: {
+    host: SubscriptionHost;
+    options: Pick<MaterializedBusOptions, 'duplicateSubscriptionStrategy'>;
+    logger: StrongbusLogger<TEventMap>;
+    forwards: Forwards;
+    lifecycle: LifecycleManager<TEventMap>;
+  }) {
+    this.host = params.host;
+    this.options = params.options;
+    this.logger = params.logger;
+    this.forwards = params.forwards;
+    this.lifecycle = params.lifecycle;
   }
 
   public off(event: EventKeys<TEventMap>|WILDCARD, handler: GenericHandler): void {
@@ -89,7 +99,7 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
     if(!intent?.frames.length) {
       return;
     }
-    const strategy = this.host.duplicateSubscriptionStrategy;
+    const strategy = this.options.duplicateSubscriptionStrategy;
     if(strategy.disposal === 'collapse') {
       const frames = intent.frames.slice();
       for(const frame of frames) {
@@ -208,7 +218,7 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
   ): Subscription {
     const uniqueEvents = canonicalizeEventKeys(events);
     const eventsKey = uniqueEvents.map(String).join('\0');
-    const strategy = this.host.duplicateSubscriptionStrategy;
+    const strategy = this.options.duplicateSubscriptionStrategy;
     let byKey = this.anyIntents.get(handler as GenericHandler);
     if(!byKey) {
       byKey = new Map();
@@ -246,7 +256,7 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
             return;
           }
           for(const e of uniqueEvents) {
-            this.host.lifecycle.ownListenerWillRemove(e);
+            this.lifecycle.ownListenerWillRemove(e);
           }
         },
         fireLifecycleOwnListenerDidRemove: () => {
@@ -254,7 +264,7 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
             return;
           }
           for(const e of uniqueEvents) {
-            this.host.lifecycle.ownListenerDidRemove(e);
+            this.lifecycle.ownListenerDidRemove(e);
           }
         }
       });
@@ -302,7 +312,7 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
           return;
         }
         for(const e of uniqueEvents) {
-          this.host.lifecycle.ownListenerWillRemove(e);
+          this.lifecycle.ownListenerWillRemove(e);
         }
       },
       fireLifecycleOwnListenerDidRemove: () => {
@@ -310,7 +320,7 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
           return;
         }
         for(const e of uniqueEvents) {
-          this.host.lifecycle.ownListenerDidRemove(e);
+          this.lifecycle.ownListenerDidRemove(e);
         }
       }
     });
@@ -325,11 +335,11 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
       this.adjustStackedListenerSurplus(e, delta, incognito);
       if(!incognito) {
         if(delta > 0) {
-          this.host.lifecycle.ownListenerWillAdd(e);
-          this.host.lifecycle.ownListenerDidAdd(e);
+          this.lifecycle.ownListenerWillAdd(e);
+          this.lifecycle.ownListenerDidAdd(e);
         } else if(delta < 0) {
-          this.host.lifecycle.ownListenerWillRemove(e);
-          this.host.lifecycle.ownListenerDidRemove(e);
+          this.lifecycle.ownListenerWillRemove(e);
+          this.lifecycle.ownListenerDidRemove(e);
         }
       }
     }
@@ -357,7 +367,7 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
       const intent = this.pipeIntents.get(sink as GenericHandler)?.get(WILDCARD);
       const times = Math.max(intent?.invokeCount ?? 1, 1);
       const forward = ((target: {emit: (event: any, payload: any) => boolean}) =>
-        this.host.forwards.enqueue(() => target.emit(event, payload))
+        this.forwards.enqueue(() => target.emit(event, payload))
       ) as PipeForward<TEventMap>;
       for(let i = 0; i < times; i++) {
         sink({event, payload} as PipeMessage<TEventMap>, forward);
@@ -396,7 +406,7 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
       options,
       honorDisposalConfig
     } = params;
-    const strategy = this.host.duplicateSubscriptionStrategy;
+    const strategy = this.options.duplicateSubscriptionStrategy;
     let byKey = intents.get(userHandler);
     if(!byKey) {
       byKey = new Map();
@@ -481,12 +491,12 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
       },
       fireLifecycleOwnListenerWillRemove: () => {
         if(!incognito) {
-          this.host.lifecycle.ownListenerWillRemove(listenableKey);
+          this.lifecycle.ownListenerWillRemove(listenableKey);
         }
       },
       fireLifecycleOwnListenerDidRemove: () => {
         if(!incognito) {
-          this.host.lifecycle.ownListenerDidRemove(listenableKey);
+          this.lifecycle.ownListenerDidRemove(listenableKey);
         }
       }
     };
@@ -500,17 +510,17 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
     this.adjustStackedListenerSurplus(event, delta, incognito);
     if(!incognito) {
       if(delta > 0) {
-        this.host.lifecycle.ownListenerWillAdd(event);
-        this.host.lifecycle.ownListenerDidAdd(event);
+        this.lifecycle.ownListenerWillAdd(event);
+        this.lifecycle.ownListenerDidAdd(event);
       } else if(delta < 0) {
-        this.host.lifecycle.ownListenerWillRemove(event);
-        this.host.lifecycle.ownListenerDidRemove(event);
+        this.lifecycle.ownListenerWillRemove(event);
+        this.lifecycle.ownListenerDidRemove(event);
       }
     }
   }
 
   private pushIntentFrame(intent: HandlerIntent, meta: IntentFrameMeta): Subscription {
-    const strategy = this.host.duplicateSubscriptionStrategy;
+    const strategy = this.options.duplicateSubscriptionStrategy;
     const isDuplicateFrame = intent.frames.length > 0;
     if(isDuplicateFrame) {
       if(strategy.invocation === 'stack') {
@@ -542,7 +552,7 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
     if(idx === -1) {
       return;
     }
-    const strategy = this.host.duplicateSubscriptionStrategy;
+    const strategy = this.options.duplicateSubscriptionStrategy;
     const collapse = meta.honorDisposalConfig && strategy.disposal === 'collapse';
 
     if(collapse) {
@@ -587,7 +597,7 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
     fireLifecycle: boolean
   ): void {
     if(fireLifecycle && !incognito) {
-      this.host.lifecycle.ownListenerWillAdd(event);
+      this.lifecycle.ownListenerWillAdd(event);
     }
     const prev = this.handlersByEvent.get(event);
     const next = new Set<GenericHandler>(prev);
@@ -600,10 +610,10 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
     this.host.invalidateCombinedListenerCache();
     this.host.invalidateOwnListenerCache();
     if(fireLifecycle && !incognito) {
-      this.host.lifecycle.ownListenerDidAdd(event);
+      this.lifecycle.ownListenerDidAdd(event);
     }
     if(added) {
-      this.host.logger.onAddListener(event, this.ownListenerCountForEvent(event));
+      this.logger.onAddListener(event, this.ownListenerCountForEvent(event));
     }
   }
 
@@ -623,7 +633,7 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
       }
       this.host.invalidateCombinedListenerCache();
       this.host.invalidateOwnListenerCache();
-      this.host.logger.onListenerRemoved(event, this.ownListenerCountForEvent(event));
+      this.logger.onListenerRemoved(event, this.ownListenerCountForEvent(event));
     }
   }
 
@@ -651,9 +661,9 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
   }
 
   private logDuplicate(kind: string, listenable: string): void {
-    this.host.logger.onDuplicateSubscription(
+    this.logger.onDuplicateSubscription(
       StrongbusLogMessages.duplicateSubscription(this.host.name, kind, listenable),
-      this.host.duplicateSubscriptionStrategy.logLevel
+      this.options.duplicateSubscriptionStrategy.logLevel
     );
   }
 
@@ -711,10 +721,10 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
           try {
             const execution = fn(...args);
             (execution as Promise<any>)?.catch?.((e) => {
-              this.host.lifecycle.emitHandlerError(e, event);
+              this.lifecycle.emitHandlerError(e, event);
             });
           } catch(e: unknown) {
-            this.host.lifecycle.emitHandlerError(e, event);
+            this.lifecycle.emitHandlerError(e, event);
           }
         }
       }
@@ -733,8 +743,6 @@ export class SubscriptionRegistry<TEventMap extends EventMap> {
     // once / any / pipe wrappers handle multiplicity internally
     return 1;
   }
-
-
 }
 
 /**

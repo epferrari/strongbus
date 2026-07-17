@@ -1,6 +1,7 @@
 import {autobind} from 'core-decorators';
 
-import {StrongbusLogger} from './strongbusLogger';
+import type {StrongbusLogger} from './strongbusLogger';
+import type {MaterializedBusOptions} from './types/options';
 import {Lifecycle} from './types/lifecycle';
 import type {LifecycleHost} from './types/lifecycleHost';
 import type {GenericHandler} from './types/eventHandlers';
@@ -23,19 +24,23 @@ export type DownstreamSnapshot<TEventMap extends EventMap> = DownstreamSnapshotE
 export class LifecycleManager<TEventMap extends EventMap = EventMap> {
   private readonly handlers = new Map<Lifecycle, Set<GenericHandler>>();
   private readonly host: LifecycleHost<TEventMap>;
+  private readonly options: Pick<MaterializedBusOptions, 'coalesceDownstreamLifecycleEvents'>;
   private readonly logger: StrongbusLogger<TEventMap>;
-  private readonly coalesceDownstreamLifecycleEvents: boolean;
 
   private _active = false;
 
   constructor(params: {
     host: LifecycleHost<TEventMap>;
+    options: Pick<MaterializedBusOptions, 'coalesceDownstreamLifecycleEvents'>;
     logger: StrongbusLogger<TEventMap>;
-    coalesceDownstreamLifecycleEvents: boolean;
   }) {
     this.host = params.host;
+    this.options = params.options;
     this.logger = params.logger;
-    this.coalesceDownstreamLifecycleEvents = params.coalesceDownstreamLifecycleEvents;
+  }
+
+  private get coalesceDownstreamLifecycleEvents(): boolean {
+    return this.options.coalesceDownstreamLifecycleEvents;
   }
 
   public get active(): boolean {

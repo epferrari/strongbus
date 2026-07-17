@@ -42,6 +42,15 @@ export interface Options {
 /** Options accepted by {@link Bus.configure}; `name` is per-instance only. */
 export type ConfigurableBusOptions = Omit<Partial<Options>, 'name'>;
 
+/**
+ * Bus options after defaults are applied — every field is present and nested
+ * shapes (`thresholds`, `duplicateSubscriptionStrategy`) are fully filled in.
+ */
+export type MaterializedBusOptions = Omit<Required<Options>, 'duplicateSubscriptionStrategy' | 'thresholds'> & {
+  thresholds: Required<ListenerThresholds>;
+  duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy;
+};
+
 export function resolveDuplicateSubscriptionStrategy(
   partial?: Partial<DuplicateSubscriptionStrategy>
 ): DuplicateSubscriptionStrategy {

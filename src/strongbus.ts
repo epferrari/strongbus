@@ -14,9 +14,9 @@ import type {Logger} from './types/logger';
 import {
   resolveDuplicateSubscriptionStrategy,
   type Options,
+  type MaterializedBusOptions,
   type ListenerThresholds,
-  type ConfigurableBusOptions,
-  type DuplicateSubscriptionStrategy
+  type ConfigurableBusOptions
 } from './types/options';
 import {ListenerRegistryView, type ListenerRegistry, EMPTY_LISTENER_SET} from './types/listenerRegistry';
 import {ListenerScope, type IntrospectionOptions} from './types/listenerScope';
@@ -62,7 +62,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   IntrospectionSurface<TEventMap>,
   MonitoringSurface<TEventMap> {
 
-  private static defaultOptions: ResolvedBusOptions = {
+  private static defaultOptions: MaterializedBusOptions = {
     name: 'Anonymous',
     allowUnhandledEvents: true,
     thresholds: {
@@ -115,9 +115,9 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   private static mergeOptions(
-    base: ResolvedBusOptions,
+    base: MaterializedBusOptions,
     overrides: Partial<Options> = {}
-  ): ResolvedBusOptions {
+  ): MaterializedBusOptions {
     return {
       ...base,
       ...overrides,
@@ -149,7 +149,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   private _cachedDownstreamListenersWithIncognito: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
 
   // set on-construct
-  private readonly options!: ResolvedBusOptions;
+  private readonly options!: MaterializedBusOptions;
   private readonly logger!: StrongbusLogger<TEventMap>;
   private readonly listenersRegistry!: ListenerRegistry<TEventMap>;
   private readonly listenersRegistryWithIncognito!: ListenerRegistry<TEventMap>;
@@ -178,11 +178,17 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     this.downstreamListenersRegistryWithIncognito = ListenerRegistryView.create(() => this.getDownstreamListenersMap(true));
     this.lifecycle = new LifecycleManager<TEventMap>({
       host: this.createLifecycleHost(),
-      logger: this.logger,
-      coalesceDownstreamLifecycleEvents: this.options.coalesceDownstreamLifecycleEvents
+      options: this.options,
+      logger: this.logger
     });
     this.hook = this.lifecycle.hook;
-    this.subscriptions = new SubscriptionRegistry(this.createSubscriptionHost());
+    this.subscriptions = new SubscriptionRegistry({
+      host: this.createSubscriptionHost(),
+      options: this.options,
+      logger: this.logger,
+      forwards: this.forwards,
+      lifecycle: this.lifecycle
+    });
   }
 
   /**
@@ -757,26 +763,18 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
 
-  private createSubscriptionHost(): SubscriptionHost<TEventMap> {
-    const {name, options, lifecycle, forwards, logger} = this;
+  private createSubscriptionHost(): SubscriptionHost {
+    const {
+      name,
+      invalidateOwnListenerCache,
+      invalidateCombinedListenerCache
+    } = this;
     return {
-      get duplicateSubscriptionStrategy() {
-        return options.duplicateSubscriptionStrategy;
-      },
-      get lifecycle() {
-        return lifecycle;
-      },
-      get logger() {
-        return logger;
-      },
-      get forwards() {
-        return forwards;
-      },
       get name() {
         return name;
       },
-      invalidateOwnListenerCache: this.invalidateOwnListenerCache,
-      invalidateCombinedListenerCache: this.invalidateCombinedListenerCache
+      invalidateOwnListenerCache,
+      invalidateCombinedListenerCache
     };
   }
 
@@ -831,8 +829,3 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     return snapshot;
   }
 }
-
-type ResolvedBusOptions = Omit<Required<Options>, 'duplicateSubscriptionStrategy' | 'thresholds'> & {
-  thresholds: Required<ListenerThresholds>;
-  duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy;
-};

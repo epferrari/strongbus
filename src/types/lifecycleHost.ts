@@ -2,8 +2,8 @@ import type {EventMap, WILDCARD} from './events';
 import type {EventKeys} from './utility';
 
 /**
- * Bookkeeping and introspection callbacks supplied by {@link Bus} to
- * {@link LifecycleManager}.
+ * Bus bookkeeping callbacks supplied to {@link LifecycleManager}.
+ * Shared resources (`logger`, `options`) are constructor deps, not host fields.
  * @internal
  */
 export interface LifecycleHost<TEventMap extends EventMap> {
