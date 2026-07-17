@@ -20,6 +20,9 @@ memory-leak detection.
 - **Incognito subscriptions** — `{incognito: true}` receives/forwards events without activating monitoring.
 - **Composable buses** — `pipe` events from one bus into another (or into a function sink).
 - **Promise interop** — `await` the next event with `next`, or resolve on a computed condition with `scan`.
+- **Configurable duplicate subscriptions** — `duplicateSubscriptionStrategy` controls counting, invoke,
+  dispose, and logging for the same listenable+handler, with presets aligned to familiar APIs
+  (`EventEmitter` (Node-style), `EventTarget` (Browser-style), `SharedHandler`).
 - **Memory-leak detection** — configurable per-event listener thresholds with info/warn/error logging.
 
 ## Installation
