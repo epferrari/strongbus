@@ -1,5 +1,6 @@
 import {StrongbusLogger, StrongbusLogMessages} from './strongbusLogger';
 import type {Logger} from './types/logger';
+import type {LogLevel, NoticeOptions} from './types/options';
 
 interface TestEventMap {
   foo: number;
@@ -9,20 +10,25 @@ interface TestEventMap {
 describe('StrongbusLogger', () => {
   const name = 'TestBus';
   const thresholds = {info: 10, warn: 25, error: 60};
+  const notices: Required<NoticeOptions> = {duplicateSubscription: 'warn'};
   let logger: jasmine.SpyObj<Logger>;
 
-  function createLogger(overrides?: {verbose?: boolean}): StrongbusLogger<TestEventMap> {
+  function createLogger(overrides?: {
+    verbose?: boolean;
+    notices?: Required<NoticeOptions>;
+  }): StrongbusLogger<TestEventMap> {
     return new StrongbusLogger<TestEventMap>({
       name,
       provider: logger,
       thresholds,
+      notices,
       verbose: false,
       ...overrides
     });
   }
 
   beforeEach(() => {
-    logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error']);
+    logger = jasmine.createSpyObj('logger', ['debug', 'info', 'warn', 'error']);
   });
 
   describe('#constructor', () => {
@@ -41,6 +47,7 @@ describe('StrongbusLogger', () => {
           return logger;
         },
         thresholds,
+        notices,
         verbose: false
       });
 
@@ -49,23 +56,73 @@ describe('StrongbusLogger', () => {
       subject.info('a');
       subject.warn('b');
       subject.error('c');
+      subject.debug('d');
 
       expect(resolveCount).toBe(1);
       expect(logger.info).toHaveBeenCalledWith('a');
       expect(logger.warn).toHaveBeenCalledWith('b');
       expect(logger.error).toHaveBeenCalledWith('c');
+      expect(logger.debug).toHaveBeenCalledWith('d');
     });
   });
 
-  describe('#info / #warn / #error', () => {
+  describe('#info / #warn / #error / #debug', () => {
     it('forwards all arguments to the underlying logger', () => {
       const subject = createLogger();
+      subject.debug('d', 0);
       subject.info('i', 1);
       subject.warn('w', 2);
       subject.error('e', 3);
+      expect(logger.debug).toHaveBeenCalledWith('d', 0);
       expect(logger.info).toHaveBeenCalledWith('i', 1);
       expect(logger.warn).toHaveBeenCalledWith('w', 2);
       expect(logger.error).toHaveBeenCalledWith('e', 3);
+    });
+  });
+
+  describe('#onDuplicateSubscription', () => {
+    it('logs at the configured notice level', () => {
+      (['error', 'warn', 'info', 'debug'] as Exclude<LogLevel, 'never'>[]).forEach((level) => {
+        logger.debug.calls.reset();
+        logger.info.calls.reset();
+        logger.warn.calls.reset();
+        logger.error.calls.reset();
+
+        createLogger({notices: {duplicateSubscription: level}}).onDuplicateSubscription('foo', {
+          existingIncognito: false,
+          requestedIncognito: false
+        });
+
+        expect(logger[level]).toHaveBeenCalledWith(
+          StrongbusLogMessages.duplicateSubscription(name, 'foo')
+        );
+      });
+    });
+
+    it('includes mode-mismatch verbiage when monitoring modes differ', () => {
+      createLogger().onDuplicateSubscription('foo', {
+        existingIncognito: false,
+        requestedIncognito: true
+      });
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        StrongbusLogMessages.duplicateSubscription(name, 'foo', {
+          existingIncognito: false,
+          requestedIncognito: true
+        })
+      );
+    });
+
+    it('does not log when the notice level is never', () => {
+      createLogger({notices: {duplicateSubscription: 'never'}}).onDuplicateSubscription('foo', {
+        existingIncognito: false,
+        requestedIncognito: false
+      });
+
+      expect(logger.debug).not.toHaveBeenCalled();
+      expect(logger.info).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
     });
   });
 
@@ -251,5 +308,22 @@ describe('StrongbusLogMessages', () => {
     expect(msg).toContain(name);
     expect(msg).toContain('9');
     expect(msg).toContain('foo');
+  });
+
+  it('#duplicateSubscription includes the name and event', () => {
+    const msg = StrongbusLogMessages.duplicateSubscription(name, 'foo');
+    expect(msg).toContain(name);
+    expect(msg).toContain('foo');
+    expect(msg).toContain('existing Subscription was returned');
+    expect(msg).not.toContain('monitoring mode');
+  });
+
+  it('#duplicateSubscription includes mode-mismatch details when provided', () => {
+    const msg = StrongbusLogMessages.duplicateSubscription(name, 'foo', {
+      existingIncognito: true,
+      requestedIncognito: false
+    });
+    expect(msg).toContain('from incognito to monitored');
+    expect(msg).toContain('first registration wins');
   });
 });

@@ -581,12 +581,17 @@ bus.destroy();
 - `logger` — a `Logger`, or a `() => Logger` provider.
 - `verbose` — log on every listener past a threshold (`true`), or only at threshold boundaries
   (`false`, default).
+- `notices` — per-notice log levels (`error` / `warn` / `info` / `debug` / `never`). Currently
+  `duplicateSubscription` (default `'warn'`) fires when re-adding the same `(event, handler)` pair;
+  the message notes if the second call also tried to switch monitored vs incognito mode (first
+  registration still wins). Default is `warn` as it is generally assumed to be a bug to add the same handler >1 times. If intentional, set to this to `never`.
 
 ```typescript
 const bus = new Bus<Events>({
   name: 'MyBus',
   allowUnhandledEvents: false,
   thresholds: {warn: 50},
+  notices: {duplicateSubscription: 'info'},
   logger: console
 });
 ```
@@ -601,11 +606,12 @@ Defaults for all instances can be set globally with `Bus.configure()`:
 Bus.configure({
   allowUnhandledEvents: false,
   thresholds: {warn: 50},
+  notices: {duplicateSubscription: 'never'},
   logger: myLogger
 });
 ```
 
-`configure` recursively merges onto static defaults.
+`configure` recursively merges onto static defaults (`thresholds` and `notices` merge nested keys).
 
 ## Memory-leak detection
 

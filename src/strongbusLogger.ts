@@ -1,6 +1,6 @@
 import {autobind} from 'core-decorators';
 
-import type {ListenerThresholds} from './types/options';
+import type {ListenerThresholds, LogLevel, NoticeOptions} from './types/options';
 import type {Logger, LoggerProvider} from './types/logger';
 import type {EventKeys} from './types/utility';
 import {type EventMap, WILDCARD} from './types/events';
@@ -11,9 +11,16 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
   private readonly name: string;
   private readonly provider: LoggerProvider;
   private readonly thresholds: Required<ListenerThresholds>;
+  private readonly notices: Required<NoticeOptions>;
   private readonly verbose: boolean;
 
-  constructor(params: {name: string, provider: LoggerProvider, thresholds: Required<ListenerThresholds>, verbose: boolean}) {
+  constructor(params: {
+    name: string;
+    provider: LoggerProvider;
+    thresholds: Required<ListenerThresholds>;
+    notices: Required<NoticeOptions>;
+    verbose: boolean;
+  }) {
     Object.assign(this, params);
   }
 
@@ -22,6 +29,29 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
       ? this.onAddListenerVerbose
       : this.onAddListenerNonVerbose
     )(event, n);
+  }
+
+  public onDuplicateSubscription(
+    event: EventKeys<TEventMap>|WILDCARD,
+    modes: {existingIncognito: boolean; requestedIncognito: boolean}
+  ): void {
+    const level = this.notices.duplicateSubscription;
+    if(level === 'never') {
+      return;
+    }
+    this.notice(
+      level,
+      StrongbusLogMessages.duplicateSubscription(
+        this.name,
+        event,
+        modes.existingIncognito !== modes.requestedIncognito
+          ? {
+              existingIncognito: modes.existingIncognito,
+              requestedIncognito: modes.requestedIncognito
+            }
+          : undefined
+      )
+    );
   }
 
   private onAddListenerNonVerbose(event: EventKeys<TEventMap>|WILDCARD, n: number) {
@@ -125,6 +155,14 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
     }
   }
 
+  public notice(level: Exclude<LogLevel, 'never'>, ...args: any[]): void {
+    this[level](...args);
+  }
+
+  public debug(...args: any[]): void {
+    this.impl.debug(...args);
+  }
+
   public info(...args: any[]): void {
     this.impl.info(...args);
   }
@@ -182,5 +220,19 @@ export class StrongbusLogMessages {
 
   public static memoryPressureReducedBelowInfoThreshold(name: string, count: number, event: any): string {
     return `${name}'s listener count of ${count} for "${event}" is now within the expected range`;
+  }
+
+  public static duplicateSubscription(
+    name: string,
+    event: any,
+    modeMismatch?: {existingIncognito: boolean; requestedIncognito: boolean}
+  ): string {
+    let message = `${name}: duplicate subscription for "${String(event)}"; the existing Subscription was returned`;
+    if(modeMismatch) {
+      const from = modeMismatch.existingIncognito ? 'incognito' : 'monitored';
+      const to = modeMismatch.requestedIncognito ? 'incognito' : 'monitored';
+      message += `; attempted to change monitoring mode from ${from} to ${to} (ignored, first registration wins)`;
+    }
+    return message;
   }
 }

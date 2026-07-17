@@ -17,6 +17,15 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Added
 
+- **`options.notices`** — per-notice log levels
+  (`'error' | 'warn' | 'info' | 'debug' | 'never'`). Nested like `thresholds` and
+  merged by `Bus.configure` / the constructor. Currently
+  `notices.duplicateSubscription` (default `'warn'`) logs when re-adding the same
+  `(event, handler)` pair; if the second call also tries to change monitored vs
+  incognito mode, the message says so (first registration still wins). Set to
+  `'never'` to silence. Exported as `NoticeLevel` / `NoticeOptions`.
+- **`Logger.debug`** — required alongside `info` / `warn` / `error` so notice
+  level `'debug'` has a real sink (`console` already provides it).
 - **`once(event, handler)`** — subscribe to a single event and automatically
   unsubscribe after the first emission.
 - **`off(event, handler)`** — remove a handler previously registered with `on` by

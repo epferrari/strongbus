@@ -11,7 +11,7 @@ import {type Subscription, type EventMap, WILDCARD} from './types/events';
 import type {EventHandler, EventSink, PipeSink, PipeMessage, PipeForward, GenericHandler} from './types/eventHandlers';
 import {Lifecycle} from './types/lifecycle';
 import type {Logger} from './types/logger';
-import type {Options, ListenerThresholds, ConfigurableBusOptions} from './types/options';
+import type {Options, ListenerThresholds, NoticeOptions, ConfigurableBusOptions} from './types/options';
 import {ListenerRegistryView, type ListenerRegistry, EMPTY_LISTENER_SET} from './types/listenerRegistry';
 import {ListenerScope, type IntrospectionOptions} from './types/listenerScope';
 import type {
@@ -41,7 +41,10 @@ import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {subscribeListenable} from './utils/subscribeListenable';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 
-type ResolvedBusOptions = Required<Options> & {thresholds: Required<ListenerThresholds>};
+type ResolvedBusOptions = Required<Options> & {
+  thresholds: Required<ListenerThresholds>;
+  notices: Required<NoticeOptions>;
+};
 
 @autobind
 export class Bus<TEventMap extends EventMap = EventMap> implements
@@ -58,6 +61,9 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       warn: 500,
       error: Infinity
     },
+    notices: {
+      duplicateSubscription: 'warn'
+    },
     logger: console,
     verbose: false,
     coalesceDownstreamLifecycleEvents: true
@@ -65,8 +71,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
   /**
    * Merge `options` onto {@link Bus} static defaults for all subsequently constructed
-   * instances. Nested `thresholds` are merged recursively. `name` cannot be set here;
-   * pass it to the constructor for per-instance naming.
+   * instances. Nested `thresholds` and `notices` are merged recursively. `name` cannot
+   * be set here; pass it to the constructor for per-instance naming.
    */
   public static configure(options: ConfigurableBusOptions): void {
     const {name: _name, ...configurable} = options as Partial<Options>;
@@ -111,6 +117,10 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       thresholds: {
         ...base.thresholds,
         ...overrides.thresholds
+      },
+      notices: {
+        ...base.notices,
+        ...overrides.notices
       }
     };
   }
@@ -782,6 +792,10 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   ): Subscription {
     const existing = this.subscriptionsByHandler.get(handler)?.get(event);
     if(existing) {
+      this.logger.onDuplicateSubscription(event, {
+        existingIncognito: this.isIncognito(handler, event),
+        requestedIncognito: options?.incognito === true
+      });
       return existing;
     }
 

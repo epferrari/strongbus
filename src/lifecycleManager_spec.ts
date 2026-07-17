@@ -32,6 +32,7 @@ describe('LifecycleManager', () => {
         name: 'test',
         provider: console,
         thresholds: {info: 100, warn: 500, error: Infinity},
+        notices: {duplicateSubscription: 'warn'},
         verbose: false
       }),
       coalesceDownstreamLifecycleEvents: false
@@ -88,6 +89,7 @@ describe('LifecycleManager', () => {
         name: 'test',
         provider: console,
         thresholds: {info: 100, warn: 500, error: Infinity},
+        notices: {duplicateSubscription: 'warn'},
         verbose: false
       }),
       coalesceDownstreamLifecycleEvents: true

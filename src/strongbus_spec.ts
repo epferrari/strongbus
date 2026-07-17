@@ -83,6 +83,20 @@ describe('Strongbus.Bus', () => {
         const options: Strongbus.Options = (bus as any).options;
         expect(options.coalesceDownstreamLifecycleEvents).toBeTrue();
       });
+
+      it('defaults notices.duplicateSubscription to warn', () => {
+        const options: Strongbus.Options = (bus as any).options;
+        expect(options.notices.duplicateSubscription).toBe('warn');
+      });
+
+      it('allows setting custom notice levels', () => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          notices: {duplicateSubscription: 'never'}
+        });
+
+        const options: Strongbus.Options = (bus as any).options;
+        expect(options.notices.duplicateSubscription).toBe('never');
+      });
     });
 
     describe('given an unhandled event is raised', () => {
@@ -111,6 +125,7 @@ describe('Strongbus.Bus', () => {
     beforeAll(() => {
       baseline = {...(new Strongbus.Bus() as any).options};
       baseline.thresholds = {...baseline.thresholds};
+      baseline.notices = {...baseline.notices};
     });
 
     afterEach(() => {
@@ -121,7 +136,8 @@ describe('Strongbus.Bus', () => {
       Strongbus.Bus.configure({
         allowUnhandledEvents: false,
         verbose: false,
-        thresholds: {warn: 12}
+        thresholds: {warn: 12},
+        notices: {duplicateSubscription: 'info'}
       });
 
       const configured = new Strongbus.Bus<TestEventMap>();
@@ -132,6 +148,7 @@ describe('Strongbus.Bus', () => {
       expect(options.thresholds.info).toBe(100);
       expect(options.thresholds.warn).toBe(12);
       expect(options.thresholds.error).toBe(Infinity);
+      expect(options.notices.duplicateSubscription).toBe('info');
     });
 
     it('accumulates successive configure calls', () => {
@@ -154,11 +171,11 @@ describe('Strongbus.Bus', () => {
   describe('listener logging thresholds', () => {
 
     describe('given options.logger is a Logger instance', () => {
-      loggingSpecs(jasmine.createSpyObj('logger', ['info', 'warn', 'error']));
+      loggingSpecs(jasmine.createSpyObj('logger', ['debug', 'info', 'warn', 'error']));
     });
 
     describe('given options.logger is a LoggerProvider', () => {
-      loggingSpecs(() => jasmine.createSpyObj('logger', ['info', 'warn', 'error']));
+      loggingSpecs(() => jasmine.createSpyObj('logger', ['debug', 'info', 'warn', 'error']));
     });
 
     function loggingSpecs(p: jasmine.SpyObj<Logger>|(() => jasmine.SpyObj<Logger>)): void {
@@ -531,6 +548,8 @@ describe('Strongbus.Bus', () => {
     });
 
     it('returns the same Subscription for a duplicate on with the same handler', () => {
+      const logger = jasmine.createSpyObj<Logger>('logger', ['debug', 'info', 'warn', 'error']);
+      bus = new Strongbus.Bus<TestEventMap>({logger, notices: {duplicateSubscription: 'never'}});
       const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
       const onWillAdd = jasmine.createSpy('willAddListener');
       const onDidAdd = jasmine.createSpy('didAddListener');
@@ -575,6 +594,77 @@ describe('Strongbus.Bus', () => {
       expect(onDidRemove).not.toHaveBeenCalled();
       expect(onWillIdle).not.toHaveBeenCalled();
       expect(onIdle).not.toHaveBeenCalled();
+    });
+
+    describe('notices.duplicateSubscription', () => {
+      let logger: jasmine.SpyObj<Logger>;
+
+      beforeEach(() => {
+        logger = jasmine.createSpyObj('logger', ['debug', 'info', 'warn', 'error']);
+      });
+
+      it('logs at warn by default when re-adding the same (event, handler)', () => {
+        bus = new Strongbus.Bus<TestEventMap>({name: 'DupBus', logger});
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+
+        bus.on('foo', handleFoo);
+        bus.on('foo', handleFoo);
+
+        expect(logger.warn).toHaveBeenCalledWith(
+          StrongbusLogMessages.duplicateSubscription('DupBus Bus', 'foo')
+        );
+        expect(logger.info).not.toHaveBeenCalled();
+        expect(logger.error).not.toHaveBeenCalled();
+        expect(logger.debug).not.toHaveBeenCalled();
+      });
+
+      it('includes mode-mismatch verbiage when flipping monitored/incognito', () => {
+        bus = new Strongbus.Bus<TestEventMap>({name: 'ModeBus', logger});
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+
+        bus.on('foo', handleFoo);
+        bus.on('foo', handleFoo, {incognito: true});
+
+        expect(logger.warn).toHaveBeenCalledWith(
+          StrongbusLogMessages.duplicateSubscription('ModeBus Bus', 'foo', {
+            existingIncognito: false,
+            requestedIncognito: true
+          })
+        );
+      });
+
+      it('does not log when notices.duplicateSubscription is never', () => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          logger,
+          notices: {duplicateSubscription: 'never'}
+        });
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+
+        bus.on('foo', handleFoo);
+        bus.on('foo', handleFoo);
+
+        expect(logger.warn).not.toHaveBeenCalled();
+        expect(logger.info).not.toHaveBeenCalled();
+        expect(logger.error).not.toHaveBeenCalled();
+        expect(logger.debug).not.toHaveBeenCalled();
+      });
+
+      it('dispatches to the configured notice level', () => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          name: 'InfoDup',
+          logger,
+          notices: {duplicateSubscription: 'info'}
+        });
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+
+        bus.on('foo', handleFoo);
+        bus.on('foo', handleFoo);
+
+        expect(logger.info).toHaveBeenCalledWith(
+          StrongbusLogMessages.duplicateSubscription('InfoDup Bus', 'foo')
+        );
+        expect(logger.warn).not.toHaveBeenCalled();
+      });
     });
 
     describe('returns a Subscription', () => {
@@ -1463,7 +1553,7 @@ describe('Strongbus.Bus', () => {
         const originalError = new Error('error in listener');
 
         beforeEach(() => {
-          logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error']);
+          logger = jasmine.createSpyObj('logger', ['debug', 'info', 'warn', 'error']);
           loggingBus = new Strongbus.Bus<TestEventMap>({logger});
           loggingBus.on('bar', () => {
             throw originalError;
@@ -2004,6 +2094,8 @@ describe('Strongbus.Bus', () => {
       });
 
       it('keeps the first registration mode when on is called again with a different incognito flag', () => {
+        bus = new Strongbus.Bus<TestEventMap>({notices: {duplicateSubscription: 'never'}});
+
         const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
         const sub1 = bus.on('foo', handleFoo);
         const sub2 = bus.on('foo', handleFoo, {incognito: true});
@@ -2011,9 +2103,6 @@ describe('Strongbus.Bus', () => {
         expect(sub2).toBe(sub1);
         expect(bus.active).toBeTrue();
         expect(bus.getListenerCount()).toBe(1);
-
-        onWillAddListener.calls.reset();
-        onAddListener.calls.reset();
 
         const handleBar = jasmine.createSpy('handleBar') as (payload: boolean) => void;
         const sub3 = bus.on('bar', handleBar, {incognito: true});
@@ -2049,6 +2138,7 @@ describe('Strongbus.Bus', () => {
 
       it('still invokes logger thresholds for incognito own listeners', () => {
         const logger: Logger = {
+          debug: jasmine.createSpy('debug'),
           info: jasmine.createSpy('info'),
           warn: jasmine.createSpy('warn'),
           error: jasmine.createSpy('error')
