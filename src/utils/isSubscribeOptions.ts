@@ -1,4 +1,4 @@
-import { SubscribeOptions } from "../types/surfaces/subscriptionSurface";
+import {SubscribeOptions} from '../types/surfaces/subscriptionSurface';
 
 /**
  * @ignore

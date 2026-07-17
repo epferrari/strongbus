@@ -1,4 +1,4 @@
-import { autobind } from "core-decorators";
+import {autobind} from 'core-decorators';
 
 @autobind
 export class Forwards {

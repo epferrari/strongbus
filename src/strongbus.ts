@@ -1471,9 +1471,9 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   /**
-  * @ignore
-  * Stable unique event keys for {@link Bus.any} intent identity (order-independent).
-  */
+   * @ignore
+   * Stable unique event keys for {@link Bus.any} intent identity (order-independent).
+   */
   private static canonicalizeEventKeys<T extends string | number | symbol>(events: T[]): T[] {
     const seen = new Set<T>();
     const unique: T[] = [];
@@ -1487,8 +1487,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   /**
-  * @ignore
-  */
+   * @ignore
+   */
   private static downstreamSnapshotFromListenersMap<TEventMap extends EventMap>(
     listeners: ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>
   ): DownstreamSnapshot<TEventMap> {
