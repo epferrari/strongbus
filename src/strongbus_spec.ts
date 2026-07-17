@@ -532,17 +532,49 @@ describe('Strongbus.Bus', () => {
 
     it('returns the same Subscription for a duplicate on with the same handler', () => {
       const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
-      const sub1 = bus.on('foo', handleFoo);
-      const sub2 = bus.on('foo', handleFoo);
+      const onWillAdd = jasmine.createSpy('willAddListener');
+      const onDidAdd = jasmine.createSpy('didAddListener');
+      const onWillRemove = jasmine.createSpy('willRemoveListener');
+      const onDidRemove = jasmine.createSpy('didRemoveListener');
+      const onWillIdle = jasmine.createSpy('willIdle');
+      const onIdle = jasmine.createSpy('idle');
+      bus.hook('willAddListener', onWillAdd);
+      bus.hook('didAddListener', onDidAdd);
+      bus.hook('willRemoveListener', onWillRemove);
+      bus.hook('didRemoveListener', onDidRemove);
+      bus.hook('willIdle', onWillIdle);
+      bus.hook('idle', onIdle);
 
+      const sub1 = bus.on('foo', handleFoo);
+      expect(onWillAdd).toHaveBeenCalledTimes(1);
+      expect(onDidAdd).toHaveBeenCalledTimes(1);
+
+      const sub2 = bus.on('foo', handleFoo);
       expect(sub1).toBe(sub2);
+      expect(onWillAdd).toHaveBeenCalledTimes(1);
+      expect(onDidAdd).toHaveBeenCalledTimes(1);
+
       bus.emit('foo', 'elephant');
       expect(handleFoo).toHaveBeenCalledTimes(1);
 
       sub1();
       expect(bus.hasListeners()).toBeFalse();
+      expect(handleFoo).toHaveBeenCalledTimes(1);
+      expect(onWillRemove).toHaveBeenCalledTimes(1);
+      expect(onDidRemove).toHaveBeenCalledTimes(1);
+      expect(onWillIdle).toHaveBeenCalledTimes(1);
+      expect(onIdle).toHaveBeenCalledTimes(1);
+
+      onWillRemove.calls.reset();
+      onDidRemove.calls.reset();
+      onWillIdle.calls.reset();
+      onIdle.calls.reset();
+
       sub2();
-      expect(bus.hasListeners()).toBeFalse();
+      expect(onWillRemove).not.toHaveBeenCalled();
+      expect(onDidRemove).not.toHaveBeenCalled();
+      expect(onWillIdle).not.toHaveBeenCalled();
+      expect(onIdle).not.toHaveBeenCalled();
     });
 
     describe('returns a Subscription', () => {
@@ -1206,42 +1238,6 @@ describe('Strongbus.Bus', () => {
       foosub2();
       expect(onWillIdle).toHaveBeenCalledTimes(1);
       expect(onIdle).toHaveBeenCalledTimes(1);
-    });
-
-    // duplicate on(event, sameHandler) shares one Subscription
-    it('deduplicates subscriptions for the same handler', () => {
-      expect(bus.hasListeners()).toBeFalse();
-      const sub1 = bus.on('foo', singleEventHandler);
-      expect(onWillAddListener).toHaveBeenCalledTimes(1);
-      expect(onAddListener).toHaveBeenCalledTimes(1);
-      const sub2 = bus.on('foo', singleEventHandler);
-      expect(onWillAddListener).toHaveBeenCalledTimes(1);
-      expect(onAddListener).toHaveBeenCalledTimes(1);
-      expect(sub1).toBe(sub2);
-
-      bus.emit('foo', 'hello');
-      expect(singleEventHandler).toHaveBeenCalledTimes(1);
-      singleEventHandler.calls.reset();
-      sub1();
-      bus.emit('foo', 'hello');
-      expect(singleEventHandler).not.toHaveBeenCalled();
-      expect(bus.hasListeners()).toBeFalse();
-      expect(onWillRemoveListener).toHaveBeenCalledTimes(1);
-      expect(onRemoveListener).toHaveBeenCalledTimes(1);
-      expect(onWillIdle).toHaveBeenCalledTimes(1);
-      expect(onIdle).toHaveBeenCalledTimes(1);
-
-      onWillRemoveListener.calls.reset();
-      onRemoveListener.calls.reset();
-      onWillIdle.calls.reset();
-      onIdle.calls.reset();
-
-      // second dispose of the shared Subscription is a no-op
-      sub2();
-      expect(onWillRemoveListener).not.toHaveBeenCalled();
-      expect(onRemoveListener).not.toHaveBeenCalled();
-      expect(onWillIdle).not.toHaveBeenCalled();
-      expect(onIdle).not.toHaveBeenCalled();
     });
 
     describe('lifecycle hook ordering', () => {
