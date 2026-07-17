@@ -125,7 +125,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     GenericHandler,
     Map<EventKeys<TEventMap>|WILDCARD, Subscription[]>
   >();
-  private readonly bus = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
+  private readonly handlersByEvent = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
   private readonly scannerPools = new ScannerPools<TEventMap>();
   // queue of unsubscription requests so that they are processed transactionally in order
   private readonly unsubQueue: {
@@ -623,7 +623,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   private getOwnListenersMap(): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
     if(!this._cachedOwnListenersMap) {
       const ownListenerCache = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
-      for(const [event, listeners] of this.bus) {
+      for(const [event, listeners] of this.handlersByEvent) {
         if(listeners.size) {
           ownListenerCache.set(event, new Set(listeners));
         }
@@ -664,7 +664,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       }
     }
     over(pending)();
-    this.bus.clear();
+    this.handlersByEvent.clear();
   }
 
   private releaseDownstreams(): void {
@@ -677,13 +677,13 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   private addListener(event: EventKeys<TEventMap>|WILDCARD, handler: GenericHandler): Subscription {
-    const handlers = this.bus.get(event);
+    const handlers = this.handlersByEvent.get(event);
     const addingNewHandler = !(handlers?.has(handler));
     if(addingNewHandler) {
       const n: number = handlers?.size + 1 || 1;
       this.logger.onAddListener(event, n);
       this.lifecycle.ownListenerWillAdd(event);
-      const {added} = addListener(this.bus, event, handler);
+      const {added} = addListener(this.handlersByEvent, event, handler);
       if(added) {
         this.invalidateCombinedListenerCache();
         this.invalidateOwnListenerCache();
@@ -749,18 +749,18 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
   private removeListener(event: EventKeys<TEventMap>|WILDCARD, handler: GenericHandler): void {
     this.lifecycle.ownListenerWillRemove(event);
-    const {removed} = removeListener(this.bus, event, handler);
+    const {removed} = removeListener(this.handlersByEvent, event, handler);
     if(removed) {
       this.invalidateCombinedListenerCache();
       this.invalidateOwnListenerCache();
       this.lifecycle.ownListenerDidRemove(event);
-      const count = this.bus.get(event)?.size ?? 0;
+      const count = this.handlersByEvent.get(event)?.size ?? 0;
       this.logger.onListenerRemoved(event, count);
     }
   }
 
   private emitEvent(event: EventKeys<TEventMap>|WILDCARD, ...args: any[]): boolean {
-    const handlers = this.bus.get(event);
+    const handlers = this.handlersByEvent.get(event);
       if(handlers && handlers.size) {
         for(const fn of handlers) {
           try {
