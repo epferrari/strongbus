@@ -767,15 +767,21 @@ describe('Strongbus.Bus', () => {
         expect(bus.hasListeners()).toBeFalse();
       });
 
-      it('off pops one SharedHandler frame', () => {
+      it('off pops the oldest SharedHandler frame (head of stack)', () => {
         const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
-        bus.on('foo', handleFoo);
-        bus.on('foo', handleFoo);
+        const first = bus.on('foo', handleFoo);
+        const second = bus.on('foo', handleFoo);
 
         bus.off('foo', handleFoo);
         expect(bus.getListenerCountFor('foo')).toBe(1);
+
+        first();
+        expect(bus.getListenerCountFor('foo')).toBe(1);
         bus.emit('foo', 'z');
         expect(handleFoo).toHaveBeenCalledTimes(1);
+
+        second();
+        expect(bus.hasListeners()).toBeFalse();
       });
     });
 
@@ -801,6 +807,72 @@ describe('Strongbus.Bus', () => {
         expect(bus.getListenerCountFor('foo')).toBe(1);
         bus.emit('foo', 'y');
         expect(handleFoo).toHaveBeenCalledTimes(3);
+      });
+
+      it('off pops the oldest stacked registration (head of stack)', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+        const first = bus.on('foo', handleFoo);
+        const second = bus.on('foo', handleFoo);
+
+        bus.off('foo', handleFoo);
+        expect(bus.getListenerCountFor('foo')).toBe(1);
+
+        first();
+        expect(bus.getListenerCountFor('foo')).toBe(1);
+        bus.emit('foo', 'y');
+        expect(handleFoo).toHaveBeenCalledTimes(1);
+
+        second();
+        expect(bus.hasListeners()).toBeFalse();
+      });
+    });
+
+    describe('EventTarget preset', () => {
+      beforeEach(() => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.EventTarget
+        });
+      });
+
+      it('collapses duplicate on without logging', () => {
+        const warn = jasmine.createSpy('warn');
+        const info = jasmine.createSpy('info');
+        const error = jasmine.createSpy('error');
+        const debug = jasmine.createSpy('debug');
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.EventTarget,
+          logger: {info, warn, error, debug}
+        });
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+
+        const sub1 = bus.on('foo', handleFoo);
+        const sub2 = bus.on('foo', handleFoo);
+
+        expect(sub1).toBe(sub2);
+        expect(warn).not.toHaveBeenCalled();
+        expect(info).not.toHaveBeenCalled();
+        expect(error).not.toHaveBeenCalled();
+        expect(debug).not.toHaveBeenCalled();
+        expect(bus.getListenerCountFor('foo')).toBe(1);
+
+        bus.emit('foo', 'x');
+        expect(handleFoo).toHaveBeenCalledTimes(1);
+
+        sub1();
+        expect(bus.hasListeners()).toBeFalse();
+        sub2();
+        expect(bus.hasListeners()).toBeFalse();
+      });
+
+      it('off clears the collapsed registration', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+        bus.on('foo', handleFoo);
+        bus.on('foo', handleFoo);
+
+        bus.off('foo', handleFoo);
+        expect(bus.hasListeners()).toBeFalse();
+        bus.emit('foo', 'x');
+        expect(handleFoo).not.toHaveBeenCalled();
       });
     });
 
@@ -1167,8 +1239,8 @@ describe('Strongbus.Bus', () => {
             'other-sink',
             'dst'
           ]);
-          expect(forwardResult).toBeDefined();
-          await expectAsync(forwardResult as Promise<boolean>).toBeResolvedTo(true);
+          // tslint:disable-next-line:no-non-null-assertion
+          await expectAsync(forwardResult!).toBeResolvedTo(true);
         });
 
         it('keeps forward live for later own handlers during the same emit', async () => {
@@ -1185,15 +1257,15 @@ describe('Strongbus.Bus', () => {
           bus.pipe(() => {
             order.push('later-sink');
             // original sink has returned, but this emit is still in progress
-            expect(stolen).toBeDefined();
-            stolenResult = (stolen as NonNullable<typeof stolen>)(dst);
+            // tslint:disable-next-line:no-non-null-assertion
+            stolenResult = stolen!(dst);
           });
 
           bus.emit('foo', 'shared');
 
           expect(order).toEqual(['sink', 'later-sink', 'dst']);
-          expect(stolenResult).toBeDefined();
-          await expectAsync(stolenResult as Promise<boolean>).toBeResolvedTo(true);
+          // tslint:disable-next-line:no-non-null-assertion
+          await expectAsync(stolenResult!).toBeResolvedTo(true);
         });
 
         it('expires forward after the emit completes', async () => {
@@ -1210,10 +1282,10 @@ describe('Strongbus.Bus', () => {
 
           bus.emit('foo', 'once');
           expect(received).toHaveBeenCalledTimes(1);
-          expect(liveResult).toBeDefined();
-          expect(stolen).toBeDefined();
-          await expectAsync(liveResult as Promise<boolean>).toBeResolvedTo(true);
-          await expectAsync((stolen as NonNullable<typeof stolen>)(dst)).toBeResolvedTo(false);
+          // tslint:disable-next-line:no-non-null-assertion
+          await expectAsync(liveResult!).toBeResolvedTo(true);
+          // tslint:disable-next-line:no-non-null-assertion
+          await expectAsync(stolen!(dst)).toBeResolvedTo(false);
           expect(received).toHaveBeenCalledTimes(1);
         });
 
@@ -1225,8 +1297,8 @@ describe('Strongbus.Bus', () => {
           });
 
           bus.emit('foo', 'nobody-home');
-          expect(forwardResult).toBeDefined();
-          await expectAsync(forwardResult as Promise<boolean>).toBeResolvedTo(false);
+          // tslint:disable-next-line:no-non-null-assertion
+          await expectAsync(forwardResult!).toBeResolvedTo(false);
         });
 
         it('expires forward by the time an async sink continuation runs', async () => {

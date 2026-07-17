@@ -64,8 +64,8 @@ type IntentFrameMeta = {
   honorDisposalConfig: boolean;
   onFullyCleared: () => void;
   adjustStackedObservability: (delta: number) => void;
-  fireBaseRemoveLifecycle: () => void;
-  fireBaseRemoveLifecycleDid: () => void;
+  fireLifecycleOwnListenerWillRemove: () => void;
+  fireLifecycleOwnListenerDidRemove: () => void;
 };
 
 @autobind
@@ -191,8 +191,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     Set<EventKeys<TEventMap>|WILDCARD>
   >();
   private readonly handlersByEvent = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
-  /** Extra OWN observability weight beyond unique emit handlers (for `observability: 'stack'`). */
-  private readonly observabilityExtraByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
+  /** OWN listener-count surplus beyond unique emit handlers (`observability: 'stack'`). */
+  private readonly stackedListenerSurplusByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
   private readonly scannerPools = new ScannerPools<TEventMap>();
   // queue of unsubscription requests so that they are processed transactionally in order
   private readonly unsubQueue: {
@@ -280,7 +280,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    * Remove a handler previously registered with {@link Bus.on}.
    * Pass the same function reference; no-op if that handler is not registered for `event`.
    * Honors `duplicateSubscriptionStrategy.disposal` (`collapse` clears all stacked `on` intent;
-   * `stack` pops one). Does not remove {@link Bus.once} / {@link Bus.any} / {@link Bus.pipe} intent.
+   * `stack` pops the oldest frame — head of the stack). Does not remove {@link Bus.once} /
+   * {@link Bus.any} / {@link Bus.pipe} intent.
    */
   public off<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): void {
     const intent = this.onIntents.get(handler)?.get(event);
@@ -294,7 +295,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
         frame();
       }
     } else {
-      intent.frames[intent.frames.length - 1]();
+      intent.frames[0]();
     }
   }
 
@@ -626,7 +627,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       total += handlers.size;
     });
     if((scope & ListenerScope.OWN) === ListenerScope.OWN) {
-      for(const extra of this.observabilityExtraByEvent.values()) {
+      for(const extra of this.stackedListenerSurplusByEvent.values()) {
         total += extra;
       }
     }
@@ -667,7 +668,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     }
     let count = this.registryForScope(scope, includeIncognito).getCount(event);
     if((scope & ListenerScope.OWN) === ListenerScope.OWN) {
-      count += this.observabilityExtraByEvent.get(event) ?? 0;
+      count += this.stackedListenerSurplusByEvent.get(event) ?? 0;
     }
     return count;
   }) as IntrospectionSurfaceListenerCountForEvent<TEventMap>;
@@ -836,7 +837,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     over(pending)();
     this.handlersByEvent.clear();
     this.incognitoByHandler.clear();
-    this.observabilityExtraByEvent.clear();
+    this.stackedListenerSurplusByEvent.clear();
     this.onIntents.clear();
     this.onceIntents.clear();
     this.anyIntents.clear();
@@ -876,10 +877,14 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     handler: GenericHandler,
     options?: SubscribeOptions
   ): Subscription {
-    let intentRef: HandlerIntent;
     const emitHandler = ((payload: any) => {
-      const times = Math.max(intentRef.invokeCount, 1);
-      const frames = intentRef.frames.slice();
+      const intent = this.onceIntents.get(handler)?.get(event);
+      if(!intent?.frames.length) {
+        return;
+      }
+      const times = Math.max(intent.invokeCount, 1);
+      // tear down every once frame for this identity before invoking (once semantics).
+      const frames = intent.frames.slice();
       for(const frame of frames) {
         frame();
       }
@@ -888,7 +893,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       }
     }) as GenericHandler;
 
-    const sub = this.registerHandlerIntent({
+    return this.registerHandlerIntent({
       kind: 'once',
       intents: this.onceIntents,
       listenableKey: event,
@@ -899,8 +904,6 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       // once ignores disposal config: always pop one frame
       honorDisposalConfig: false
     });
-    intentRef = this.onceIntents.get(handler)?.get(event) as HandlerIntent;
-    return sub;
   }
 
   private registerAnyIntent(
@@ -943,7 +946,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
         adjustStackedObservability: (delta) => {
           this.adjustAnyStackedObservability(uniqueEvents, existing.incognito, delta);
         },
-        fireBaseRemoveLifecycle: () => {
+        fireLifecycleOwnListenerWillRemove: () => {
           if(existing.incognito) {
             return;
           }
@@ -951,7 +954,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
             this.lifecycle.ownListenerWillRemove(e);
           }
         },
-        fireBaseRemoveLifecycleDid: () => {
+        fireLifecycleOwnListenerDidRemove: () => {
           if(existing.incognito) {
             return;
           }
@@ -999,7 +1002,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       adjustStackedObservability: (delta) => {
         this.adjustAnyStackedObservability(uniqueEvents, intent.incognito, delta);
       },
-      fireBaseRemoveLifecycle: () => {
+      fireLifecycleOwnListenerWillRemove: () => {
         if(intent.incognito) {
           return;
         }
@@ -1007,7 +1010,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
           this.lifecycle.ownListenerWillRemove(e);
         }
       },
-      fireBaseRemoveLifecycleDid: () => {
+      fireLifecycleOwnListenerDidRemove: () => {
         if(intent.incognito) {
           return;
         }
@@ -1024,7 +1027,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     delta: number
   ): void {
     for(const e of events) {
-      this.bumpObservabilityExtra(e, delta, incognito);
+      this.adjustStackedListenerSurplus(e, delta, incognito);
       if(!incognito) {
         if(delta > 0) {
           this.lifecycle.ownListenerWillAdd(e);
@@ -1181,12 +1184,12 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       adjustStackedObservability: (delta) => {
         this.adjustSingleStackedObservability(listenableKey, incognito, delta);
       },
-      fireBaseRemoveLifecycle: () => {
+      fireLifecycleOwnListenerWillRemove: () => {
         if(!incognito) {
           this.lifecycle.ownListenerWillRemove(listenableKey);
         }
       },
-      fireBaseRemoveLifecycleDid: () => {
+      fireLifecycleOwnListenerDidRemove: () => {
         if(!incognito) {
           this.lifecycle.ownListenerDidRemove(listenableKey);
         }
@@ -1199,7 +1202,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     incognito: boolean,
     delta: number
   ): void {
-    this.bumpObservabilityExtra(event, delta, incognito);
+    this.adjustStackedListenerSurplus(event, delta, incognito);
     if(!incognito) {
       if(delta > 0) {
         this.lifecycle.ownListenerWillAdd(event);
@@ -1257,9 +1260,9 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
           meta.adjustStackedObservability(-1);
         }
       }
-      meta.fireBaseRemoveLifecycle();
+      meta.fireLifecycleOwnListenerWillRemove();
       meta.onFullyCleared();
-      meta.fireBaseRemoveLifecycleDid();
+      meta.fireLifecycleOwnListenerDidRemove();
       return;
     }
 
@@ -1276,9 +1279,9 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     }
 
     if(intent.frames.length === 0) {
-      meta.fireBaseRemoveLifecycle();
+      meta.fireLifecycleOwnListenerWillRemove();
       meta.onFullyCleared();
-      meta.fireBaseRemoveLifecycleDid();
+      meta.fireLifecycleOwnListenerDidRemove();
     }
   }
 
@@ -1331,11 +1334,11 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
   private ownListenerCountForEvent(event: EventKeys<TEventMap>|WILDCARD): number {
     const setSize = this.handlersByEvent.get(event)?.size ?? 0;
-    const extra = this.observabilityExtraByEvent.get(event) ?? 0;
+    const extra = this.stackedListenerSurplusByEvent.get(event) ?? 0;
     return setSize + extra;
   }
 
-  private bumpObservabilityExtra(
+  private adjustStackedListenerSurplus(
     event: EventKeys<TEventMap>|WILDCARD,
     delta: number,
     incognito: boolean
@@ -1343,12 +1346,12 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     if(incognito) {
       return;
     }
-    const curr = this.observabilityExtraByEvent.get(event) ?? 0;
+    const curr = this.stackedListenerSurplusByEvent.get(event) ?? 0;
     const next = Math.max(curr + delta, 0);
     if(next === 0) {
-      this.observabilityExtraByEvent.delete(event);
+      this.stackedListenerSurplusByEvent.delete(event);
     } else {
-      this.observabilityExtraByEvent.set(event, next);
+      this.stackedListenerSurplusByEvent.set(event, next);
     }
   }
 
