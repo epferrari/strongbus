@@ -549,9 +549,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    */
   public getListenerCount(options: IntrospectionOptions = {}): number {
     const {scope = ListenerScope.ANY, includeIncognito = false} = options;
-    const includesOwn = (scope & ListenerScope.OWN) !== 0;
-    const includesDownstream = (scope & ListenerScope.DOWNSTREAM) !== 0;
-    if(includesOwn && includesDownstream) {
+    if((scope & ListenerScope.ANY) === ListenerScope.ANY) {
       return this.getListenerCount({scope: ListenerScope.OWN, includeIncognito})
         + this.getListenerCount({scope: ListenerScope.DOWNSTREAM, includeIncognito});
     }
@@ -590,9 +588,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     options: IntrospectionOptions = {}
   ) => {
     const {scope = ListenerScope.ANY, includeIncognito = false} = options;
-    const includesOwn = (scope & ListenerScope.OWN) !== 0;
-    const includesDownstream = (scope & ListenerScope.DOWNSTREAM) !== 0;
-    if(includesOwn && includesDownstream) {
+    if((scope & ListenerScope.ANY) === ListenerScope.ANY) {
       return this.getListenerCountFor(event, {scope: ListenerScope.OWN, includeIncognito})
         + this.getListenerCountFor(event, {scope: ListenerScope.DOWNSTREAM, includeIncognito});
     }
@@ -621,15 +617,11 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     ListenerRegistryView.create(() => new Map());
 
   private registryForScope(scope: ListenerScope, includeIncognito = false): ListenerRegistry<TEventMap> {
-    const includesOwn = (scope & ListenerScope.OWN) !== 0;
-    const includesDownstream = (scope & ListenerScope.DOWNSTREAM) !== 0;
-    if(includesOwn && includesDownstream) {
+    if((scope & ListenerScope.ANY) === ListenerScope.ANY) {
       return includeIncognito ? this.listenersRegistryWithIncognito : this.listenersRegistry;
-    }
-    if(includesOwn) {
+    } else if((scope & ListenerScope.OWN) === ListenerScope.OWN) {
       return includeIncognito ? this.ownListenersRegistryWithIncognito : this.ownListenersRegistry;
-    }
-    if(includesDownstream) {
+    } else if((scope & ListenerScope.DOWNSTREAM) === ListenerScope.DOWNSTREAM) {
       return includeIncognito ? this.downstreamListenersRegistryWithIncognito : this.downstreamListenersRegistry;
     }
     return Bus._emptyListenersRegistry;
