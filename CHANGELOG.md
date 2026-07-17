@@ -24,7 +24,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   collapsed). Applies fully to `on`, `any`, and `pipe(sink)`. `once` honors observability,
   invocation, and logLevel with kind-isolated disposal (`off` / disposing `on` never clears
   `once` for the same handler, and vice versa). Named presets:
-  `DuplicateSubscriptionStrategy.NodeEventEmitter`, `.EventTarget`, `.SharedHandler`.
+  `DuplicateSubscriptionStrategy.EventEmitter`, `.EventTarget`, `.SharedHandler`.
   **`Logger.debug` is now required** on custom loggers (used when
   `duplicateSubscriptionStrategy.logLevel` is `'debug'`).
 - **`once(event, handler)`** — subscribe to a single event and automatically

@@ -601,8 +601,8 @@ bus.destroy();
   ```typescript
   import {Bus, DuplicateSubscriptionStrategy} from 'strongbus';
 
-  // Node EventEmitter-like
-  new Bus({duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy.NodeEventEmitter});
+  // EventEmitter-like (Node)
+  new Bus({duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy.EventEmitter});
 
   // DOM EventTarget-like (silent collapse)
   new Bus({duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy.EventTarget});

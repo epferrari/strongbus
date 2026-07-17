@@ -35,7 +35,7 @@ export const DuplicateSubscriptionStrategy = {
   /**
    * Like Node `EventEmitter`: duplicate `on` stacks; emit N times; `off` / dispose pops one.
    */
-  NodeEventEmitter: {
+  EventEmitter: {
     observability: 'stack',
     invocation: 'stack',
     disposal: 'stack',

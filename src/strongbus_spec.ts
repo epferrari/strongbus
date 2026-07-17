@@ -698,8 +698,8 @@ describe('Strongbus.Bus', () => {
       });
     });
 
-    it('exposes NodeEventEmitter, EventTarget, and SharedHandler presets', () => {
-      expect(Strongbus.DuplicateSubscriptionStrategy.NodeEventEmitter).toEqual({
+    it('exposes EventEmitter, EventTarget, and SharedHandler presets', () => {
+      expect(Strongbus.DuplicateSubscriptionStrategy.EventEmitter).toEqual({
         observability: 'stack',
         invocation: 'stack',
         disposal: 'stack',
@@ -785,10 +785,10 @@ describe('Strongbus.Bus', () => {
       });
     });
 
-    describe('NodeEventEmitter preset', () => {
+    describe('EventEmitter preset', () => {
       beforeEach(() => {
         bus = new Strongbus.Bus<TestEventMap>({
-          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.NodeEventEmitter
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.EventEmitter
         });
       });
 
