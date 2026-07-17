@@ -17,7 +17,6 @@ import {
   type ListenerThresholds,
   type ConfigurableBusOptions
 } from './types/options';
-import {ListenerRegistryView, type ListenerRegistry, EMPTY_LISTENER_SET} from './types/listenerRegistry';
 import {ListenerScope, type IntrospectionOptions} from './types/listenerScope';
 import type {
   SubscriptionSurface,
@@ -44,6 +43,7 @@ import {subscribeListenable} from './utils/subscribeListenable';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import {isSubscribeOptions} from './utils/isSubscribeOptions';
 import {Forwards} from './forwards';
+import {IntrospectionManager, type IntrospectionHost} from './introspectionManager';
 import {SubscriptionManager, type SubscriptionHost} from './subscriptionManager';
 
 
@@ -135,27 +135,13 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     unlink: VoidFunction;
     incognito: boolean;
   }>();
-  private readonly downstreamListenerCountsByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
   private readonly forwards = new Forwards();
   private readonly subscriptions!: SubscriptionManager<TEventMap>;
-  private readonly scannerPools = new ScannerPools<TEventMap>();
-  private _downstreamListenerTotalCount: number = 0;
-  private _cachedCombinedListeners: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
-  private _cachedCombinedListenersWithIncognito: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
-  private _cachedOwnListeners: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
-  private _cachedOwnListenersWithIncognito: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
-  private _cachedDownstreamListeners: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
-  private _cachedDownstreamListenersWithIncognito: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
-
+  private readonly introspection!: IntrospectionManager<TEventMap>;
+  private readonly scanners = new ScannerPools<TEventMap>();
   // set on-construct
   private readonly options!: MaterializedBusOptions;
   private readonly logger!: StrongbusLogger<TEventMap>;
-  private readonly listenersRegistry!: ListenerRegistry<TEventMap>;
-  private readonly listenersRegistryWithIncognito!: ListenerRegistry<TEventMap>;
-  private readonly ownListenersRegistry!: ListenerRegistry<TEventMap>;
-  private readonly ownListenersRegistryWithIncognito!: ListenerRegistry<TEventMap>;
-  private readonly downstreamListenersRegistry!: ListenerRegistry<TEventMap>;
-  private readonly downstreamListenersRegistryWithIncognito!: ListenerRegistry<TEventMap>;
   private readonly lifecycle!: LifecycleManager<TEventMap>;
   /**
    * Subscribe to meta changes to the {@link Bus} with {@link Lifecycle} events
@@ -169,12 +155,6 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       provider: this.options.logger,
       name: this.name
     });
-    this.listenersRegistry = ListenerRegistryView.create(() => this.getCombinedListenersMap(false));
-    this.listenersRegistryWithIncognito = ListenerRegistryView.create(() => this.getCombinedListenersMap(true));
-    this.ownListenersRegistry = ListenerRegistryView.create(() => this.getOwnListenersMap(false));
-    this.ownListenersRegistryWithIncognito = ListenerRegistryView.create(() => this.getOwnListenersMap(true));
-    this.downstreamListenersRegistry = ListenerRegistryView.create(() => this.getDownstreamListenersMap(false));
-    this.downstreamListenersRegistryWithIncognito = ListenerRegistryView.create(() => this.getDownstreamListenersMap(true));
     this.lifecycle = new LifecycleManager<TEventMap>({
       host: this.createLifecycleHost(),
       options: this.options,
@@ -187,6 +167,10 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       logger: this.logger,
       forwards: this.forwards,
       lifecycle: this.lifecycle
+    });
+    this.introspection = new IntrospectionManager({
+      host: this.createIntrospectionHost(),
+      subscriptions: this.subscriptions
     });
   }
 
@@ -433,7 +417,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
     }
 
-    return this.scannerPools.scan<any>(this, scanParams);
+    return this.scanners.scan<any>(this, scanParams);
   }) as SubscriptionSurfaceScan<TEventMap>;
 
   /**
@@ -534,7 +518,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    * Whether the bus has any listeners in `options.scope` (defaults to `ListenerScope.ANY`).
    */
   public hasListeners(options: IntrospectionOptions = {}): boolean {
-    return this.getListenerCount(options) > 0;
+    return this.introspection.hasListeners(options);
   }
 
   /**
@@ -543,196 +527,44 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    * still counts twice).
    */
   public getListenerCount(options: IntrospectionOptions = {}): number {
-    const {scope = ListenerScope.ANY, includeIncognito = false} = options;
-    if((scope & ListenerScope.ANY) === ListenerScope.ANY) {
-      return this.getListenerCount({scope: ListenerScope.OWN, includeIncognito})
-        + this.getListenerCount({scope: ListenerScope.DOWNSTREAM, includeIncognito});
-    }
-    let total = 0;
-    this.registryForScope(scope, includeIncognito).forEach(handlers => {
-      total += handlers.size;
-    });
-    if((scope & ListenerScope.OWN) === ListenerScope.OWN) {
-      total += this.subscriptions.stackedSurplusTotal();
-    }
-    return total;
+    return this.introspection.getListenerCount(options);
   }
 
   public getListeners(options: IntrospectionOptions = {}): ReadonlySet<GenericHandler> {
-    const {scope = ListenerScope.ANY, includeIncognito = false} = options;
-    const union = new Set<GenericHandler>();
-    this.registryForScope(scope, includeIncognito).forEach(handlers => {
-      for(const handler of handlers) {
-        union.add(handler);
-      }
-    });
-    return union;
+    return this.introspection.getListeners(options);
   }
 
   public getEventCount(options: IntrospectionOptions = {}): number {
-    const {scope = ListenerScope.ANY, includeIncognito = false} = options;
-    return this.registryForScope(scope, includeIncognito).size;
+    return this.introspection.getEventCount(options);
   }
 
   public hasListenersFor: IntrospectionSurfaceHasListenersForEvent<TEventMap> = ((
     event,
     options: IntrospectionOptions = {}
   ) => {
-    return this.getListenerCountFor(event, options) > 0;
+    return this.introspection.hasListenersFor(event, options);
   }) as IntrospectionSurfaceHasListenersForEvent<TEventMap>;
 
   public getListenerCountFor: IntrospectionSurfaceListenerCountForEvent<TEventMap> = ((
     event,
     options: IntrospectionOptions = {}
   ) => {
-    const {scope = ListenerScope.ANY, includeIncognito = false} = options;
-    if((scope & ListenerScope.ANY) === ListenerScope.ANY) {
-      return this.getListenerCountFor(event, {scope: ListenerScope.OWN, includeIncognito})
-        + this.getListenerCountFor(event, {scope: ListenerScope.DOWNSTREAM, includeIncognito});
-    }
-    let count = this.registryForScope(scope, includeIncognito).getCount(event);
-    if((scope & ListenerScope.OWN) === ListenerScope.OWN) {
-      count += this.subscriptions.stackedSurplusFor(event);
-    }
-    return count;
+    return this.introspection.getListenerCountFor(event, options);
   }) as IntrospectionSurfaceListenerCountForEvent<TEventMap>;
 
   public getListenersFor: IntrospectionSurfaceListenerForEvent<TEventMap> = ((
     event,
     options: IntrospectionOptions = {}
   ) => {
-    const {scope = ListenerScope.ANY, includeIncognito = false} = options;
-    return this.registryForScope(scope, includeIncognito).get(event) ?? EMPTY_LISTENER_SET;
+    return this.introspection.getListenersFor(event, options);
   }) as IntrospectionSurfaceListenerForEvent<TEventMap>;
 
   public forEach: IntrospectionSurfaceListenerForEach<TEventMap> = ((
     fn,
     options: IntrospectionOptions = {}
   ) => {
-    const {scope = ListenerScope.ANY, includeIncognito = false} = options;
-    this.registryForScope(scope, includeIncognito).forEach((handlers, event) => {
-      fn(event, handlers);
-    });
+    return this.introspection.forEach(fn, options);
   }) as IntrospectionSurfaceListenerForEach<TEventMap>;
-
-  private static readonly _emptyListenersRegistry: ListenerRegistry<any> =
-    ListenerRegistryView.create(() => new Map());
-
-  private registryForScope(scope: ListenerScope, includeIncognito = false): ListenerRegistry<TEventMap> {
-    if((scope & ListenerScope.ANY) === ListenerScope.ANY) {
-      return includeIncognito ? this.listenersRegistryWithIncognito : this.listenersRegistry;
-    } else if((scope & ListenerScope.OWN) === ListenerScope.OWN) {
-      return includeIncognito ? this.ownListenersRegistryWithIncognito : this.ownListenersRegistry;
-    } else if((scope & ListenerScope.DOWNSTREAM) === ListenerScope.DOWNSTREAM) {
-      return includeIncognito ? this.downstreamListenersRegistryWithIncognito : this.downstreamListenersRegistry;
-    }
-    return Bus._emptyListenersRegistry;
-  }
-
-  private getCombinedListenersMap(
-    includeIncognito = false
-  ): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
-    const cached = includeIncognito
-      ? this._cachedCombinedListenersWithIncognito
-      : this._cachedCombinedListeners;
-    if(!cached) {
-      const listenerCache = new Map(this.getOwnListenersMap(includeIncognito));
-      for(const [event, downstreamListeners] of this.getDownstreamListenersMap(includeIncognito)) {
-        if(!downstreamListeners.size) {
-          continue;
-        }
-        let listeners = listenerCache.get(event);
-        if(!listeners) {
-          listeners = new Set<GenericHandler>();
-          listenerCache.set(event, listeners);
-        }
-        for(const listener of downstreamListeners) {
-          (listeners as Set<any>).add(listener);
-        }
-      }
-      if(includeIncognito) {
-        this._cachedCombinedListenersWithIncognito = listenerCache;
-      } else {
-        this._cachedCombinedListeners = listenerCache;
-      }
-      return listenerCache;
-    }
-    return cached;
-  }
-
-  private getDownstreamListenersMap(
-    includeIncognito = false
-  ): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
-    const cached = includeIncognito
-      ? this._cachedDownstreamListenersWithIncognito
-      : this._cachedDownstreamListeners;
-    if(!cached) {
-      const downstreamListenerCache = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
-      for(const [downstream, link] of this.downstreams) {
-        if(link.incognito && !includeIncognito) {
-          continue;
-        }
-        for(const [event, listeners] of downstream.getCombinedListenersMap(includeIncognito)) {
-          if(!listeners.size) {
-            continue;
-          }
-          let merged = downstreamListenerCache.get(event);
-          if(!merged) {
-            merged = new Set<GenericHandler>();
-            downstreamListenerCache.set(event, merged);
-          }
-          for(const listener of listeners) {
-            merged.add(listener);
-          }
-        }
-      }
-      if(includeIncognito) {
-        this._cachedDownstreamListenersWithIncognito = downstreamListenerCache;
-      } else {
-        this._cachedDownstreamListeners = downstreamListenerCache;
-      }
-      return downstreamListenerCache;
-    }
-    return cached;
-  }
-
-  private getOwnListenersMap(
-    includeIncognito = false
-  ): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
-    const cached = includeIncognito
-      ? this._cachedOwnListenersWithIncognito
-      : this._cachedOwnListeners;
-    if(!cached) {
-      const ownListenerCache = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
-      for(const [event, listeners] of this.subscriptions.handlersByEventEntries()) {
-        const filtered = includeIncognito
-          ? new Set(listeners)
-          : new Set([...listeners].filter(handler => !this.subscriptions.isIncognito(handler, event)));
-        if(filtered.size) {
-          ownListenerCache.set(event, filtered);
-        }
-      }
-      if(includeIncognito) {
-        this._cachedOwnListenersWithIncognito = ownListenerCache;
-      } else {
-        this._cachedOwnListeners = ownListenerCache;
-      }
-      return ownListenerCache;
-    }
-    return cached;
-  }
-
-  private invalidateCombinedListenerCache(): void {
-    this._cachedCombinedListeners = null;
-    this._cachedCombinedListenersWithIncognito = null;
-    this._cachedDownstreamListeners = null;
-    this._cachedDownstreamListenersWithIncognito = null;
-  }
-
-  private invalidateOwnListenerCache(): void {
-    this._cachedOwnListeners = null;
-    this._cachedOwnListenersWithIncognito = null;
-  }
 
   /**
    * Remove all event subscribers, lifecycle subscribers, and downstreams.
@@ -788,6 +620,27 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     };
   }
 
+  private createIntrospectionHost(): IntrospectionHost<TEventMap> {
+    const {downstreams} = this;
+    return {
+      forEachDownstream(fn) {
+        for(const [downstream, link] of downstreams) {
+          fn({
+            getCombinedListenersMap: (includeIncognito) =>
+              downstream.getCombinedListenersMap(includeIncognito),
+            incognito: link.incognito
+          });
+        }
+      }
+    };
+  }
+
+  private getCombinedListenersMap(
+    includeIncognito = false
+  ): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
+    return this.introspection.getCombinedListenersMap(includeIncognito);
+  }
+
   private buildDownstreamSnapshot(downstream: Bus<any>) {
     return Bus.downstreamSnapshotFromListenersMap<TEventMap>(
       downstream.getCombinedListenersMap(false) as ReadonlyMap<
@@ -797,20 +650,21 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     );
   }
 
-  private accountForDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void {
-    const currCount = this.downstreamListenerCountsByEvent.get(event) ?? 0;
-    this.downstreamListenerCountsByEvent.set(event, Math.max(currCount + count, 0));
-    this._downstreamListenerTotalCount = Math.max(this._downstreamListenerTotalCount + count, 0);
+  private accountForDownstreamListeners(_event: EventKeys<TEventMap>|WILDCARD, _count: number): void {
     this.invalidateCombinedListenerCache();
   }
 
-  private accountForRemovedDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void {
-    const currCount = this.downstreamListenerCountsByEvent.get(event) ?? 0;
-    this.downstreamListenerCountsByEvent.set(event, Math.max(currCount - count, 0));
-    this._downstreamListenerTotalCount = Math.max(this._downstreamListenerTotalCount - count, 0);
+  private accountForRemovedDownstreamListeners(_event: EventKeys<TEventMap>|WILDCARD, _count: number): void {
     this.invalidateCombinedListenerCache();
   }
 
+  private invalidateCombinedListenerCache(): void {
+    this.introspection.invalidateCombinedListenerCache();
+  }
+
+  private invalidateOwnListenerCache(): void {
+    this.introspection.invalidateOwnListenerCache();
+  }
 
   /**
    * @ignore
