@@ -2,12 +2,12 @@
 import {CancelablePromise, parallel, sleep, TimeoutExpiredError} from 'jaasync';
 
 import * as Strongbus from './';
-import {Scanner} from './scanner';
+import type {Scanner} from './scanner';
 import {StrongbusLogMessages} from './strongbusLogger';
-import {Logger, LoggerProvider} from './types/logger';
+import type {Logger} from './types/logger';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
-import * as Events from './types/events';
-import {EventKeys, type EventPayload} from './types/utility';
+import type {EventMap} from './types/events';
+import type {EventKeys, VoidEventKeys} from './types/utility';
 import {over} from './utils/over';
 
 type TestEventMap = {
@@ -17,42 +17,43 @@ type TestEventMap = {
   quo: void;
 };
 
-class DelegateTestBus<T extends Events.EventMap = TestEventMap> extends Strongbus.Bus<T> {
+const ALL_TEST_EVENTS: EventKeys<TestEventMap>[] = ['foo', 'bar', 'baz', 'quo'];
+
+class DownstreamTestBus<T extends EventMap = TestEventMap> extends Strongbus.Bus<T> {
   private readonly emulateListenerCount: boolean = false;
   constructor(options: Strongbus.Options & {emulateListenerCount?: boolean}) {
     super(options);
     this.emulateListenerCount = options.emulateListenerCount;
   }
 
-  public emit<E extends EventKeys<T>>(event: E, ...payload: EventPayload<T, E>): boolean {
-    super.emit(event, ...payload);
+  public emit<E extends VoidEventKeys<T>>(event: E, payload?: null | undefined): boolean;
+  public emit<E extends EventKeys<T>>(event: E, payload: T[E]): boolean;
+  public emit<E extends EventKeys<T>>(event: E, payload?: T[E]): boolean {
+    super.emit(event as any, payload as any);
     return this.emulateListenerCount;
   }
 }
 
-
 describe('Strongbus.Bus', () => {
   let bus: Strongbus.Bus<TestEventMap>;
-  let onTestEvent: jasmine.Spy;
-  let onAnyEvent: jasmine.Spy;
-  let onEveryEvent: jasmine.Spy;
+  let singleEventHandler: jasmine.Spy;
+  let eventSink: jasmine.Spy;
 
   beforeEach(() => {
     bus = new Strongbus.Bus<TestEventMap>();
-    onTestEvent = jasmine.createSpy('onTestEvent');
-    onAnyEvent = jasmine.createSpy('onAnyEvent');
-    onEveryEvent = jasmine.createSpy('onEveryEvent');
+    singleEventHandler = jasmine.createSpy('singleEventHandler');
+    eventSink = jasmine.createSpy('eventSink');
     spyOn(bus as any, 'handleUnexpectedEvent');
   });
 
   describe('#constructor', () => {
     it('overloads the instance\'s internal emitter\'s emit method to invoke * listeners on every event raised', () => {
-      bus.on('foo', onTestEvent);
-      bus.on('*', onEveryEvent);
+      bus.on('foo', singleEventHandler);
+      bus.pipe(eventSink);
 
       bus.emit('foo', 'eagle');
-      expect(onTestEvent).toHaveBeenCalledWith('eagle');
-      expect(onEveryEvent).toHaveBeenCalledWith('foo', 'eagle');
+      expect(singleEventHandler).toHaveBeenCalledWith('eagle');
+      expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'eagle'}, jasmine.any(Function));
     });
 
     describe('thresholds', () => {
@@ -77,6 +78,11 @@ describe('Strongbus.Bus', () => {
         expect(options.thresholds.warn).toEqual(14);
         expect(options.thresholds.error).toEqual(21);
       });
+
+      it('defaults coalesceDownstreamLifecycleEvents to true', () => {
+        const options: Strongbus.Options = (bus as any).options;
+        expect(options.coalesceDownstreamLifecycleEvents).toBeTrue();
+      });
     });
 
     describe('given an unhandled event is raised', () => {
@@ -99,14 +105,60 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('Bus.configure', () => {
+    let baseline: Strongbus.Options;
+
+    beforeAll(() => {
+      baseline = {...(new Strongbus.Bus() as any).options};
+      baseline.thresholds = {...baseline.thresholds};
+    });
+
+    afterEach(() => {
+      Strongbus.Bus.configure(baseline);
+    });
+
+    it('merges partial options onto static defaults for new instances', () => {
+      Strongbus.Bus.configure({
+        allowUnhandledEvents: false,
+        verbose: false,
+        thresholds: {warn: 12}
+      });
+
+      const configured = new Strongbus.Bus<TestEventMap>();
+      const options: Strongbus.Options = (configured as any).options;
+
+      expect(options.allowUnhandledEvents).toBeFalse();
+      expect(options.verbose).toBeFalse();
+      expect(options.thresholds.info).toBe(100);
+      expect(options.thresholds.warn).toBe(12);
+      expect(options.thresholds.error).toBe(Infinity);
+    });
+
+    it('accumulates successive configure calls', () => {
+      Strongbus.Bus.configure({allowUnhandledEvents: false});
+      Strongbus.Bus.configure({verbose: false});
+
+      const options: Strongbus.Options = (new Strongbus.Bus() as any).options;
+      expect(options.allowUnhandledEvents).toBeFalse();
+      expect(options.verbose).toBeFalse();
+    });
+
+    it('does not apply name via configure', () => {
+      Strongbus.Bus.configure({name: 'App'} as Strongbus.Options);
+
+      const options: Strongbus.Options = (new Strongbus.Bus() as any).options;
+      expect(options.name).toBe('Anonymous');
+    });
+  });
+
   describe('listener logging thresholds', () => {
 
     describe('given options.logger is a Logger instance', () => {
-      loggingSpecs(jasmine.createSpyObj('logger', ['info', 'warn', 'error']));
+      loggingSpecs(jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']));
     });
 
     describe('given options.logger is a LoggerProvider', () => {
-      loggingSpecs(() => jasmine.createSpyObj('logger', ['info', 'warn', 'error']));
+      loggingSpecs(() => jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']));
     });
 
     function loggingSpecs(p: jasmine.SpyObj<Logger>|(() => jasmine.SpyObj<Logger>)): void {
@@ -142,7 +194,7 @@ describe('Strongbus.Bus', () => {
       });
 
       describe('when adding a listener and listener count for an event exceeds a configured threshold', () => {
-        describe('given `options.verbose=false`', () => {
+        describe('given `options.verbose=false` (default)', () => {
           it('logs only when a multiple of a threshold is reached', () => {
             bus = new Strongbus.Bus<TestEventMap>({
               name: 'Foo',
@@ -151,8 +203,7 @@ describe('Strongbus.Bus', () => {
                 info: 10,
                 warn: 25,
                 error: 60
-              },
-              verbose: false
+              }
             });
 
             addListeners(10);
@@ -166,7 +217,7 @@ describe('Strongbus.Bus', () => {
 
             // 11th listener triggers info
             addListeners(1);
-            expect(bus.listeners.get('bar').size).toEqual(11);
+            expect(bus.getListenersFor('bar').size).toEqual(11);
             expect(logger.info).toHaveBeenCalledWith(
               StrongbusLogMessages.infoThresholdExceeded('Foo Bus', 10, 11, 'bar')
             );
@@ -176,20 +227,20 @@ describe('Strongbus.Bus', () => {
 
             // 12th listener triggers no logging
             addListeners(1);
-            expect(bus.listeners.get('bar').size).toEqual(12);
+            expect(bus.getListenersFor('bar').size).toEqual(12);
             expect(logger.info).not.toHaveBeenCalled();
             expect(logger.warn).not.toHaveBeenCalled();
             expect(logger.error).not.toHaveBeenCalled();
 
             addListeners(7);
-            expect(bus.listeners.get('bar').size).toEqual(19);
+            expect(bus.getListenersFor('bar').size).toEqual(19);
             expect(logger.info).not.toHaveBeenCalled();
             expect(logger.warn).not.toHaveBeenCalled();
             expect(logger.error).not.toHaveBeenCalled();
 
             // multiple of info threshold
             addListeners(1);
-            expect(bus.listeners.get('bar').size).toEqual(20);
+            expect(bus.getListenersFor('bar').size).toEqual(20);
             expect(logger.info).toHaveBeenCalledWith(
               StrongbusLogMessages.infoThresholdExceeded('Foo Bus', 10, 20, 'bar')
             );
@@ -199,7 +250,7 @@ describe('Strongbus.Bus', () => {
 
             addListeners(5);
             // 25th triggers info about reaching threshold
-            expect(bus.listeners.get('bar').size).toEqual(25);
+            expect(bus.getListenersFor('bar').size).toEqual(25);
             expect(logger.info).toHaveBeenCalledWith(
               StrongbusLogMessages.warnThresholdReached('Foo Bus', 25, 'bar')
             );
@@ -209,7 +260,7 @@ describe('Strongbus.Bus', () => {
 
             addListeners(1);
             // 26th triggers warning
-            expect(bus.listeners.get('bar').size).toEqual(26);
+            expect(bus.getListenersFor('bar').size).toEqual(26);
             expect(logger.info).not.toHaveBeenCalled();
             expect(logger.warn).toHaveBeenCalledWith(
               StrongbusLogMessages.warnThresholdExceeded('Foo Bus', 25, 26, 'bar')
@@ -219,7 +270,7 @@ describe('Strongbus.Bus', () => {
 
             addListeners(4);
             // 30th triggers warning (as multiple of info threshold, but over warning limit)
-            expect(bus.listeners.get('bar').size).toEqual(30);
+            expect(bus.getListenersFor('bar').size).toEqual(30);
             expect(logger.info).not.toHaveBeenCalled();
             expect(logger.warn).toHaveBeenCalledWith(
               StrongbusLogMessages.warnThresholdExceeded('Foo Bus', 25, 30, 'bar')
@@ -229,7 +280,7 @@ describe('Strongbus.Bus', () => {
 
             addListeners(20);
             // 40th and 50th trigger warnings
-            expect(bus.listeners.get('bar').size).toEqual(50);
+            expect(bus.getListenersFor('bar').size).toEqual(50);
             expect(logger.info).not.toHaveBeenCalled();
             expect(logger.warn).toHaveBeenCalledTimes(2);
             expect(logger.error).not.toHaveBeenCalled();
@@ -237,7 +288,7 @@ describe('Strongbus.Bus', () => {
 
             addListeners(10);
             // 60th triggers info about reaching threshold
-            expect(bus.listeners.get('bar').size).toEqual(60);
+            expect(bus.getListenersFor('bar').size).toEqual(60);
             expect(logger.info).toHaveBeenCalledWith(
               StrongbusLogMessages.errorThresholdReached('Foo Bus', 60, 'bar')
             );
@@ -247,7 +298,7 @@ describe('Strongbus.Bus', () => {
 
             addListeners(1);
             // 61st triggers an error
-            expect(bus.listeners.get('bar').size).toEqual(61);
+            expect(bus.getListenersFor('bar').size).toEqual(61);
             expect(logger.info).not.toHaveBeenCalled();
             expect(logger.warn).not.toHaveBeenCalled();
             expect(logger.error).toHaveBeenCalledWith(
@@ -257,7 +308,7 @@ describe('Strongbus.Bus', () => {
 
             addListeners(9);
             // 70th triggers error (as a multiple of info threshold, but over error limit)
-            expect(bus.listeners.get('bar').size).toEqual(70);
+            expect(bus.getListenersFor('bar').size).toEqual(70);
             expect(logger.info).not.toHaveBeenCalled();
             expect(logger.warn).not.toHaveBeenCalled();
             expect(logger.error).toHaveBeenCalledWith(
@@ -266,10 +317,11 @@ describe('Strongbus.Bus', () => {
           });
         });
 
-        describe('given `options.verbose=true (default)`', () => {
+        describe('given `options.verbose=true`', () => {
           it('logs each time a listener is added', () => {
             bus = new Strongbus.Bus<TestEventMap>({
               logger: provider,
+              verbose: true,
               thresholds: {
                 info: 10,
                 warn: 20,
@@ -284,7 +336,7 @@ describe('Strongbus.Bus', () => {
 
             // 11th listener triggers info
             addListeners(1);
-            expect(bus.listeners.get('bar').size).toEqual(11);
+            expect(bus.getListenersFor('bar').size).toEqual(11);
             expect(logger.info).withContext('crossed info threshold').toHaveBeenCalledTimes(1);
             expect(logger.warn).withContext('crossed info threshold').not.toHaveBeenCalled();
             expect(logger.error).withContext('crossed info threshold').not.toHaveBeenCalled();
@@ -317,6 +369,7 @@ describe('Strongbus.Bus', () => {
           it('logs at the highest severity that passes the threshold', () => {
             bus = new Strongbus.Bus<TestEventMap>({
               logger: provider,
+              verbose: true,
               thresholds: {
                 // only warn-level specified, info is at default of 100
                 warn: 20
@@ -347,34 +400,34 @@ describe('Strongbus.Bus', () => {
             logger.info.calls.reset();
 
             over(unsubs.splice(60))();
-            expect(bus.listeners.get('bar').size).toEqual(60);
+            expect(bus.getListenersFor('bar').size).toEqual(60);
             expect(logger.info).not.toHaveBeenCalled();
 
             over(unsubs.splice(59))();
-            expect(bus.listeners.get('bar').size).toEqual(59);
+            expect(bus.getListenersFor('bar').size).toEqual(59);
             // logs crossing the error threshold
             expect(logger.info).toHaveBeenCalledTimes(1);
 
             over(unsubs.splice(25))();
-            expect(bus.listeners.get('bar').size).toEqual(25);
+            expect(bus.getListenersFor('bar').size).toEqual(25);
             expect(logger.info).toHaveBeenCalledTimes(1);
 
             over(unsubs.splice(24))();
-            expect(bus.listeners.get('bar').size).toEqual(24);
+            expect(bus.getListenersFor('bar').size).toEqual(24);
             // logs crossing the warning threshold
             expect(logger.info).toHaveBeenCalledTimes(2);
 
             over(unsubs.splice(10))();
-            expect(bus.listeners.get('bar').size).toEqual(10);
+            expect(bus.getListenersFor('bar').size).toEqual(10);
             expect(logger.info).toHaveBeenCalledTimes(2);
 
             over(unsubs.splice(9))();
-            expect(bus.listeners.get('bar').size).toEqual(9);
+            expect(bus.getListenersFor('bar').size).toEqual(9);
             // logs crossing the info threshold
             expect(logger.info).toHaveBeenCalledTimes(3);
 
             over(unsubs)();
-            expect(bus.listeners.get('bar')).toBeUndefined();
+            expect(bus.getListenersFor('bar').size).toBe(0);
             expect(logger.info).toHaveBeenCalledTimes(3);
           });
         });
@@ -413,6 +466,39 @@ describe('Strongbus.Bus', () => {
         bus.emit('foo', 'eagle'); // attempt to remove the second arg, and observe a type error
       });
     });
+
+    describe('return value', () => {
+      it('returns false when the event has no listeners', () => {
+        expect(bus.emit('foo', 'eagle')).toBeFalse();
+      });
+
+      it('returns true when an own listener handles the event', () => {
+        bus.on('foo', singleEventHandler);
+        expect(bus.emit('foo', 'eagle')).toBeTrue();
+      });
+
+      it('returns true when only a wildcard (piped sink) listener handles the event', () => {
+        bus.pipe(eventSink);
+        expect(bus.emit('foo', 'eagle')).toBeTrue();
+      });
+
+      it('returns true when only a downstream handles the event', () => {
+        const downstream = new Strongbus.Bus<TestEventMap>();
+        downstream.on('foo', singleEventHandler);
+        bus.pipe(downstream);
+
+        expect(bus.emit('foo', 'eagle')).toBeTrue();
+        expect(singleEventHandler).toHaveBeenCalledWith('eagle');
+      });
+
+      it('returns false when a downstream exists but has no listener for the event', () => {
+        const downstream = new Strongbus.Bus<TestEventMap>();
+        downstream.on('bar', singleEventHandler);
+        bus.pipe(downstream);
+
+        expect(bus.emit('foo', 'eagle')).toBeFalse();
+      });
+    });
   });
 
   describe('#on', () => {
@@ -444,239 +530,962 @@ describe('Strongbus.Bus', () => {
       expect(barSpy).not.toHaveBeenCalled();
     });
 
+    it('returns the same Subscription for a duplicate on with the same handler', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+      const onWillAdd = jasmine.createSpy('willAddListener');
+      const onDidAdd = jasmine.createSpy('didAddListener');
+      const onWillRemove = jasmine.createSpy('willRemoveListener');
+      const onDidRemove = jasmine.createSpy('didRemoveListener');
+      const onWillIdle = jasmine.createSpy('willIdle');
+      const onIdle = jasmine.createSpy('idle');
+      bus.hook('willAddListener', onWillAdd);
+      bus.hook('didAddListener', onDidAdd);
+      bus.hook('willRemoveListener', onWillRemove);
+      bus.hook('didRemoveListener', onDidRemove);
+      bus.hook('willIdle', onWillIdle);
+      bus.hook('idle', onIdle);
+
+      const sub1 = bus.on('foo', handleFoo);
+      expect(onWillAdd).toHaveBeenCalledTimes(1);
+      expect(onDidAdd).toHaveBeenCalledTimes(1);
+
+      const sub2 = bus.on('foo', handleFoo);
+      expect(sub1).toBe(sub2);
+      expect(onWillAdd).toHaveBeenCalledTimes(1);
+      expect(onDidAdd).toHaveBeenCalledTimes(1);
+
+      bus.emit('foo', 'elephant');
+      expect(handleFoo).toHaveBeenCalledTimes(1);
+
+      sub1();
+      expect(bus.hasListeners()).toBeFalse();
+      expect(handleFoo).toHaveBeenCalledTimes(1);
+      expect(onWillRemove).toHaveBeenCalledTimes(1);
+      expect(onDidRemove).toHaveBeenCalledTimes(1);
+      expect(onWillIdle).toHaveBeenCalledTimes(1);
+      expect(onIdle).toHaveBeenCalledTimes(1);
+
+      onWillRemove.calls.reset();
+      onDidRemove.calls.reset();
+      onWillIdle.calls.reset();
+      onIdle.calls.reset();
+
+      sub2();
+      expect(onWillRemove).not.toHaveBeenCalled();
+      expect(onDidRemove).not.toHaveBeenCalled();
+      expect(onWillIdle).not.toHaveBeenCalled();
+      expect(onIdle).not.toHaveBeenCalled();
+    });
+
     describe('returns a Subscription', () => {
       it('which can be disposed by direct invocation', () => {
         const unsub = bus.on('foo', () => { return; });
-        expect(bus.hasListeners).toBeTruthy();
+        expect(bus.hasListeners()).toBeTruthy();
 
         unsub();
-        expect(bus.hasListeners).toBeFalsy();
+        expect(bus.hasListeners()).toBeFalsy();
       });
 
       it('which can be disposed by calling .unsubscribe on the Subscription reference', () => {
         const unsub2 = bus.on('foo', () => { return; });
-        expect(bus.hasListeners).toBeTruthy();
+        expect(bus.hasListeners()).toBeTruthy();
 
         unsub2.unsubscribe();
-        expect(bus.hasListeners).toBeFalsy();
+        expect(bus.hasListeners()).toBeFalsy();
+      });
+    });
+  });
+
+  describe('#off', () => {
+    it('removes a handler previously registered with on', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+      bus.on('foo', handleFoo);
+
+      bus.off('foo', handleFoo);
+      bus.emit('foo', 'elephant');
+
+      expect(handleFoo).not.toHaveBeenCalled();
+      expect(bus.hasListeners()).toBeFalsy();
+    });
+
+    it('is a no-op when the handler is not registered', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+
+      expect(() => bus.off('foo', handleFoo)).not.toThrow();
+      expect(bus.hasListeners()).toBeFalsy();
+    });
+
+    it('is idempotent', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+      bus.on('foo', handleFoo);
+
+      bus.off('foo', handleFoo);
+      expect(() => bus.off('foo', handleFoo)).not.toThrow();
+      expect(bus.hasListeners()).toBeFalsy();
+    });
+
+    it('makes a previously returned Subscription a no-op', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+      const sub = bus.on('foo', handleFoo);
+
+      bus.off('foo', handleFoo);
+      expect(() => sub()).not.toThrow();
+      expect(bus.hasListeners()).toBeFalsy();
+    });
+
+    it('does not remove other handlers on the same event', () => {
+      const handleA = jasmine.createSpy('handleA') as (fooPayload: string) => void;
+      const handleB = jasmine.createSpy('handleB') as (fooPayload: string) => void;
+      bus.on('foo', handleA);
+      bus.on('foo', handleB);
+
+      bus.off('foo', handleA);
+      bus.emit('foo', 'elephant');
+
+      expect(handleA).not.toHaveBeenCalled();
+      expect(handleB).toHaveBeenCalledWith('elephant');
+    });
+
+    it('does not remove the same handler registered on a different event', () => {
+      const handle = jasmine.createSpy('handle');
+      bus.on('foo', handle as (fooPayload: string) => void);
+      bus.on('bar', handle as (barPayload: boolean) => void);
+
+      bus.off('foo', handle as (fooPayload: string) => void);
+      bus.emit('foo', 'elephant');
+      bus.emit('bar', true);
+
+      expect(handle).toHaveBeenCalledTimes(1);
+      expect(handle).toHaveBeenCalledWith(true);
+    });
+
+    it('returns void', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+      bus.on('foo', handleFoo);
+
+      expect(bus.off('foo', handleFoo)).toBeUndefined();
+    });
+
+    it('raises the same remove lifecycle hooks as unsubscribing', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+      bus.on('foo', handleFoo);
+
+      const order: string[] = [];
+      bus.hook('willRemoveListener', (event) => order.push(`willRemove:${event}`));
+      bus.hook('didRemoveListener', (event) => order.push(`didRemove:${event}`));
+      bus.hook('willIdle', () => order.push('willIdle'));
+      bus.hook('idle', () => order.push('idle'));
+
+      bus.off('foo', handleFoo);
+
+      expect(order).toEqual([
+        'willIdle',
+        'willRemove:foo',
+        'didRemove:foo',
+        'idle'
+      ]);
+    });
+  });
+
+  describe('duplicateSubscriptionStrategy', () => {
+    it('defaults to collapse + warn', () => {
+      const options: Strongbus.Options = (bus as any).options;
+      expect(options.duplicateSubscriptionStrategy).toEqual({
+        observability: 'collapse',
+        invocation: 'collapse',
+        disposal: 'collapse',
+        logLevel: 'warn'
       });
     });
 
-    describe('given the wildcard operator to listen on', () => {
-      describe('and given an event is raised', () => {
-        it('invokes the supplied handler with event and payload', () => {
-          bus.on('*', onEveryEvent);
-          bus.emit('foo', 'raccoon');
-          expect(onEveryEvent).toHaveBeenCalledTimes(1);
-          expect(onEveryEvent).toHaveBeenCalledWith('foo', 'raccoon');
-          bus.emit('foo', 'squirrel');
-          expect(onEveryEvent).toHaveBeenCalledTimes(2);
-          expect(onEveryEvent).toHaveBeenCalledWith('foo', 'squirrel');
-          bus.emit('baz', 5);
-          expect(onEveryEvent).toHaveBeenCalledTimes(3);
-          expect(onEveryEvent).toHaveBeenCalledWith('baz', 5);
+    it('exposes EventEmitter, EventTarget, and SharedHandler presets', () => {
+      expect(Strongbus.DuplicateSubscriptionStrategy.EventEmitter).toEqual({
+        observability: 'stack',
+        invocation: 'stack',
+        disposal: 'stack',
+        logLevel: 'never'
+      });
+      expect(Strongbus.DuplicateSubscriptionStrategy.EventTarget).toEqual({
+        observability: 'collapse',
+        invocation: 'collapse',
+        disposal: 'collapse',
+        logLevel: 'never'
+      });
+      expect(Strongbus.DuplicateSubscriptionStrategy.SharedHandler).toEqual({
+        observability: 'stack',
+        invocation: 'collapse',
+        disposal: 'stack',
+        logLevel: 'never'
+      });
+    });
+
+    describe('default collapse + warn', () => {
+      it('warns on duplicate on and keeps collapsed behavior', () => {
+        const warn = jasmine.createSpy('warn');
+        bus = new Strongbus.Bus<TestEventMap>({
+          logger: {info: () => undefined, warn, error: () => undefined, debug: () => undefined}
+        });
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+
+        const sub1 = bus.on('foo', handleFoo);
+        const sub2 = bus.on('foo', handleFoo);
+
+        expect(sub1).toBe(sub2);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.calls.mostRecent().args[0]).toContain('duplicate on');
+
+        bus.emit('foo', 'x');
+        expect(handleFoo).toHaveBeenCalledTimes(1);
+        expect(bus.getListenerCountFor('foo')).toBe(1);
+      });
+    });
+
+    describe('SharedHandler preset', () => {
+      beforeEach(() => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.SharedHandler
         });
       });
+
+      it('invokes once while allowing independent dispose', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+        const a = bus.on('foo', handleFoo);
+        const b = bus.on('foo', handleFoo);
+
+        expect(a).not.toBe(b);
+        expect(bus.getListenerCountFor('foo')).toBe(2);
+
+        bus.emit('foo', 'x');
+        expect(handleFoo).toHaveBeenCalledTimes(1);
+
+        a();
+        expect(bus.getListenerCountFor('foo')).toBe(1);
+        bus.emit('foo', 'y');
+        expect(handleFoo).toHaveBeenCalledTimes(2);
+
+        b();
+        expect(bus.hasListeners()).toBeFalse();
+      });
+
+      it('off pops the oldest SharedHandler frame (head of stack)', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+        const first = bus.on('foo', handleFoo);
+        const second = bus.on('foo', handleFoo);
+
+        bus.off('foo', handleFoo);
+        expect(bus.getListenerCountFor('foo')).toBe(1);
+
+        first();
+        expect(bus.getListenerCountFor('foo')).toBe(1);
+        bus.emit('foo', 'z');
+        expect(handleFoo).toHaveBeenCalledTimes(1);
+
+        second();
+        expect(bus.hasListeners()).toBeFalse();
+      });
     });
 
-    describe('given a list of events to listen on', () => {
+    describe('EventEmitter preset', () => {
       beforeEach(() => {
-        bus.on(['foo', 'bar'], onAnyEvent);
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.EventEmitter
+        });
       });
+
+      it('stacks observability, invocation, and disposal', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+        const a = bus.on('foo', handleFoo);
+        const b = bus.on('foo', handleFoo);
+
+        expect(a).not.toBe(b);
+        expect(bus.getListenerCountFor('foo')).toBe(2);
+
+        bus.emit('foo', 'x');
+        expect(handleFoo).toHaveBeenCalledTimes(2);
+
+        a();
+        expect(bus.getListenerCountFor('foo')).toBe(1);
+        bus.emit('foo', 'y');
+        expect(handleFoo).toHaveBeenCalledTimes(3);
+      });
+
+      it('off pops the oldest stacked registration (head of stack)', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+        const first = bus.on('foo', handleFoo);
+        const second = bus.on('foo', handleFoo);
+
+        bus.off('foo', handleFoo);
+        expect(bus.getListenerCountFor('foo')).toBe(1);
+
+        first();
+        expect(bus.getListenerCountFor('foo')).toBe(1);
+        bus.emit('foo', 'y');
+        expect(handleFoo).toHaveBeenCalledTimes(1);
+
+        second();
+        expect(bus.hasListeners()).toBeFalse();
+      });
+    });
+
+    describe('EventTarget preset', () => {
+      beforeEach(() => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.EventTarget
+        });
+      });
+
+      it('collapses duplicate on without logging', () => {
+        const warn = jasmine.createSpy('warn');
+        const info = jasmine.createSpy('info');
+        const error = jasmine.createSpy('error');
+        const debug = jasmine.createSpy('debug');
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.EventTarget,
+          logger: {info, warn, error, debug}
+        });
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+
+        const sub1 = bus.on('foo', handleFoo);
+        const sub2 = bus.on('foo', handleFoo);
+
+        expect(sub1).toBe(sub2);
+        expect(warn).not.toHaveBeenCalled();
+        expect(info).not.toHaveBeenCalled();
+        expect(error).not.toHaveBeenCalled();
+        expect(debug).not.toHaveBeenCalled();
+        expect(bus.getListenerCountFor('foo')).toBe(1);
+
+        bus.emit('foo', 'x');
+        expect(handleFoo).toHaveBeenCalledTimes(1);
+
+        sub1();
+        expect(bus.hasListeners()).toBeFalse();
+        sub2();
+        expect(bus.hasListeners()).toBeFalse();
+      });
+
+      it('off clears the collapsed registration', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+        bus.on('foo', handleFoo);
+        bus.on('foo', handleFoo);
+
+        bus.off('foo', handleFoo);
+        expect(bus.hasListeners()).toBeFalse();
+        bus.emit('foo', 'x');
+        expect(handleFoo).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('once kind isolation', () => {
+      it('does not clear on when disposing once for the same handler', () => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.EventTarget
+        });
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+        bus.on('foo', handleFoo);
+        const onceSub = bus.once('foo', handleFoo);
+
+        onceSub();
+        bus.emit('foo', 'still-on');
+        expect(handleFoo).toHaveBeenCalledWith('still-on');
+      });
+
+      it('does not clear once when off removes on for the same handler', () => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.EventTarget
+        });
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+        bus.on('foo', handleFoo);
+        bus.once('foo', handleFoo);
+
+        bus.off('foo', handleFoo);
+        bus.emit('foo', 'once-only');
+        expect(handleFoo).toHaveBeenCalledTimes(1);
+        expect(handleFoo).toHaveBeenCalledWith('once-only');
+        expect(bus.hasListeners()).toBeFalse();
+      });
+
+      it('honors invocation stack across duplicate once registrations', () => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: {
+            observability: 'collapse',
+            invocation: 'stack',
+            disposal: 'collapse',
+            logLevel: 'never'
+          }
+        });
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+        const a = bus.once('foo', handleFoo);
+        const b = bus.once('foo', handleFoo);
+        expect(a).not.toBe(b);
+
+        bus.emit('foo', 'x');
+        expect(handleFoo).toHaveBeenCalledTimes(2);
+        expect(bus.hasListeners()).toBeFalse();
+      });
+    });
+
+    describe('any event-set identity', () => {
+      it('treats order-independent event sets as the same listenable', () => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.EventTarget
+        });
+        const sink = jasmine.createSpy('sink');
+        const a = bus.any(['foo', 'bar'], sink);
+        const b = bus.any(['bar', 'foo'], sink);
+        expect(a).toBe(b);
+
+        bus.emit('foo', 'x');
+        expect(sink).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
+  describe('unsubscribe queue', () => {
+    let onWillRemoveListener: jasmine.Spy;
+    let onRemoveListener: jasmine.Spy;
+    let onWillIdle: jasmine.Spy;
+    let onIdle: jasmine.Spy;
+
+    beforeEach(() => {
+      bus.hook('willRemoveListener', onWillRemoveListener = jasmine.createSpy('onWillRemoveListener'));
+      bus.hook('didRemoveListener', onRemoveListener = jasmine.createSpy('onRemoveListener'));
+      bus.hook('willIdle', onWillIdle = jasmine.createSpy('onWillIdle'));
+      bus.hook('idle', onIdle = jasmine.createSpy('onIdle'));
+    });
+
+    it('handles unsubscribes fired from hooks', () => {
+      const sub1 = bus.on('foo', () => null);
+      const sub2 = bus.on('foo', () => null);
+      bus.hook('willRemoveListener', () => sub2());
+
+      sub1();
+      expect(onWillIdle).toHaveBeenCalledTimes(1);
+      expect(onIdle).toHaveBeenCalledTimes(1);
+    });
+
+    it('defers a nested unsubscribe until the current removal finishes', () => {
+      const order: string[] = [];
+      const sub1 = bus.on('foo', () => null);
+      const sub2 = bus.on('bar', () => null);
+      let nested = false;
+
+      bus.hook('willRemoveListener', (event) => {
+        order.push(`willRemove:${event}`);
+        if(!nested && event === 'foo') {
+          nested = true;
+          order.push('queue-sub2');
+          sub2();
+          order.push('after-queue-sub2');
+        }
+      });
+      bus.hook('didRemoveListener', (event) => order.push(`didRemove:${event}`));
+
+      sub1();
+
+      // nested sub2() returns before bar's willRemove — queued, not re-entrant
+      expect(order).toEqual([
+        'willRemove:foo',
+        'queue-sub2',
+        'after-queue-sub2',
+        'didRemove:foo',
+        'willRemove:bar',
+        'didRemove:bar'
+      ]);
+      expect(bus.hasListeners()).toBeFalse();
+      expect(onWillIdle).toHaveBeenCalledTimes(1);
+      expect(onIdle).toHaveBeenCalledTimes(1);
+    });
+
+    it('defers unsubscribes triggered from didRemoveListener', () => {
+      const order: string[] = [];
+      const sub1 = bus.on('foo', () => null);
+      const sub2 = bus.on('bar', () => null);
+      let nested = false;
+
+      bus.hook('willRemoveListener', (event) => order.push(`willRemove:${event}`));
+      bus.hook('didRemoveListener', (event) => {
+        order.push(`didRemove:${event}`);
+        if(!nested && event === 'foo') {
+          nested = true;
+          order.push('queue-sub2');
+          sub2();
+          order.push('after-queue-sub2');
+        }
+      });
+
+      sub1();
+
+      expect(order).toEqual([
+        'willRemove:foo',
+        'didRemove:foo',
+        'queue-sub2',
+        'after-queue-sub2',
+        'willRemove:bar',
+        'didRemove:bar'
+      ]);
+      expect(bus.hasListeners()).toBeFalse();
+    });
+
+    it('processes a chain of nested unsubscribes in FIFO order', () => {
+      const order: string[] = [];
+      const sub1 = bus.on('foo', () => null);
+      const sub2 = bus.on('bar', () => null);
+      const sub3 = bus.on('baz', () => null);
+
+      bus.hook('willRemoveListener', (event) => {
+        order.push(`willRemove:${event}`);
+        if(event === 'foo') {
+          sub2();
+        } else if(event === 'bar') {
+          sub3();
+        }
+      });
+      bus.hook('didRemoveListener', (event) => order.push(`didRemove:${event}`));
+
+      sub1();
+
+      expect(order).toEqual([
+        'willRemove:foo',
+        'didRemove:foo',
+        'willRemove:bar',
+        'didRemove:bar',
+        'willRemove:baz',
+        'didRemove:baz'
+      ]);
+      expect(bus.hasListeners()).toBeFalse();
+      expect(onWillIdle).toHaveBeenCalledTimes(1);
+      expect(onIdle).toHaveBeenCalledTimes(1);
+    });
+
+    it('treats a duplicate dispose of an already-queued subscription as a no-op', () => {
+      const sub1 = bus.on('foo', () => null);
+      const sub2 = bus.on('bar', () => null);
+
+      bus.hook('willRemoveListener', (event) => {
+        if(event === 'foo') {
+          sub2();
+          sub2();
+        }
+      });
+
+      sub1();
+
+      expect(bus.hasListeners()).toBeFalse();
+      expect(onWillRemoveListener).toHaveBeenCalledTimes(2);
+      expect(onRemoveListener).toHaveBeenCalledTimes(2);
+      expect(onWillIdle).toHaveBeenCalledTimes(1);
+      expect(onIdle).toHaveBeenCalledTimes(1);
+    });
+
+    it('removes handlers so subsequent emits do not invoke them', () => {
+      const handleFoo = jasmine.createSpy('handleFoo');
+      const handleBar = jasmine.createSpy('handleBar');
+      const sub1 = bus.on('foo', handleFoo);
+      const sub2 = bus.on('bar', handleBar);
+      bus.hook('willRemoveListener', (event) => {
+        if(event === 'foo') {
+          sub2();
+        }
+      });
+
+      sub1();
+      bus.emit('foo', 'x');
+      bus.emit('bar', true);
+
+      expect(handleFoo).not.toHaveBeenCalled();
+      expect(handleBar).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('#once', () => {
+    it('subscribes handler to an event and unsubscribes after the first invocation', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+      bus.once('foo', handleFoo);
+
+      bus.emit('foo', 'elephant');
+      expect(handleFoo).toHaveBeenCalledWith('elephant');
+
+      bus.emit('foo', 'giraffe');
+      expect(handleFoo).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not invoke the handler if unsubscribed before the event is raised', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+      const sub = bus.once('foo', handleFoo);
+
+      sub();
+      bus.emit('foo', 'elephant');
+      expect(handleFoo).not.toHaveBeenCalled();
+    });
+
+    it('does not invoke subscribers added during callbacks', () => {
+      const barSpy = jasmine.createSpy();
+      bus.once('bar', () => {
+        bus.once('bar', barSpy);
+      });
+      bus.emit('bar', true);
+
+      expect(barSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('#any', () => {
+    describe('given a list of events to listen on', () => {
       describe('given one of the events in the list is raised', () => {
         it('invokes the supplied handler with event and payload', () => {
+          bus.any(['foo', 'bar'], eventSink);
           bus.emit('foo', 'flamingo');
-          expect(onAnyEvent).toHaveBeenCalledTimes(1);
-          expect(onAnyEvent.calls.mostRecent().args).toEqual(['foo', 'flamingo']);
+          expect(eventSink).toHaveBeenCalledTimes(1);
+          expect(eventSink.calls.mostRecent().args).toEqual(['foo', 'flamingo']);
           bus.emit('bar', true);
-          expect(onAnyEvent).toHaveBeenCalledTimes(2);
-          expect(onAnyEvent.calls.mostRecent().args).toEqual(['bar', true]);
+          expect(eventSink).toHaveBeenCalledTimes(2);
+          expect(eventSink.calls.mostRecent().args).toEqual(['bar', true]);
         });
       });
 
       describe('given an event not in the list is raised', () => {
         it('does not invoke the handler', () => {
           bus.emit('baz', 5);
-          expect(onAnyEvent).toHaveBeenCalledTimes(0);
+          expect(eventSink).toHaveBeenCalledTimes(0);
         });
       });
-    });
-  });
 
-  describe('#any', () => {
-    it('adds the same listener for each event given, and the listener receives the event as arg[0]', () => {
-      bus.any(['foo', 'bar'], onAnyEvent);
-      bus.emit('foo', 'sandwich');
+      it('returns a Subscription', () => {
+        bus = new Strongbus.Bus({allowUnhandledEvents: false});
+        spyOn(bus as any, 'handleUnexpectedEvent');
 
-      expect(onAnyEvent).toHaveBeenCalledWith('foo', 'sandwich');
+        const unsubFoo = bus.any(['foo', 'bar'], eventSink);
+        bus.emit('foo', null);
+        expect(eventSink).toHaveBeenCalledTimes(1);
+        expect((bus as any).handleUnexpectedEvent).not.toHaveBeenCalled();
+        eventSink.calls.reset();
 
-      bus.emit('bar', false);
-      expect(onAnyEvent).toHaveBeenCalledWith('bar', false);
-    });
+        unsubFoo();
+        bus.emit('bar', null);
+        expect(eventSink).not.toHaveBeenCalled();
+        expect((bus as any).handleUnexpectedEvent).toHaveBeenCalledWith('bar', null);
+        (bus as any).handleUnexpectedEvent.calls.reset();
 
-    it('returns an unsubscribe function that removes the listener', () => {
-      bus = new Strongbus.Bus({allowUnhandledEvents: false});
-      spyOn(bus as any, 'handleUnexpectedEvent');
-
-      const unsubFoo = bus.any(['foo', 'bar'], onAnyEvent);
-      bus.emit('foo', null);
-      expect(onAnyEvent).toHaveBeenCalledTimes(1);
-      expect((bus as any).handleUnexpectedEvent).not.toHaveBeenCalled();
-      onAnyEvent.calls.reset();
-
-      unsubFoo();
-      bus.emit('bar', null);
-      expect(onAnyEvent).not.toHaveBeenCalled();
-      expect((bus as any).handleUnexpectedEvent).toHaveBeenCalledWith('bar', null);
-      (bus as any).handleUnexpectedEvent.calls.reset();
-
-      bus.emit('baz', null);
-      expect(onAnyEvent).not.toHaveBeenCalled();
-      expect((bus as any).handleUnexpectedEvent).toHaveBeenCalledWith('baz', null);
+        bus.emit('baz', null);
+        expect(eventSink).not.toHaveBeenCalled();
+        expect((bus as any).handleUnexpectedEvent).toHaveBeenCalledWith('baz', null);
+      });
     });
   });
 
   describe('event delegation', () => {
-    let bus2: DelegateTestBus;
-    let bus3: DelegateTestBus;
+    let bus2: DownstreamTestBus;
+    let bus3: DownstreamTestBus;
 
     describe('#pipe', () => {
-      beforeEach(() => {
-        bus2 = new DelegateTestBus({emulateListenerCount: true});
-      });
+      describe('piping into a function sink', () => {
+        describe('given any event is emitted', () => {
+          it('invokes the sink with a single {event, payload} message', () => {
+            bus.on('foo', singleEventHandler);
+            bus.pipe(eventSink);
 
-      describe('given an event is raised from the parent bus', () => {
-        it('handles the event on the parent bus AND the delegate bus', () => {
-          spyOn(bus2, 'emit');
-          bus.pipe(bus2);
+            bus.emit('foo', 'cat');
+            expect(singleEventHandler).toHaveBeenCalledWith('cat');
+            expect(eventSink).toHaveBeenCalledTimes(1);
+            expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'cat'}, jasmine.any(Function));
+          });
+        });
 
-          bus.on('foo', onTestEvent);
-          bus.emit('foo', 'wow!');
+        it('delivers each raised event as its own correlated message', () => {
+          const messages: {event: EventKeys<TestEventMap>; payload: unknown}[] = [];
+          bus.pipe((msg) => { messages.push(msg); });
 
-          expect(onTestEvent).toHaveBeenCalledWith('wow!');
-          expect(bus2.emit).toHaveBeenCalledWith('foo', 'wow!');
+          bus.emit('foo', 'cat');
+          bus.emit('baz', 7);
+
+          expect(messages).toEqual([
+            {event: 'foo', payload: 'cat'},
+            {event: 'baz', payload: 7}
+          ]);
+        });
+
+        it('forwards a whole message to another bus via forward(dst)', () => {
+          const dst = new Strongbus.Bus<TestEventMap>();
+          const received = jasmine.createSpy('received');
+          dst.on('foo', received);
+
+          bus.pipe((msg, forward) => { forward(dst); });
+          bus.emit('foo', 'relayed');
+
+          expect(received).toHaveBeenCalledWith('relayed');
+        });
+
+        it('defers forward(dst) until after this bus\'s own handlers (capture semantics)', async () => {
+          const order: string[] = [];
+          const dst = new Strongbus.Bus<TestEventMap>();
+          dst.on('foo', () => order.push('dst'));
+
+          let forwardResult: Promise<boolean> | undefined;
+          bus.on('foo', () => order.push('own-specific'));
+          bus.pipe((_msg, forward) => {
+            order.push('sink');
+            forwardResult = forward(dst);
+            order.push('sink-after-forward');
+          });
+          bus.pipe(() => order.push('other-sink'));
+
+          bus.emit('foo', 'relayed');
+
+          expect(order).toEqual([
+            'own-specific',
+            'sink',
+            'sink-after-forward',
+            'other-sink',
+            'dst'
+          ]);
+          // tslint:disable-next-line:no-non-null-assertion
+          await expectAsync(forwardResult!).toBeResolvedTo(true);
+        });
+
+        it('keeps forward live for later own handlers during the same emit', async () => {
+          const order: string[] = [];
+          const dst = new Strongbus.Bus<TestEventMap>();
+          dst.on('foo', () => order.push('dst'));
+
+          let stolen: ((target: Strongbus.Bus<TestEventMap>) => Promise<boolean>) | undefined;
+          let stolenResult: Promise<boolean> | undefined;
+          bus.pipe((_msg, forward) => {
+            stolen = forward;
+            order.push('sink');
+          });
+          bus.pipe(() => {
+            order.push('later-sink');
+            // original sink has returned, but this emit is still in progress
+            // tslint:disable-next-line:no-non-null-assertion
+            stolenResult = stolen!(dst);
+          });
+
+          bus.emit('foo', 'shared');
+
+          expect(order).toEqual(['sink', 'later-sink', 'dst']);
+          // tslint:disable-next-line:no-non-null-assertion
+          await expectAsync(stolenResult!).toBeResolvedTo(true);
+        });
+
+        it('expires forward after the emit completes', async () => {
+          const dst = new Strongbus.Bus<TestEventMap>();
+          const received = jasmine.createSpy('received');
+          dst.on('foo', received);
+
+          let stolen: ((target: Strongbus.Bus<TestEventMap>) => Promise<boolean>) | undefined;
+          let liveResult: Promise<boolean> | undefined;
+          bus.pipe((_msg, forward) => {
+            stolen = forward;
+            liveResult = forward(dst);
+          });
+
+          bus.emit('foo', 'once');
+          expect(received).toHaveBeenCalledTimes(1);
+          // tslint:disable-next-line:no-non-null-assertion
+          await expectAsync(liveResult!).toBeResolvedTo(true);
+          // tslint:disable-next-line:no-non-null-assertion
+          await expectAsync(stolen!(dst)).toBeResolvedTo(false);
+          expect(received).toHaveBeenCalledTimes(1);
+        });
+
+        it('resolves false when the forwarded emit is unhandled', async () => {
+          const dst = new Strongbus.Bus<TestEventMap>({allowUnhandledEvents: true});
+          let forwardResult: Promise<boolean> | undefined;
+          bus.pipe((_msg, forward) => {
+            forwardResult = forward(dst);
+          });
+
+          bus.emit('foo', 'nobody-home');
+          // tslint:disable-next-line:no-non-null-assertion
+          await expectAsync(forwardResult!).toBeResolvedTo(false);
+        });
+
+        it('expires forward by the time an async sink continuation runs', async () => {
+          const dst = new Strongbus.Bus<TestEventMap>();
+          const received = jasmine.createSpy('received');
+          dst.on('foo', received);
+
+          const done = new Promise<void>((resolve) => {
+            bus.pipe(async (_msg, forward) => {
+              await Promise.resolve();
+              // emit does not await sinks, so the emit has already completed
+              await expectAsync(forward(dst)).toBeResolvedTo(false);
+              resolve();
+            });
+          });
+
+          bus.emit('foo', 'late');
+          await done;
+          expect(received).not.toHaveBeenCalled();
+        });
+
+        it('runs deferred forwards before structural pipe(bus) delegation', () => {
+          const order: string[] = [];
+          const viaForward = new Strongbus.Bus<TestEventMap>();
+          const viaPipe = new Strongbus.Bus<TestEventMap>();
+          viaForward.on('foo', () => order.push('forward-dst'));
+          viaPipe.on('foo', () => order.push('pipe-dst'));
+
+          bus.pipe((_msg, forward) => { forward(viaForward); });
+          bus.pipe(viaPipe);
+
+          bus.emit('foo', 'x');
+
+          expect(order).toEqual(['forward-dst', 'pipe-dst']);
         });
       });
 
-      it('counts piped listeners as handlers when events are raised', () => {
-        bus = new Strongbus.Bus({allowUnhandledEvents: false});
-        spyOn(bus as any, 'handleUnexpectedEvent');
-        bus.emit('foo', null);
-        expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
-        (bus as any).handleUnexpectedEvent.calls.reset();
+      describe('piping into another bus', () => {
+        beforeEach(() => {
+          bus2 = new DownstreamTestBus({emulateListenerCount: true});
+        });
 
-        bus.pipe(bus2);
-        bus.emit('foo', null);
-        expect((bus as any).handleUnexpectedEvent).not.toHaveBeenCalled();
-        bus.unpipe(bus2);
+        describe('given an event is raised from the parent bus', () => {
+          it('handles the event on the parent bus AND the downstream bus', () => {
+            spyOn(bus2, 'emit');
+            bus.pipe(bus2);
 
-        // removed the delegate, bus has no listeners again
-        bus.emit('foo', null);
-        expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
-        (bus as any).handleUnexpectedEvent.calls.reset();
+            bus.on('foo', singleEventHandler);
+            bus.emit('foo', 'wow!');
 
-        // emulate a delegate bus with no listeners attached
-        bus3 = new DelegateTestBus({emulateListenerCount: false});
-        bus.pipe(bus3);
+            expect(singleEventHandler).toHaveBeenCalledWith('wow!');
+            expect(bus2.emit).toHaveBeenCalledWith('foo', 'wow!');
+          });
+        });
 
-        bus.emit('foo', null);
-        expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
+        it('counts piped listeners as handlers when events are raised', () => {
+          bus = new Strongbus.Bus({allowUnhandledEvents: false});
+          spyOn(bus as any, 'handleUnexpectedEvent');
+          bus.emit('foo', null);
+          expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
+          (bus as any).handleUnexpectedEvent.calls.reset();
+
+          bus.pipe(bus2);
+          bus.emit('foo', null);
+          expect((bus as any).handleUnexpectedEvent).not.toHaveBeenCalled();
+          bus.unpipe(bus2);
+
+          // removed the downstream, bus has no listeners again
+          bus.emit('foo', null);
+          expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
+          (bus as any).handleUnexpectedEvent.calls.reset();
+
+          // emulate a downstream bus with no listeners attached
+          bus3 = new DownstreamTestBus({emulateListenerCount: false});
+          bus.pipe(bus3);
+
+          bus.emit('foo', null);
+          expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
+        });
+
+        it('bubbles unhandled events to the parent regardless of whether the downstream allows them', () => {
+          bus = new Strongbus.Bus({allowUnhandledEvents: false});
+          bus2 = new DownstreamTestBus({allowUnhandledEvents: true});
+          bus3 = new DownstreamTestBus({allowUnhandledEvents: false, emulateListenerCount: false});
+          spyOn(bus as any, 'handleUnexpectedEvent');
+          spyOn(bus2 as any, 'handleUnexpectedEvent');
+          spyOn(bus3 as any, 'handleUnexpectedEvent');
+
+          bus.pipe(bus2);
+          bus.pipe(bus3);
+          bus.emit('foo', null);
+          expect((bus3 as any).handleUnexpectedEvent).toHaveBeenCalled();
+          expect((bus2 as any).handleUnexpectedEvent).not.toHaveBeenCalled();
+          expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
+        });
+
+        it('can be chained', () => {
+          bus2 = new DownstreamTestBus({});
+          bus3 = new DownstreamTestBus({});
+
+          spyOn(bus, 'emit').and.callThrough();
+          spyOn(bus2, 'emit').and.callThrough();
+          spyOn(bus3, 'emit');
+
+          bus.pipe(bus2).pipe(bus3);
+
+          bus.emit('foo', 'woot');
+          expect(bus2.emit).toHaveBeenCalledWith('foo', 'woot');
+          expect(bus3.emit).toHaveBeenCalledWith('foo', 'woot');
+
+          bus2.emit('bar', false);
+          expect((bus.emit as jasmine.Spy)).not.toHaveBeenCalledWith('bar', false);
+          expect(bus3.emit).toHaveBeenCalledWith('bar', false);
+        });
       });
 
-      it('bubbles unhandled events to the parent regardless of whether the delegate allows them', () => {
-        bus = new Strongbus.Bus({allowUnhandledEvents: false});
-        bus2 = new DelegateTestBus({allowUnhandledEvents: true});
-        bus3 = new DelegateTestBus({allowUnhandledEvents: false, emulateListenerCount: false});
-        spyOn(bus as any, 'handleUnexpectedEvent');
-        spyOn(bus2 as any, 'handleUnexpectedEvent');
-        spyOn(bus3 as any, 'handleUnexpectedEvent');
+      describe('piping into a function sink', () => {
+        describe('and given an event is raised', () => {
+          it('invokes the supplied handler with a correlated {event, payload} message', () => {
+            bus.pipe(eventSink);
+            bus.emit('foo', 'raccoon');
+            expect(eventSink).toHaveBeenCalledTimes(1);
+            expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'raccoon'}, jasmine.any(Function));
+            bus.emit('foo', 'squirrel');
+            expect(eventSink).toHaveBeenCalledTimes(2);
+            expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'squirrel'}, jasmine.any(Function));
+            bus.emit('baz', 5);
+            expect(eventSink).toHaveBeenCalledTimes(3);
+            expect(eventSink).toHaveBeenCalledWith({event: 'baz', payload: 5}, jasmine.any(Function));
+          });
+        });
 
-        bus.pipe(bus2);
-        bus.pipe(bus3);
-        bus.emit('foo', null);
-        expect((bus3 as any).handleUnexpectedEvent).toHaveBeenCalled();
-        expect((bus2 as any).handleUnexpectedEvent).not.toHaveBeenCalled();
-        expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
-      });
-
-      it('can be chained', () => {
-        bus2 = new DelegateTestBus({});
-        bus3 = new DelegateTestBus({});
-
-        spyOn(bus, 'emit').and.callThrough();
-        spyOn(bus2, 'emit').and.callThrough();
-        spyOn(bus3, 'emit');
-
-        bus.pipe(bus2).pipe(bus3);
-
-        bus.emit('foo', 'woot');
-        expect(bus2.emit).toHaveBeenCalledWith('foo', 'woot');
-        expect(bus3.emit).toHaveBeenCalledWith('foo', 'woot');
-
-        bus2.emit('bar', null);
-        expect(bus.emit).not.toHaveBeenCalledWith('bar', null);
-        expect(bus3.emit).toHaveBeenCalledWith('bar', null);
+        it('returns an unsubscribe function', () => {
+          const sub = bus.pipe(eventSink);
+          bus.emit('foo', 'raccoon');
+          expect(eventSink).toHaveBeenCalledTimes(1);
+          sub();
+          bus.emit('foo', 'fox');
+          expect(eventSink).toHaveBeenCalledTimes(1);
+        });
       });
     });
 
     describe('#unpipe', () => {
+      describe('unpiping another bus', () => {
+        beforeEach(() => {
+          bus2 = new DownstreamTestBus({emulateListenerCount: true});
+        });
 
-      beforeEach(() => {
-        bus2 = new DelegateTestBus({emulateListenerCount: true});
+        it('removes a piped msg bus', () => {
+          spyOn(bus2, 'emit');
+          bus.pipe(bus2);
+
+          bus.emit('foo', 'wow!');
+
+          expect(bus2.emit).toHaveBeenCalledWith('foo', 'wow!');
+          (bus2.emit as any).calls.reset();
+
+          bus.unpipe(bus2);
+
+          bus.emit('foo', 'wow!');
+          expect(bus2.emit).not.toHaveBeenCalled();
+        });
+
+        it('breaks the a chain of piped buses', () => {
+          bus3 = new DownstreamTestBus({});
+          spyOn(bus2, 'emit').and.callThrough();
+          spyOn(bus3, 'emit').and.callThrough();
+
+          bus.pipe(bus2).pipe(bus3);
+          bus.emit('foo', null);
+
+          expect(bus2.emit).toHaveBeenCalledWith('foo', null);
+          expect(bus3.emit).toHaveBeenCalledWith('foo', null);
+          (bus2.emit as jasmine.Spy).calls.reset();
+          (bus3.emit as jasmine.Spy).calls.reset();
+
+          bus.unpipe(bus2);
+          bus.emit('foo', null);
+          expect(bus2.emit).not.toHaveBeenCalled();
+          expect(bus3.emit).not.toHaveBeenCalled();
+
+          // bus2 is still delegating to bus3 via the chain
+          bus2.emit('foo', null);
+          expect(bus3.emit).toHaveBeenCalledWith('foo', null);
+        });
       });
-
-      it('removes a piped msg bus', () => {
-        spyOn(bus2, 'emit');
-        bus.pipe(bus2);
-
-        bus.emit('foo', 'wow!');
-
-        expect(bus2.emit).toHaveBeenCalledWith('foo', 'wow!');
-        (bus2.emit as any).calls.reset();
-
-        bus.unpipe(bus2);
-
-        bus.emit('foo', 'wow!');
-        expect(bus2.emit).not.toHaveBeenCalled();
-      });
-
-      it('breaks the a chain of piped buses', () => {
-        bus3 = new DelegateTestBus({});
-        spyOn(bus2, 'emit').and.callThrough();
-        spyOn(bus3, 'emit').and.callThrough();
-
-        bus.pipe(bus2).pipe(bus3);
-        bus.emit('foo', null);
-
-        expect(bus2.emit).toHaveBeenCalledWith('foo', null);
-        expect(bus3.emit).toHaveBeenCalledWith('foo', null);
-        (bus2.emit as jasmine.Spy).calls.reset();
-        (bus3.emit as jasmine.Spy).calls.reset();
-
-        bus.unpipe(bus2);
-        bus.emit('foo', null);
-        expect(bus2.emit).not.toHaveBeenCalled();
-        expect(bus3.emit).not.toHaveBeenCalled();
-
-        // bus2 is still delegating to bus3 via the chain
-        bus2.emit('foo', null);
-        expect(bus3.emit).toHaveBeenCalledWith('foo', null);
-      });
-    });
-  });
-
-  describe('#proxy', () => {
-    it('adds a proxy handler for raised events that receives the event as well as the payload', () => {
-      const proxy = jasmine.createSpy('proxy');
-      bus.on('foo', onTestEvent);
-      bus.every(onEveryEvent);
-      bus.proxy(proxy);
-
-      bus.emit('foo', 'cat');
-      expect(onTestEvent).toHaveBeenCalledWith('cat');
-      expect(onEveryEvent).toHaveBeenCalled();
-      expect(proxy).toHaveBeenCalledWith('foo', 'cat');
-      expect(proxy).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -704,12 +1513,12 @@ describe('Strongbus.Bus', () => {
     });
 
     it('allows subscription to meta events', () => {
-      onWillActivate.and.callFake(() => expect(bus.hasListeners).toBeFalse());
-      onActive.and.callFake(() => expect(bus.hasListeners).toBeTrue());
-      onWillIdle.and.callFake(() => expect(bus.hasListeners).toBeTrue());
-      onIdle.and.callFake(() => expect(bus.hasListeners).toBeFalse());
+      onWillActivate.and.callFake(() => expect(bus.hasListeners()).toBeFalse());
+      onActive.and.callFake(() => expect(bus.hasListeners()).toBeTrue());
+      onWillIdle.and.callFake(() => expect(bus.hasListeners()).toBeTrue());
+      onIdle.and.callFake(() => expect(bus.hasListeners()).toBeFalse());
 
-      const foosub = bus.on('foo', onTestEvent);
+      const foosub = bus.on('foo', singleEventHandler);
       expect(onWillAddListener).toHaveBeenCalledWith('foo');
       expect(onAddListener).toHaveBeenCalledWith('foo');
       expect(onWillActivate).toHaveBeenCalled();
@@ -723,7 +1532,7 @@ describe('Strongbus.Bus', () => {
     });
 
     it('does not emit events if the subscription is invoked a second time', () => {
-      const foosub = bus.on('foo', onTestEvent);
+      const foosub = bus.on('foo', singleEventHandler);
       foosub();
 
       onWillRemoveListener.calls.reset();
@@ -739,21 +1548,21 @@ describe('Strongbus.Bus', () => {
     });
 
     it('only raises "willActivate" and "active" events when the bus goes from 0 to 1 listeners', () => {
-      expect(bus.hasListeners).toBeFalsy();
-      bus.on('foo', onTestEvent);
+      expect(bus.hasListeners()).toBeFalsy();
+      bus.on('foo', singleEventHandler);
       expect(onWillActivate).toHaveBeenCalled();
       expect(onActive).toHaveBeenCalledTimes(1);
-      expect(bus.hasListeners).toBeTruthy();
+      expect(bus.hasListeners()).toBeTruthy();
 
-      bus.on('bar', onTestEvent);
+      bus.on('bar', singleEventHandler);
       expect(onWillActivate).toHaveBeenCalledTimes(1);
       expect(onActive).toHaveBeenCalledTimes(1);
     });
 
     it('only raises "willIdle" and "idle" events when the bus goes from 1 to 0 listeners', () => {
-      expect(bus.hasListeners).toBeFalsy();
-      const foosub = bus.on('foo', onTestEvent);
-      const barsub = bus.on('bar', onTestEvent);
+      expect(bus.hasListeners()).toBeFalsy();
+      const foosub = bus.on('foo', singleEventHandler);
+      const barsub = bus.on('bar', singleEventHandler);
       expect(onWillIdle).toHaveBeenCalledTimes(0);
       expect(onIdle).toHaveBeenCalledTimes(0);
 
@@ -778,8 +1587,8 @@ describe('Strongbus.Bus', () => {
     });
 
     it('can distinguish between diffierent subscriptions to the same event', () => {
-      expect(bus.hasListeners).toBeFalsy();
-      const foosub1 = bus.on('foo', onTestEvent);
+      expect(bus.hasListeners()).toBeFalsy();
+      const foosub1 = bus.on('foo', singleEventHandler);
       const foosub2 = bus.on('foo', () => true);
       expect(onWillIdle).toHaveBeenCalledTimes(0);
       expect(onIdle).toHaveBeenCalledTimes(0);
@@ -804,21 +1613,51 @@ describe('Strongbus.Bus', () => {
       expect(onIdle).toHaveBeenCalledTimes(1);
     });
 
-    // if subscriptions are the same, then they are grouped
-    it('allows duplicate subscriptions', () => {
-      expect(bus.hasListeners).toBeFalse();
-      const sub1 = bus.on('foo', onTestEvent);
-      const sub2 = bus.on('foo', onTestEvent);
+    describe('lifecycle hook ordering', () => {
+      const otherEventHandler = jasmine.createSpy('otherEventHandler');
 
-      sub1();
-      expect(bus.hasListeners).toBeFalse();
-      expect(onWillRemoveListener).toHaveBeenCalled();
-      expect(onRemoveListener).toHaveBeenCalled();
-      expect(onWillIdle).toHaveBeenCalled();
-      expect(onIdle).toHaveBeenCalled();
+      it('brackets activation before the first listener add when subscribing directly', () => {
+        const order: string[] = [];
+        onWillAddListener.and.callFake((event) => order.push(`willAdd:${event}`));
+        onAddListener.and.callFake((event) => order.push(`didAdd:${event}`));
+        onWillActivate.and.callFake(() => order.push('willActivate'));
+        onActive.and.callFake(() => order.push('active'));
 
-      // second unsubscription is redundant
-      sub2();
+        bus.on('foo', singleEventHandler);
+        bus.on('foo', otherEventHandler);
+
+        expect(order).toEqual([
+          'willActivate',
+          'willAdd:foo',
+          'didAdd:foo',
+          'active',
+          'willAdd:foo',
+          'didAdd:foo'
+        ]);
+      });
+
+      it('brackets idle before the last listener remove when unsubscribing directly', () => {
+        const sub1 = bus.on('foo', singleEventHandler);
+        const sub2 = bus.on('foo', otherEventHandler);
+
+        const order: string[] = [];
+        onWillRemoveListener.and.callFake((event) => order.push(`willRemove:${event}`));
+        onRemoveListener.and.callFake((event) => order.push(`didRemove:${event}`));
+        onWillIdle.and.callFake(() => order.push('willIdle'));
+        onIdle.and.callFake(() => order.push('idle'));
+
+        sub1.unsubscribe();
+        sub2.unsubscribe();
+
+        expect(order).toEqual([
+          'willRemove:foo',
+          'didRemove:foo',
+          'willIdle',
+          'willRemove:foo',
+          'didRemove:foo',
+          'idle'
+        ]);
+      });
     });
 
     describe('error events', () => {
@@ -877,96 +1716,376 @@ describe('Strongbus.Bus', () => {
           event: 'active'
         });
       });
+
+      describe('given the "error" handler itself fails', () => {
+        let logger: jasmine.SpyObj<Logger>;
+        let loggingBus: Strongbus.Bus<TestEventMap>;
+        const originalError = new Error('error in listener');
+
+        beforeEach(() => {
+          logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+          loggingBus = new Strongbus.Bus<TestEventMap>({logger});
+          loggingBus.on('bar', () => {
+            throw originalError;
+          });
+        });
+
+        it('logs (rather than re-emitting "error") when the handler throws synchronously', () => {
+          const handlerError = new Error('error handler exploded');
+          loggingBus.hook('error', () => {
+            throw handlerError;
+          });
+
+          loggingBus.emit('bar', true);
+
+          expect(logger.error).toHaveBeenCalledWith(
+            'Error thrown in error handler',
+            jasmine.objectContaining({
+              errorHandlerError: handlerError,
+              originalEvent: 'bar',
+              eventHandlerError: originalError
+            })
+          );
+        });
+
+        it('logs (rather than re-emitting "error") when the handler returns a rejecting promise', async () => {
+          const handlerError = new Error('async error handler exploded');
+          loggingBus.hook('error', () => Promise.reject(handlerError));
+
+          loggingBus.emit('bar', true);
+
+          // wait for the rejected promise to be processed
+          await sleep(1);
+
+          expect(logger.error).toHaveBeenCalledWith(
+            'Error thrown in async error handler',
+            jasmine.objectContaining({
+              errorHandlerError: handlerError,
+              originalEvent: 'bar',
+              eventHandlerError: originalError
+            })
+          );
+        });
+      });
     });
 
-    describe('given bus has delegates', () => {
-      let delegate: DelegateTestBus;
-      let onDelegateWillAddListener: jasmine.Spy;
-      let onDelegateDidAddListener: jasmine.Spy;
-      let onDelegateWillRemoveListener: jasmine.Spy;
-      let onDelegateDidRemoveListener: jasmine.Spy;
-      let onDelegateWillActivate: jasmine.Spy;
-      let onDelegateActive: jasmine.Spy;
-      let onDelegateWillIdle: jasmine.Spy;
-      let onDelegateIdle: jasmine.Spy;
+    describe('given bus has downstreams', () => {
+      let downstream: DownstreamTestBus;
+      let onDownstreamWillAddListener: jasmine.Spy;
+      let onDownstreamDidAddListener: jasmine.Spy;
+      let onDownstreamWillRemoveListener: jasmine.Spy;
+      let onDownstreamDidRemoveListener: jasmine.Spy;
+      let onDownstreamWillActivate: jasmine.Spy;
+      let onDownstreamActive: jasmine.Spy;
+      let onDownstreamWillIdle: jasmine.Spy;
+      let onDownstreamIdle: jasmine.Spy;
 
       beforeEach(() => {
-        delegate = new DelegateTestBus({});
-        bus.pipe(delegate);
+        downstream = new DownstreamTestBus({});
+        bus.pipe(downstream);
 
-        delegate.hook('willAddListener', onDelegateWillAddListener = jasmine.createSpy('onDelegateWillAddListener'));
-        delegate.hook('didAddListener', onDelegateDidAddListener = jasmine.createSpy('onDelegateDidAddListener'));
-        delegate.hook('willRemoveListener', onDelegateWillRemoveListener = jasmine.createSpy('onDelegateWillRemoveListener'));
-        delegate.hook('didRemoveListener', onDelegateDidRemoveListener = jasmine.createSpy('onDelegateDidRemoveListener'));
-        delegate.hook('willActivate', onDelegateWillActivate = jasmine.createSpy('onDelegateWillActivate'));
-        delegate.hook('active', onDelegateActive = jasmine.createSpy('onDelegateActive'));
-        delegate.hook('willIdle', onDelegateWillIdle = jasmine.createSpy('onDelegateWillIdle'));
-        delegate.hook('idle', onDelegateIdle = jasmine.createSpy('onDelegateIdle'));
+        downstream.hook('willAddListener', onDownstreamWillAddListener = jasmine.createSpy('onDownstreamWillAddListener'));
+        downstream.hook('didAddListener', onDownstreamDidAddListener = jasmine.createSpy('onDownstreamDidAddListener'));
+        downstream.hook('willRemoveListener', onDownstreamWillRemoveListener = jasmine.createSpy('onDownstreamWillRemoveListener'));
+        downstream.hook('didRemoveListener', onDownstreamDidRemoveListener = jasmine.createSpy('onDownstreamDidRemoveListener'));
+        downstream.hook('willActivate', onDownstreamWillActivate = jasmine.createSpy('onDownstreamWillActivate'));
+        downstream.hook('active', onDownstreamActive = jasmine.createSpy('onDownstreamActive'));
+        downstream.hook('willIdle', onDownstreamWillIdle = jasmine.createSpy('onDownstreamWillIdle'));
+        downstream.hook('idle', onDownstreamIdle = jasmine.createSpy('onDownstreamIdle'));
       });
 
-      it('bubbles events from delegates', () => {
-        const sub = delegate.on('foo', onTestEvent);
-        expect(onDelegateWillAddListener).toHaveBeenCalledWith('foo');
+      it('bubbles events from downstreams', () => {
+        const sub = downstream.on('foo', singleEventHandler);
+        expect(onDownstreamWillAddListener).toHaveBeenCalledWith('foo');
         expect(onWillAddListener).toHaveBeenCalledWith('foo');
 
-        expect(onDelegateDidAddListener).toHaveBeenCalledWith('foo');
+        expect(onDownstreamDidAddListener).toHaveBeenCalledWith('foo');
         expect(onAddListener).toHaveBeenCalledWith('foo');
 
-        expect(onDelegateWillActivate).toHaveBeenCalled();
+        expect(onDownstreamWillActivate).toHaveBeenCalled();
         expect(onWillActivate).toHaveBeenCalled();
 
-        expect(onDelegateActive).toHaveBeenCalled();
+        expect(onDownstreamActive).toHaveBeenCalled();
         expect(onActive).toHaveBeenCalled();
 
 
         sub.unsubscribe();
-        expect(onDelegateWillRemoveListener).toHaveBeenCalledWith('foo');
+        expect(onDownstreamWillRemoveListener).toHaveBeenCalledWith('foo');
         expect(onRemoveListener).toHaveBeenCalledWith('foo');
 
-        expect(onDelegateDidRemoveListener).toHaveBeenCalledWith('foo');
+        expect(onDownstreamDidRemoveListener).toHaveBeenCalledWith('foo');
         expect(onRemoveListener).toHaveBeenCalledWith('foo');
 
-        expect(onDelegateWillIdle).toHaveBeenCalled();
+        expect(onDownstreamWillIdle).toHaveBeenCalled();
         expect(onWillIdle).toHaveBeenCalled();
 
-        expect(onDelegateIdle).toHaveBeenCalled();
+        expect(onDownstreamIdle).toHaveBeenCalled();
         expect(onIdle).toHaveBeenCalled();
       });
 
 
-      it('raises "active" events independently of delegates', () => {
+      it('raises "active" events independently of downstreams', () => {
         expect(onActive).toHaveBeenCalledTimes(0);
-        expect(onDelegateActive).toHaveBeenCalledTimes(0);
-        bus.on('foo', onTestEvent);
+        expect(onDownstreamActive).toHaveBeenCalledTimes(0);
+        bus.on('foo', singleEventHandler);
         expect(onActive).toHaveBeenCalledTimes(1);
-        expect(onDelegateActive).toHaveBeenCalledTimes(0);
-        delegate.on('foo', onTestEvent);
-        expect(onDelegateActive).toHaveBeenCalledTimes(1);
+        expect(onDownstreamActive).toHaveBeenCalledTimes(0);
+        downstream.on('foo', singleEventHandler);
+        expect(onDownstreamActive).toHaveBeenCalledTimes(1);
         expect(onActive).toHaveBeenCalledTimes(1);
       });
 
-      it('handles unsubscribes fired from hooks', async () => {
-        const sub1 = bus.on('foo', () => null);
-        const sub2 = bus.on('foo', () => null);
-        bus.hook('willRemoveListener', () => sub2());
-
-        sub1();
-        expect(onWillIdle).toHaveBeenCalledTimes(1);
-        expect(onIdle).toHaveBeenCalledTimes(1);
-      });
-
-      it('raises "idle" events independently of delegates', () => {
-        const foosub = bus.on('foo', onTestEvent);
-        const fooSub2 = delegate.on('foo', onTestEvent);
+      it('raises "idle" events independently of downstreams', () => {
+        const foosub = bus.on('foo', singleEventHandler);
+        const fooSub2 = downstream.on('foo', singleEventHandler);
 
         fooSub2.unsubscribe();
-        expect(onDelegateIdle).toHaveBeenCalledTimes(1);
-        onDelegateIdle.calls.reset();
+        expect(onDownstreamIdle).toHaveBeenCalledTimes(1);
+        onDownstreamIdle.calls.reset();
         expect(onIdle).toHaveBeenCalledTimes(0);
 
         foosub.unsubscribe();
-        expect(onDelegateIdle).toHaveBeenCalledTimes(0);
+        expect(onDownstreamIdle).toHaveBeenCalledTimes(0);
         expect(onIdle).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('given a downstream already has listeners before pipe', () => {
+      it('bubbles add-listener hooks when the downstream link is created', () => {
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+
+        bus.pipe(downstream);
+
+        expect(onWillAddListener).toHaveBeenCalledWith('foo');
+        expect(onAddListener).toHaveBeenCalledWith('foo');
+        expect(onWillActivate).toHaveBeenCalled();
+        expect(onActive).toHaveBeenCalled();
+        expect(bus.active).toBeTrue();
+      });
+
+      it('bubbles add-listener hooks from nested downstreams when the upstream link is created', () => {
+        const node2 = new DownstreamTestBus({});
+        const node1 = new DownstreamTestBus({});
+        node2.on('foo', singleEventHandler);
+        node1.pipe(node2);
+
+        bus.pipe(node1);
+
+        expect(onAddListener).toHaveBeenCalledWith('foo');
+        expect(onActive).toHaveBeenCalled();
+        expect(bus.active).toBeTrue();
+      });
+    });
+
+    describe('given unpipe disconnects a downstream with listeners', () => {
+      it('bubbles remove-listener hooks when the downstream link is removed', () => {
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+        bus.pipe(downstream);
+
+        onWillRemoveListener.calls.reset();
+        onRemoveListener.calls.reset();
+        onWillIdle.calls.reset();
+        onIdle.calls.reset();
+
+        bus.unpipe(downstream);
+
+        expect(onWillRemoveListener).toHaveBeenCalledWith('foo');
+        expect(onRemoveListener).toHaveBeenCalledWith('foo');
+        expect(onWillIdle).toHaveBeenCalled();
+        expect(onIdle).toHaveBeenCalled();
+      });
+
+      it('clears downstream listeners from introspection after unpipe', () => {
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+        bus.pipe(downstream);
+
+        expect(bus.hasListenersFor('foo')).toBeTrue();
+
+        bus.unpipe(downstream);
+
+        expect(bus.hasListenersFor('foo')).toBeFalse();
+        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.DOWNSTREAM})).toBe(0);
+      });
+
+      it('marks the upstream bus idle when the downstream was its only downstream demand', () => {
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+        bus.pipe(downstream);
+
+        expect(bus.active).toBeTrue();
+
+        bus.unpipe(downstream);
+
+        expect(bus.active).toBeFalse();
+        expect(onIdle).toHaveBeenCalled();
+      });
+
+      it('does not mark the upstream bus idle when another downstream still has listeners', () => {
+        const downstream1 = new DownstreamTestBus({});
+        const downstream2 = new DownstreamTestBus({});
+        downstream1.on('foo', singleEventHandler);
+        downstream2.on('bar', singleEventHandler);
+        bus.pipe(downstream1);
+        bus.pipe(downstream2);
+
+        onWillIdle.calls.reset();
+        onIdle.calls.reset();
+
+        bus.unpipe(downstream1);
+
+        expect(bus.active).toBeTrue();
+        expect(onWillIdle).not.toHaveBeenCalled();
+        expect(onIdle).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('given downstream sync reconciles pre-existing listeners', () => {
+      const otherEventHandler = jasmine.createSpy('otherEventHandler');
+      let nonCoalescingBus: Strongbus.Bus<TestEventMap>;
+
+      beforeEach(() => {
+        nonCoalescingBus = new Strongbus.Bus<TestEventMap>({coalesceDownstreamLifecycleEvents: false});
+        nonCoalescingBus.hook('willAddListener', onWillAddListener = jasmine.createSpy('onWillAddListener'));
+        nonCoalescingBus.hook('didAddListener', onAddListener = jasmine.createSpy('onAddListener'));
+        nonCoalescingBus.hook('willRemoveListener', onWillRemoveListener = jasmine.createSpy('onWillRemoveListener'));
+        nonCoalescingBus.hook('didRemoveListener', onRemoveListener = jasmine.createSpy('onRemoveListener'));
+        nonCoalescingBus.hook('willActivate', onWillActivate = jasmine.createSpy('onWillActivate'));
+        nonCoalescingBus.hook('active', onActive = jasmine.createSpy('onActive'));
+        nonCoalescingBus.hook('willIdle', onWillIdle = jasmine.createSpy('onWillIdle'));
+        nonCoalescingBus.hook('idle', onIdle = jasmine.createSpy('onIdle'));
+      });
+
+      it('emits all will-add hooks before any did-add hooks when pipe attaches a downstream', () => {
+        const order: string[] = [];
+        onWillAddListener.and.callFake((event) => order.push(`willAdd:${event}`));
+        onAddListener.and.callFake((event) => order.push(`didAdd:${event}`));
+        onWillActivate.and.callFake(() => order.push('willActivate'));
+        onActive.and.callFake(() => order.push('active'));
+
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+        downstream.on('foo', otherEventHandler);
+
+        nonCoalescingBus.pipe(downstream);
+
+        expect(order).toEqual([
+          'willActivate',
+          'willAdd:foo',
+          'didAdd:foo',
+          'active',
+          'willAdd:foo',
+          'didAdd:foo'
+        ]);
+      });
+
+      it('emits all will-remove hooks before any did-remove hooks when unpipe detaches a downstream', () => {
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+        downstream.on('foo', otherEventHandler);
+        nonCoalescingBus.pipe(downstream);
+
+        const order: string[] = [];
+        onWillRemoveListener.and.callFake((event) => order.push(`willRemove:${event}`));
+        onRemoveListener.and.callFake((event) => order.push(`didRemove:${event}`));
+        onWillIdle.and.callFake(() => order.push('willIdle'));
+        onIdle.and.callFake(() => order.push('idle'));
+
+        nonCoalescingBus.unpipe(downstream);
+
+        expect(order).toEqual([
+          'willRemove:foo',
+          'didRemove:foo',
+          'willIdle',
+          'willRemove:foo',
+          'didRemove:foo',
+          'idle'
+        ]);
+      });
+    });
+
+    describe('given coalesceDownstreamLifecycleEvents is enabled (default)', () => {
+      const otherEventHandler = jasmine.createSpy('otherEventHandler');
+      let coalescingBus: Strongbus.Bus<TestEventMap>;
+
+      beforeEach(() => {
+        coalescingBus = new Strongbus.Bus<TestEventMap>();
+        coalescingBus.hook('willAddListener', onWillAddListener = jasmine.createSpy('onWillAddListener'));
+        coalescingBus.hook('didAddListener', onAddListener = jasmine.createSpy('onAddListener'));
+        coalescingBus.hook('willRemoveListener', onWillRemoveListener = jasmine.createSpy('onWillRemoveListener'));
+        coalescingBus.hook('didRemoveListener', onRemoveListener = jasmine.createSpy('onRemoveListener'));
+        coalescingBus.hook('willActivate', onWillActivate = jasmine.createSpy('onWillActivate'));
+        coalescingBus.hook('active', onActive = jasmine.createSpy('onActive'));
+        coalescingBus.hook('willIdle', onWillIdle = jasmine.createSpy('onWillIdle'));
+        coalescingBus.hook('idle', onIdle = jasmine.createSpy('onIdle'));
+      });
+
+      it('emits one add-listener hook per event when pipe attaches a downstream', () => {
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+        downstream.on('foo', otherEventHandler);
+
+        coalescingBus.pipe(downstream);
+
+        expect(onWillAddListener).toHaveBeenCalledOnceWith('foo');
+        expect(onAddListener).toHaveBeenCalledOnceWith('foo');
+        expect(coalescingBus.getListenerCountFor('foo')).toBe(2);
+        expect(onWillActivate).toHaveBeenCalled();
+        expect(onActive).toHaveBeenCalled();
+      });
+
+      it('emits one remove-listener hook per event when unpipe detaches a downstream', () => {
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+        downstream.on('foo', otherEventHandler);
+        coalescingBus.pipe(downstream);
+
+        onWillRemoveListener.calls.reset();
+        onRemoveListener.calls.reset();
+        onWillIdle.calls.reset();
+        onIdle.calls.reset();
+
+        coalescingBus.unpipe(downstream);
+
+        expect(onWillRemoveListener).toHaveBeenCalledOnceWith('foo');
+        expect(onRemoveListener).toHaveBeenCalledOnceWith('foo');
+        expect(onWillIdle).toHaveBeenCalled();
+        expect(onIdle).toHaveBeenCalled();
+      });
+
+      it('does not coalesce incremental downstream listener changes after pipe', () => {
+        const downstream = new DownstreamTestBus({});
+        coalescingBus.pipe(downstream);
+
+        downstream.on('foo', singleEventHandler);
+        downstream.on('foo', otherEventHandler);
+
+        expect(onWillAddListener).toHaveBeenCalledTimes(2);
+        expect(onAddListener).toHaveBeenCalledTimes(2);
+        expect(coalescingBus.getListenerCountFor('foo')).toBe(2);
+      });
+
+      it('preserves bracketed hook ordering when pipe attaches multiple listeners', () => {
+        const order: string[] = [];
+        onWillAddListener.and.callFake((event) => order.push(`willAdd:${event}`));
+        onAddListener.and.callFake((event) => order.push(`didAdd:${event}`));
+        onWillActivate.and.callFake(() => order.push('willActivate'));
+        onActive.and.callFake(() => order.push('active'));
+
+        const downstream = new DownstreamTestBus({});
+        downstream.on('foo', singleEventHandler);
+        downstream.on('foo', otherEventHandler);
+
+        coalescingBus.pipe(downstream);
+
+        expect(order).toEqual([
+          'willActivate',
+          'willAdd:foo',
+          'didAdd:foo',
+          'active'
+        ]);
       });
     });
   });
@@ -980,14 +2099,14 @@ describe('Strongbus.Bus', () => {
 
     describe('given the bus goes from 0 to 1 listeners', () => {
       it('invokes a callback with `true`', () => {
-        bus.on('foo', onTestEvent);
+        bus.on('foo', singleEventHandler);
         expect(handleActiveChange).toHaveBeenCalledWith(true);
       });
     });
 
     describe('given the bus goes from 1 to 0 listeners', () => {
       it('invokes a callback with `false`', () => {
-        const foosub = bus.on('foo', onTestEvent);
+        const foosub = bus.on('foo', singleEventHandler);
         expect(handleActiveChange).toHaveBeenCalledWith(true);
         foosub();
         expect(handleActiveChange).toHaveBeenCalledWith(false);
@@ -998,455 +2117,712 @@ describe('Strongbus.Bus', () => {
   describe('#hasListeners', () => {
     describe('given there are any event listeners on the instance', () => {
       it('returns true', () => {
-        bus.every(onEveryEvent);
-        expect(bus.hasListeners).toBeTruthy();
+        bus.pipe(eventSink);
+        expect(bus.hasListeners()).toBeTruthy();
       });
     });
 
     describe('given there are no listeners registered with the instance', () => {
       it('returns false', () => {
-        expect(bus.hasListeners).toBeFalsy();
+        expect(bus.hasListeners()).toBeFalsy();
       });
     });
   });
 
-  describe('#listeners', () => {
-    let bus2: DelegateTestBus;
+  describe('incognito', () => {
+    let onWillAddListener: jasmine.Spy;
+    let onWillRemoveListener: jasmine.Spy;
+    let onAddListener: jasmine.Spy;
+    let onRemoveListener: jasmine.Spy;
+    let onWillActivate: jasmine.Spy;
+    let onActive: jasmine.Spy;
+    let onWillIdle: jasmine.Spy;
+    let onIdle: jasmine.Spy;
+    let onMonitor: jasmine.Spy;
 
     beforeEach(() => {
-      bus2 = new DelegateTestBus({emulateListenerCount: true});
+      bus.hook('willAddListener', onWillAddListener = jasmine.createSpy('onWillAddListener'));
+      bus.hook('didAddListener', onAddListener = jasmine.createSpy('onAddListener'));
+      bus.hook('willRemoveListener', onWillRemoveListener = jasmine.createSpy('onWillRemoveListener'));
+      bus.hook('didRemoveListener', onRemoveListener = jasmine.createSpy('onRemoveListener'));
+      bus.hook('willActivate', onWillActivate = jasmine.createSpy('onWillActivate'));
+      bus.hook('active', onActive = jasmine.createSpy('onActive'));
+      bus.hook('willIdle', onWillIdle = jasmine.createSpy('onWillIdle'));
+      bus.hook('idle', onIdle = jasmine.createSpy('onIdle'));
+      onMonitor = jasmine.createSpy('onMonitor');
+      bus.monitor(onMonitor);
+    });
+
+    function expectNoMonitoringNoise(): void {
+      expect(onWillAddListener).not.toHaveBeenCalled();
+      expect(onAddListener).not.toHaveBeenCalled();
+      expect(onWillRemoveListener).not.toHaveBeenCalled();
+      expect(onRemoveListener).not.toHaveBeenCalled();
+      expect(onWillActivate).not.toHaveBeenCalled();
+      expect(onActive).not.toHaveBeenCalled();
+      expect(onWillIdle).not.toHaveBeenCalled();
+      expect(onIdle).not.toHaveBeenCalled();
+      expect(onMonitor).not.toHaveBeenCalled();
+      expect(bus.active).toBeFalse();
+      expect(bus.hasListeners()).toBeFalse();
+    }
+
+    describe('own listeners', () => {
+      it('delivers events without counting toward monitoring or default introspection', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+        bus.on('foo', handleFoo, {incognito: true});
+
+        expectNoMonitoringNoise();
+        expect(bus.getListenerCount()).toBe(0);
+        expect(bus.hasListenersFor('foo')).toBeFalse();
+        expect(bus.getListenersFor('foo').size).toBe(0);
+
+        bus.emit('foo', 'eagle');
+        expect(handleFoo).toHaveBeenCalledWith('eagle');
+      });
+
+      it('excludes incognito handlers from forEach by default and includes them when asked', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+        bus.on('foo', handleFoo, {incognito: true});
+
+        const seenDefault: string[] = [];
+        bus.forEach((event) => seenDefault.push(String(event)));
+        expect(seenDefault).toEqual([]);
+
+        const seenIncognito: string[] = [];
+        bus.forEach((event) => seenIncognito.push(String(event)), {includeIncognito: true});
+        expect(seenIncognito).toEqual(['foo']);
+        expect(bus.hasListeners({includeIncognito: true})).toBeTrue();
+        expect(bus.getListenerCount({includeIncognito: true})).toBe(1);
+        expect(bus.getListenersFor('foo', {includeIncognito: true}).has(handleFoo)).toBeTrue();
+        expect(bus.active).toBeFalse();
+      });
+
+      it('keeps the bus idle when only incognito listeners remain after a monitored listener leaves', () => {
+        const monitored = jasmine.createSpy('monitored') as (payload: string) => void;
+        const hidden = jasmine.createSpy('hidden') as (payload: string) => void;
+        bus.on('foo', monitored);
+        bus.on('foo', hidden, {incognito: true});
+
+        expect(bus.active).toBeTrue();
+        expect(bus.getListenerCount()).toBe(1);
+
+        onWillRemoveListener.calls.reset();
+        onRemoveListener.calls.reset();
+        onWillIdle.calls.reset();
+        onIdle.calls.reset();
+        onMonitor.calls.reset();
+
+        bus.off('foo', monitored);
+
+        expect(onWillIdle).toHaveBeenCalled();
+        expect(onIdle).toHaveBeenCalled();
+        expect(onMonitor).toHaveBeenCalledWith(false);
+        expect(bus.active).toBeFalse();
+        expect(bus.hasListeners()).toBeFalse();
+
+        bus.emit('foo', 'still-here');
+        expect(hidden).toHaveBeenCalledWith('still-here');
+      });
+
+      it('does not idle when an incognito listener is removed while a monitored listener remains', () => {
+        const monitored = jasmine.createSpy('monitored') as (payload: string) => void;
+        const hidden = jasmine.createSpy('hidden') as (payload: string) => void;
+        bus.on('foo', monitored);
+        bus.on('foo', hidden, {incognito: true});
+
+        onWillRemoveListener.calls.reset();
+        onRemoveListener.calls.reset();
+        onWillIdle.calls.reset();
+        onIdle.calls.reset();
+        onMonitor.calls.reset();
+
+        bus.off('foo', hidden);
+
+        expect(onWillRemoveListener).not.toHaveBeenCalled();
+        expect(onRemoveListener).not.toHaveBeenCalled();
+        expect(onWillIdle).not.toHaveBeenCalled();
+        expect(onIdle).not.toHaveBeenCalled();
+        expect(onMonitor).not.toHaveBeenCalled();
+        expect(bus.active).toBeTrue();
+        expect(bus.getListenerCount()).toBe(1);
+
+        bus.emit('foo', 'eagle');
+        expect(monitored).toHaveBeenCalledWith('eagle');
+        expect(hidden).not.toHaveBeenCalled();
+      });
+
+      it('tears down an incognito on() registration via off without monitoring noise', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+        bus.on('foo', handleFoo, {incognito: true});
+
+        bus.off('foo', handleFoo);
+
+        expectNoMonitoringNoise();
+        bus.emit('foo', 'eagle');
+        expect(handleFoo).not.toHaveBeenCalled();
+      });
+
+      it('keeps the first registration mode when on is called again with a different incognito flag', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+        const sub1 = bus.on('foo', handleFoo);
+        const sub2 = bus.on('foo', handleFoo, {incognito: true});
+
+        expect(sub2).toBe(sub1);
+        expect(bus.active).toBeTrue();
+        expect(bus.getListenerCount()).toBe(1);
+
+        onWillAddListener.calls.reset();
+        onAddListener.calls.reset();
+
+        const handleBar = jasmine.createSpy('handleBar') as (payload: boolean) => void;
+        const sub3 = bus.on('bar', handleBar, {incognito: true});
+        const sub4 = bus.on('bar', handleBar);
+
+        expect(sub4).toBe(sub3);
+        expect(bus.hasListenersFor('bar')).toBeFalse();
+        expect(bus.hasListenersFor('bar', {includeIncognito: true})).toBeTrue();
+        expect(bus.active).toBeTrue(); // still active from foo
+      });
+
+      it('supports once, any, and pipe(sink) with {incognito: true}', () => {
+        const handleOnce = jasmine.createSpy('handleOnce') as (payload: string) => void;
+        const handleAny = jasmine.createSpy('handleAny');
+        const handlePipe = jasmine.createSpy('handlePipe');
+
+        bus.once('foo', handleOnce, {incognito: true});
+        bus.any(['bar', 'baz'], handleAny, {incognito: true});
+        bus.pipe(handlePipe, {incognito: true});
+
+        expectNoMonitoringNoise();
+
+        bus.emit('foo', 'one');
+        bus.emit('bar', true);
+        bus.emit('baz', 3);
+
+        expect(handleOnce).toHaveBeenCalledWith('one');
+        expect(handleAny).toHaveBeenCalledWith('bar', true);
+        expect(handleAny).toHaveBeenCalledWith('baz', 3);
+        expect(handlePipe).toHaveBeenCalled();
+        expect(bus.active).toBeFalse();
+      });
+
+      it('still invokes logger thresholds for incognito own listeners', () => {
+        const logger: Logger = {
+          info: jasmine.createSpy('info'),
+          warn: jasmine.createSpy('warn'),
+          error: jasmine.createSpy('error'),
+          debug: jasmine.createSpy('debug')
+        };
+        bus = new Strongbus.Bus<TestEventMap>({
+          name: 'incognito-thresholds',
+          thresholds: {info: 2, warn: Infinity, error: Infinity},
+          logger
+        });
+
+        bus.on('foo', () => undefined, {incognito: true});
+        bus.on('foo', () => undefined, {incognito: true});
+
+        expect(logger.info).toHaveBeenCalled();
+      });
+    });
+
+    describe('pipe(bus, {incognito: true})', () => {
+      it('forwards events without coupling target listeners into src monitoring', () => {
+        const target = new Strongbus.Bus<TestEventMap>();
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+
+        bus.pipe(target, {incognito: true});
+        target.on('foo', handleFoo);
+
+        expectNoMonitoringNoise();
+        expect(target.active).toBeTrue();
+        expect(bus.hasListeners({scope: Strongbus.ListenerScope.DOWNSTREAM})).toBeFalse();
+
+        bus.emit('foo', 'eagle');
+        expect(handleFoo).toHaveBeenCalledWith('eagle');
+      });
+
+      it('does not count multi-layer listeners under an incognito pipe link', () => {
+        const mid = new Strongbus.Bus<TestEventMap>();
+        const leaf = new Strongbus.Bus<TestEventMap>();
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+
+        bus.pipe(mid, {incognito: true});
+        mid.pipe(leaf);
+        leaf.on('foo', handleFoo);
+
+        expect(bus.active).toBeFalse();
+        expect(bus.hasListeners()).toBeFalse();
+        expect(mid.active).toBeTrue();
+        expect(leaf.active).toBeTrue();
+
+        bus.emit('foo', 'eagle');
+        expect(handleFoo).toHaveBeenCalledWith('eagle');
+      });
+
+      it('still couples a normal pipe alongside an incognito pipe', () => {
+        const hidden = new Strongbus.Bus<TestEventMap>();
+        const counted = new Strongbus.Bus<TestEventMap>();
+        hidden.on('foo', () => undefined);
+        counted.on('bar', () => undefined);
+
+        bus.pipe(hidden, {incognito: true});
+        expect(bus.active).toBeFalse();
+        expect(bus.hasListenersFor('foo')).toBeFalse();
+
+        bus.pipe(counted);
+        expect(bus.active).toBeTrue();
+        expect(bus.hasListenersFor('bar')).toBeTrue();
+        expect(bus.hasListenersFor('foo')).toBeFalse();
+        expect(bus.hasListenersFor('foo', {includeIncognito: true})).toBeTrue();
+      });
+
+      it('stops forwarding on unpipe without detach lifecycle noise for an incognito link', () => {
+        const target = new Strongbus.Bus<TestEventMap>();
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+        bus.pipe(target, {incognito: true});
+        target.on('foo', handleFoo);
+
+        onWillRemoveListener.calls.reset();
+        onRemoveListener.calls.reset();
+        onWillIdle.calls.reset();
+        onIdle.calls.reset();
+        onMonitor.calls.reset();
+
+        bus.unpipe(target);
+        bus.emit('foo', 'eagle');
+
+        expect(handleFoo).not.toHaveBeenCalled();
+        expect(onWillRemoveListener).not.toHaveBeenCalled();
+        expect(onRemoveListener).not.toHaveBeenCalled();
+        expect(onWillIdle).not.toHaveBeenCalled();
+        expect(onIdle).not.toHaveBeenCalled();
+        expect(onMonitor).not.toHaveBeenCalled();
+        expect(target.active).toBeTrue();
+      });
+    });
+
+    describe('next / scan', () => {
+      it('awaits next without activating the bus when incognito', async () => {
+        const pending = bus.next('foo', {incognito: true});
+
+        expectNoMonitoringNoise();
+
+        bus.emit('foo', 'eagle');
+        await expectAsync(pending).toBeResolvedTo({event: 'foo', payload: 'eagle'});
+      });
+
+      it('awaits next with a rejection trigger without activating when incognito', async () => {
+        const pending = bus.next('foo', 'bar', {incognito: true});
+
+        expectNoMonitoringNoise();
+
+        bus.emit('bar', true);
+        await expectAsync(pending).toBeRejected();
+        expect(bus.active).toBeFalse();
+      });
+
+      it('scans without activating the bus when incognito', async () => {
+        const pending = bus.scan('foo', (resolve) => {
+          if(resolve.trigger.type === 'event' && resolve.trigger.event === 'foo') {
+            resolve(resolve.trigger.payload);
+          }
+        }, {incognito: true, eager: false, pool: false});
+
+        expectNoMonitoringNoise();
+
+        bus.emit('foo', 'eagle');
+        await expectAsync(pending).toBeResolvedTo('eagle');
+        expect(bus.active).toBeFalse();
+      });
+
+      it('does not pool scanners across different incognito modes', async () => {
+        const evaluator: Scanner.Evaluator<string, TestEventMap> = (resolve) => {
+          if(resolve.trigger.type === 'event' && resolve.trigger.event === 'foo') {
+            resolve(resolve.trigger.payload);
+          }
+        };
+
+        const monitored = bus.scan('foo', evaluator, {eager: false, pool: true});
+        monitored.catch((): void => undefined);
+        expect(bus.active).toBeTrue();
+
+        onWillAddListener.calls.reset();
+        onAddListener.calls.reset();
+        onMonitor.calls.reset();
+
+        const hidden = bus.scan('foo', evaluator, {incognito: true, eager: false, pool: true});
+        hidden.catch((): void => undefined);
+        // a separate subscription is required; joining the monitored pool would
+        // incorrectly leave the hidden waiters on a monitored listener (or vice versa).
+        expect(bus.getListenerCount({includeIncognito: true})).toBeGreaterThan(1);
+
+        monitored.cancel();
+        hidden.cancel();
+      });
+    });
+  });
+
+  describe('#getListener', () => {
+    let bus2: DownstreamTestBus;
+
+    beforeEach(() => {
+      bus2 = new DownstreamTestBus({emulateListenerCount: true});
     });
 
     describe('given there are event listeners on the instance', () => {
       beforeEach(() => {
-        bus.on('foo', onTestEvent);
+        bus.on('foo', singleEventHandler);
       });
 
-      describe('and the instance has no delegates', () => {
+      describe('and the instance has no downstreams', () => {
         it('lists the listeners on the instance', () => {
-          expect(bus.listeners).toEqual(new Map([[
-            'foo', new Set([onTestEvent])
+          expect(combinedListenersToMap(bus)).toEqual(new Map([[
+            'foo', new Set([singleEventHandler])
           ]]));
-          bus.on('*', onAnyEvent);
-          expect(bus.listeners.get('foo')).toEqual(new Set([onTestEvent]));
-          expect(bus.listeners.get('*').size).toEqual(1); // will be an anonymous wrapper around `onAnyEvent`
+          bus.pipe(eventSink);
+          expect(bus.getListenersFor('foo')).toEqual(new Set([singleEventHandler]));
+          expect(bus.getListenersFor('*').size).toEqual(1); // will be an anonymous wrapper around `onEveryEvent`
         });
       });
 
-      describe('and the instance has delegates with no listeners', () => {
+      describe('and the instance has downstreams with no listeners', () => {
         it("lists the instance's listeners", () => {
           bus.pipe(bus2);
-          expect(bus.listeners).toEqual(new Map([[
-            'foo', new Set([onTestEvent])
+          expect(combinedListenersToMap(bus)).toEqual(new Map([[
+            'foo', new Set([singleEventHandler])
           ]]));
         });
       });
 
-      describe('and the instance has delegates with listeners', () => {
-        it("lists the instance's listeners and the delegate listeners", () => {
+      describe('and the instance has downstreams with listeners', () => {
+        it("lists the instance's listeners and the downstream listeners", () => {
           bus.pipe(bus2);
-          bus2.on('foo', onAnyEvent);
-          expect(bus.listeners).toEqual(new Map([[
-            'foo', new Set([onTestEvent, onAnyEvent])
+          bus2.on('foo', eventSink);
+          expect(combinedListenersToMap(bus)).toEqual(new Map([[
+            'foo', new Set([singleEventHandler, eventSink])
           ]]));
         });
       });
     });
 
     describe('given there are no event listeners on the instance', () => {
-      describe('and the instance has delegates with listeners', () => {
-        it('lists the delegate listeners', () => {
+      describe('and the instance has downstreams with listeners', () => {
+        it('lists the downstream listeners', () => {
           bus.pipe(bus2);
-          bus2.on('foo', onAnyEvent);
-          expect(bus.listeners).toEqual(new Map([[
-            'foo', new Set([onAnyEvent])
+          bus2.on('foo', eventSink);
+          expect(combinedListenersToMap(bus)).toEqual(new Map([[
+            'foo', new Set([eventSink])
           ]]));
         });
       });
 
-      describe('and the instance has delegates with no listeners', () => {
+      describe('and the instance has downstreams with no listeners', () => {
         it('lists no listeners', () => {
           bus.pipe(bus2);
-          expect(bus.listeners.size).toEqual(0);
+          expect(bus.getEventCount()).toEqual(0);
         });
       });
 
-      describe('and the instance has no delegates', () => {
+      describe('and the instance has no downstreams', () => {
         it('lists no listeners', () => {
-          expect(bus.listeners.size).toEqual(0);
+          expect(bus.getEventCount()).toEqual(0);
         });
       });
     });
 
-    describe('caching', () => {
-      describe('given multiple invocations of get listeners', () => {
-        describe('and no listeners have been added or removed between invocations', () => {
-          it('returns the same reference', () => {
-            bus.on('foo', onTestEvent);
-            bus.on('bar', onTestEvent);
-            const l1 = bus.listeners;
-            const l2 = bus.listeners;
-            expect(l1 === l2).toBeTrue();
-          });
+    describe('given listeners change between lookups', () => {
+      it('reflects listeners added on the instance', () => {
+        bus.on('foo', singleEventHandler);
+        expect(bus.getEventCount()).toEqual(1);
+        bus.on('bar', singleEventHandler);
+        expect(bus.getEventCount()).toEqual(2);
+      });
+
+      it('reflects listeners removed from the instance', () => {
+        bus.on('foo', singleEventHandler);
+        const sub = bus.on('bar', singleEventHandler);
+        expect(bus.getEventCount()).toEqual(2);
+        sub.unsubscribe();
+        expect(bus.getEventCount()).toEqual(1);
+      });
+
+      describe('given the instance has downstreams', () => {
+        beforeEach(() => {
+          bus.pipe(bus2);
         });
 
-        describe('and a listener is added to the instance between invocations', () => {
-          it('cachebusts', () => {
-            bus.on('foo', onTestEvent);
-            const l1 = bus.listeners;
-            expect(l1.size).toEqual(1);
-            bus.on('bar', onTestEvent);
-            const l2 = bus.listeners;
-            expect(l2.size).toEqual(2);
-            expect(l1 === l2).toBeFalse();
-          });
+        it('reflects listeners added on a downstream', () => {
+          bus.on('foo', singleEventHandler);
+          expect(bus.getEventCount()).toEqual(1);
+          bus2.on('bar', singleEventHandler);
+          expect(bus.getEventCount()).toEqual(2);
         });
 
-        describe('and a listener is removed from the instance between invocations', () => {
-          it('cachebusts', () => {
-            bus.on('foo', onTestEvent);
-            const sub = bus.on('bar', onTestEvent);
-            const l1 = bus.listeners;
-            expect(l1.size).toEqual(2);
-            sub.unsubscribe();
-            const l2 = bus.listeners;
-            expect(l2.size).toEqual(1);
-            expect(l1 === l2).toBeFalse();
-          });
-        });
-
-        describe('given the instance has delegates', () => {
-          beforeEach(() => {
-            bus.pipe(bus2);
-          });
-
-          describe('and no delegate listeners have been added or removed between invocations', () => {
-            it('returns the same reference', () => {
-              bus.on('foo', onTestEvent);
-              bus2.on('bar', onTestEvent);
-              const l1 = bus.listeners;
-              const l2 = bus.listeners;
-              expect(l1 === l2).toBeTrue();
-            });
-          });
-
-          describe('and a listener is added to a delegate between invocations', () => {
-            it('cachebusts', () => {
-              bus.on('foo', onTestEvent);
-              const l1 = bus.listeners;
-              expect(l1.size).toEqual(1);
-              bus2.on('bar', onTestEvent);
-              const l2 = bus.listeners;
-              expect(l2.size).toEqual(2);
-              expect(l1 === l2).toBeFalse();
-            });
-          });
-
-          describe('and a listener is removed from a delegate between invocations', () => {
-            it('cachebusts', () => {
-              bus.on('foo', onTestEvent);
-              const sub = bus2.on('bar', onTestEvent);
-              const l1 = bus.listeners;
-              expect(l1.size).toEqual(2);
-              sub.unsubscribe();
-              const l2 = bus.listeners;
-              expect(l2.size).toEqual(1);
-              expect(l1 === l2).toBeFalse();
-            });
-          });
+        it('reflects listeners removed from a downstream', () => {
+          bus.on('foo', singleEventHandler);
+          const sub = bus2.on('bar', singleEventHandler);
+          expect(bus.getEventCount()).toEqual(2);
+          sub.unsubscribe();
+          expect(bus.getEventCount()).toEqual(1);
         });
       });
     });
   });
 
-  describe('#ownListeners', () => {
-    let bus2: DelegateTestBus;
+  describe('#getOwnListener', () => {
+    let bus2: DownstreamTestBus;
 
     beforeEach(() => {
-      bus2 = new DelegateTestBus({emulateListenerCount: true});
+      bus2 = new DownstreamTestBus({emulateListenerCount: true});
     });
 
     describe('given there are event listeners on the instance', () => {
       beforeEach(() => {
-        bus.on('foo', onTestEvent);
+        bus.on('foo', singleEventHandler);
       });
 
-      describe('and the instance has no delegates', () => {
+      describe('and the instance has no downstreams', () => {
         it("lists the instance's listeners", () => {
-          expect(bus.ownListeners).toEqual(new Map([[
-            'foo', new Set([onTestEvent])
+          expect(ownListenersToMap(bus)).toEqual(new Map([[
+            'foo', new Set([singleEventHandler])
           ]]));
-          bus.on('*', onAnyEvent);
-          expect(bus.ownListeners.get('foo')).toEqual(new Set([onTestEvent]));
-          expect(bus.ownListeners.get('*').size).toEqual(1); // will be an anonymous wrapper around `onAnyEvent`
+          bus.pipe(eventSink);
+          expect(bus.getListenersFor('foo', {scope: Strongbus.ListenerScope.OWN})).toEqual(new Set([singleEventHandler]));
+          expect(bus.getListenersFor('*', {scope: Strongbus.ListenerScope.OWN}).size).toEqual(1); // will be an anonymous wrapper around `onEveryEvent`
         });
       });
 
-      describe('and the instance has delegates with no listeners', () => {
+      describe('and the instance has downstreams with no listeners', () => {
         it("lists the instance's listeners", () => {
           bus.pipe(bus2);
-          expect(bus.ownListeners).toEqual(new Map([[
-            'foo', new Set([onTestEvent])
+          expect(ownListenersToMap(bus)).toEqual(new Map([[
+            'foo', new Set([singleEventHandler])
           ]]));
         });
       });
 
-      describe('and the instance has delegates with listeners', () => {
+      describe('and the instance has downstreams with listeners', () => {
         it("lists only the instance's listeners", () => {
           bus.pipe(bus2);
-          bus2.on('foo', onAnyEvent);
-          expect(bus.ownListeners).toEqual(new Map([[
-            'foo', new Set([onTestEvent])
+          bus2.on('foo', eventSink);
+          expect(ownListenersToMap(bus)).toEqual(new Map([[
+            'foo', new Set([singleEventHandler])
           ]]));
         });
       });
     });
 
     describe('given there are no event listeners on the instance', () => {
-      describe('and the instance has delegates with listeners', () => {
+      describe('and the instance has downstreams with listeners', () => {
         it('lists no listeners', () => {
           bus.pipe(bus2);
-          bus2.on('foo', onAnyEvent);
-          expect(bus.ownListeners.size).toEqual(0);
+          bus2.on('foo', eventSink);
+          expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(0);
         });
       });
 
-      describe('and the instance has delegates with no listeners', () => {
+      describe('and the instance has downstreams with no listeners', () => {
         it('lists no listeners', () => {
           bus.pipe(bus2);
-          expect(bus.ownListeners.size).toEqual(0);
+          expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(0);
         });
       });
 
-      describe('and the instance has no delegates', () => {
+      describe('and the instance has no downstreams', () => {
         it('lists no listeners', () => {
-          expect(bus.ownListeners.size).toEqual(0);
+          expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(0);
         });
       });
     });
 
-    describe('caching', () => {
-      describe('given multiple invocations of get ownListeners', () => {
-        describe('and no listeners have been added or removed between invocations', () => {
-          it('returns the same reference', () => {
-            bus.on('foo', onTestEvent);
-            bus.on('bar', onTestEvent);
-            const l1 = bus.ownListeners;
-            const l2 = bus.ownListeners;
-            expect(l1 === l2).toBeTrue();
-          });
-        });
+    describe('given own listeners change between lookups', () => {
+      it('reflects listeners added on the instance', () => {
+        bus.on('foo', singleEventHandler);
+        expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(1);
+        bus.on('bar', singleEventHandler);
+        expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(2);
+      });
 
-        describe('and a listener is added to the instance between invocations', () => {
-          it('cachebusts', () => {
-            bus.on('foo', onTestEvent);
-            const l1 = bus.ownListeners;
-            expect(l1.size).toEqual(1);
-            bus.on('bar', onTestEvent);
-            const l2 = bus.ownListeners;
-            expect(l2.size).toEqual(2);
-            expect(l1 === l2).toBeFalse();
-          });
-        });
-
-        describe('and a listener is removed from the instance between invocations', () => {
-          it('cachebusts', () => {
-            bus.on('foo', onTestEvent);
-            const sub = bus.on('bar', onTestEvent);
-            const l1 = bus.ownListeners;
-            expect(l1.size).toEqual(2);
-            sub.unsubscribe();
-            const l2 = bus.ownListeners;
-            expect(l2.size).toEqual(1);
-            expect(l1 === l2).toBeFalse();
-          });
-        });
-
-        describe('given the instance has delegates', () => {
-
-          beforeEach(() => {
-            bus.pipe(bus2);
-          });
-
-          describe('and no delegate listeners have been added or removed between invocations', () => {
-            it('returns the same reference', () => {
-              bus.on('foo', onTestEvent);
-              bus2.on('bar', onTestEvent);
-              const l1 = bus.ownListeners;
-              expect(l1.size).toEqual(1);
-              const l2 = bus.ownListeners;
-              expect(l1 === l2).toBeTrue();
-            });
-          });
-
-          describe('and a listener is added to a delegate between invocations', () => {
-            it('returns the same reference', () => {
-              bus.on('foo', onTestEvent);
-              const l1 = bus.ownListeners;
-              expect(l1.size).toEqual(1);
-              bus2.on('bar', onTestEvent);
-              const l2 = bus.ownListeners;
-              expect(l1 === l2).toBeTrue();
-            });
-          });
-
-          describe('and a listener is removed from a delegate between invocations', () => {
-            it('returns the same reference', () => {
-              bus.on('foo', onTestEvent);
-              const sub = bus2.on('bar', onTestEvent);
-              const l1 = bus.ownListeners;
-              expect(l1.size).toEqual(1);
-              sub.unsubscribe();
-              const l2 = bus.ownListeners;
-              expect(l1 === l2).toBeTrue();
-            });
-          });
-        });
+      it('is unaffected by downstream listener changes', () => {
+        bus.pipe(bus2);
+        bus.on('foo', singleEventHandler);
+        expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(1);
+        bus2.on('bar', singleEventHandler);
+        expect(bus.getEventCount({scope: Strongbus.ListenerScope.OWN})).toEqual(1);
       });
     });
   });
 
-  describe('#hasListenersFor', () => {
+  describe('#getListenerCountFor', () => {
     describe('given an instance has no listeners registered for an event', () => {
-      it('returns false', () => {
+      it('returns 0', () => {
         bus.destroy();
-        expect(bus.hasListenersFor('foo')).toBe(false);
+        expect(bus.getListenerCountFor('foo')).toBe(0);
       });
 
-      describe('given an instance has delegates registered for an event', () => {
-        it('returns true', () => {
+      describe('given an instance has downstreams registered for an event', () => {
+        it('returns a positive count', () => {
           bus.destroy();
-          const bus2 = new DelegateTestBus({emulateListenerCount: true});
+          const bus2 = new DownstreamTestBus({emulateListenerCount: true});
           bus.pipe(bus2);
           bus2.on('foo', () => {return; });
-          expect(bus.hasListenersFor('foo')).toBe(true);
+          expect(bus.getListenerCountFor('foo')).toBeGreaterThan(0);
         });
       });
     });
 
     describe('given an instance has listeners registered for an event', () => {
-      it('returns true', () => {
+      it('returns a positive count', () => {
         bus.destroy();
         const handleFoo = (payload: string) => {return; };
         bus.on('foo', handleFoo);
 
-        expect(bus.hasListenersFor('foo')).toBe(true);
+        expect(bus.getListenerCountFor('foo')).toBe(1);
       });
     });
   });
 
-  describe('#hasOwnListenersFor', () => {
+  describe('#getOwnListenerCount', () => {
     describe('given an instance has no listeners registered for an event', () => {
-      it('returns false', () => {
+      it('returns 0', () => {
         bus.destroy();
-        expect(bus.hasOwnListenersFor('foo')).toBe(false);
+        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.OWN})).toBe(0);
       });
 
-      describe('given an instance has delegates registered for an event', () => {
-        it('returns false', () => {
+      describe('given an instance has downstreams registered for an event', () => {
+        it('returns 0', () => {
           bus.destroy();
-          const bus2 = new DelegateTestBus({emulateListenerCount: true});
+          const bus2 = new DownstreamTestBus({emulateListenerCount: true});
           bus.pipe(bus2);
           bus2.on('foo', () => {return; });
-          expect(bus.hasOwnListenersFor('foo')).toBe(false);
+          expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.OWN})).toBe(0);
         });
       });
     });
 
     describe('given an instance has listeners registered for an event', () => {
-      it('returns true', () => {
+      it('returns a positive count', () => {
         bus.destroy();
         const handleFoo = (payload: string) => {return; };
         bus.on('foo', handleFoo);
 
-        expect(bus.hasOwnListenersFor('foo')).toBe(true);
+        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.OWN})).toBe(1);
       });
     });
   });
 
-  describe('#listenerCount', () => {
-    describe('given an instance has no delegates', () => {
+  describe('#getDownstreamListenerCount', () => {
+    describe('given an instance has no downstream listeners for an event', () => {
+      it('returns 0', () => {
+        bus.destroy();
+        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.DOWNSTREAM})).toBe(0);
+      });
+
+      describe('given an instance has only own listeners for an event', () => {
+        it('returns 0', () => {
+          bus.destroy();
+          bus.on('foo', () => undefined);
+          expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.DOWNSTREAM})).toBe(0);
+        });
+      });
+    });
+
+    describe('given a piped downstream has listeners for an event', () => {
+      it('returns a positive count', () => {
+        bus.destroy();
+        const bus2 = new DownstreamTestBus({emulateListenerCount: true});
+        bus.pipe(bus2);
+        bus2.on('foo', () => undefined);
+        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.DOWNSTREAM})).toBeGreaterThan(0);
+      });
+    });
+  });
+
+  describe('#getListenerCount', () => {
+    describe('given an instance has no downstreams', () => {
       it('counts listeners for the instance', () => {
-        bus.on('foo', onTestEvent);
+        bus.on('foo', singleEventHandler);
         bus.on('bar', () => ({}));
 
-        expect(bus.listenerCount).toEqual(2);
+        expect(bus.getListenerCount()).toEqual(2);
       });
     });
 
-    describe('given an instance has delegates', () => {
-      let bus2: DelegateTestBus;
+    describe('given an instance has downstreams', () => {
+      let bus2: DownstreamTestBus;
       beforeEach(() => {
-        bus2 = new DelegateTestBus({emulateListenerCount: true});
+        bus2 = new DownstreamTestBus({emulateListenerCount: true});
         bus.pipe(bus2);
       });
 
-      describe('and a delegate has listeners', () => {
-        it('counts listeners for the instance and its delegates', () => {
-          bus.on('foo', onTestEvent);
+      describe('and a downstream has listeners', () => {
+        it('counts listeners for the instance and its downstreams', () => {
+          bus.on('foo', singleEventHandler);
           bus.on('bar', () => ({}));
-          bus2.on('foo', onTestEvent);
+          bus2.on('foo', singleEventHandler);
 
-          expect(bus.listenerCount).toEqual(3);
+          expect(bus.getListenerCount()).toEqual(3);
         });
       });
 
-      describe('and delegates have no listeners', () => {
-        it('counts listeners for the instance and its delegates', () => {
-          bus.on('foo', onTestEvent);
+      describe('and downstreams have no listeners', () => {
+        it('counts listeners for the instance and its downstreams', () => {
+          bus.on('foo', singleEventHandler);
           bus.on('bar', () => ({}));
 
-          expect(bus.listenerCount).toEqual(2);
+          expect(bus.getListenerCount()).toEqual(2);
         });
       });
     });
   });
 
-  describe('#listenerCount', () => {
-    describe('given an instance has no delegates', () => {
+  describe('#getListenerCount', () => {
+    describe('given an instance has no downstreams', () => {
       it('counts listeners for the instance', () => {
-        const sub1 = bus.on('foo', onTestEvent);
+        const sub1 = bus.on('foo', singleEventHandler);
         const sub2 = bus.on('bar', () => ({}));
 
-        expect(bus.listenerCount).toEqual(2);
+        expect(bus.getListenerCount()).toEqual(2);
         sub1.unsubscribe();
-        expect(bus.listenerCount).toEqual(1);
+        expect(bus.getListenerCount()).toEqual(1);
         sub2.unsubscribe();
-        expect(bus.listenerCount).toEqual(0);
+        expect(bus.getListenerCount()).toEqual(0);
       });
     });
 
-    describe('given an instance has delegates', () => {
-      let bus2: DelegateTestBus;
+    describe('given an instance has downstreams', () => {
+      let bus2: DownstreamTestBus;
       beforeEach(() => {
-        bus2 = new DelegateTestBus({emulateListenerCount: true});
+        bus2 = new DownstreamTestBus({emulateListenerCount: true});
         bus.pipe(bus2);
       });
 
-      describe('and a delegate has listeners', () => {
-        it('counts listeners for the instance and its delegates', () => {
-          const sub1 = bus.on('foo', onTestEvent);
+      describe('and a downstream has listeners', () => {
+        it('counts listeners for the instance and its downstreams', () => {
+          const sub1 = bus.on('foo', singleEventHandler);
           const sub2 = bus.on('bar', () => ({}));
-          const sub3 = bus2.on('foo', onTestEvent);
+          const sub3 = bus2.on('foo', singleEventHandler);
 
-          expect(bus.listenerCount).toEqual(3);
+          expect(bus.getListenerCount()).toEqual(3);
           sub1.unsubscribe();
-          expect(bus.listenerCount).toEqual(2);
+          expect(bus.getListenerCount()).toEqual(2);
           sub2.unsubscribe();
-          expect(bus.listenerCount).toEqual(1);
+          expect(bus.getListenerCount()).toEqual(1);
           sub3.unsubscribe();
-          expect(bus.listenerCount).toEqual(0);
+          expect(bus.getListenerCount()).toEqual(0);
           sub1.unsubscribe();
-          expect(bus.listenerCount).toEqual(0);
+          expect(bus.getListenerCount()).toEqual(0);
         });
       });
 
-      describe('and delegates have no listeners', () => {
-        it('counts listeners for the instance and its delegates', () => {
-          bus.on('foo', onTestEvent);
+      describe('and downstreams have no listeners', () => {
+        it('counts listeners for the instance and its downstreams', () => {
+          bus.on('foo', singleEventHandler);
           bus.on('bar', () => ({}));
 
-          expect(bus.listenerCount).toEqual(2);
+          expect(bus.getListenerCount()).toEqual(2);
         });
       });
     });
@@ -1458,64 +2834,63 @@ describe('Strongbus.Bus', () => {
       spyOn(bus as any, 'handleUnexpectedEvent');
       const willRemoveListenerSpy = jasmine.createSpy('willRemoveListener');
       const didRemoveListenerSpy = jasmine.createSpy('didRemoveListener');
-      bus.on('foo', onTestEvent);
+      bus.on('foo', singleEventHandler);
       bus.hook('willRemoveListener', willRemoveListenerSpy);
       bus.hook('didRemoveListener', didRemoveListenerSpy);
-      bus.every(onEveryEvent);
+      bus.pipe(eventSink);
 
       bus.emit('foo', null);
-      expect(onTestEvent).toHaveBeenCalled();
-      expect(onEveryEvent).toHaveBeenCalled();
-      onTestEvent.calls.reset();
-      onEveryEvent.calls.reset();
+      expect(singleEventHandler).toHaveBeenCalled();
+      singleEventHandler.calls.reset();
+      eventSink.calls.reset();
 
       bus.destroy();
 
       expect(willRemoveListenerSpy).toHaveBeenCalledWith('foo');
       expect(didRemoveListenerSpy).toHaveBeenCalledWith('foo');
-      expect(bus.hasListenersFor('foo')).toBe(false);
+      expect(bus.getListenerCountFor('foo')).toBe(0);
       bus.emit('foo', null);
-      expect(onTestEvent).not.toHaveBeenCalled();
-      expect(onEveryEvent).not.toHaveBeenCalled();
+      expect(singleEventHandler).not.toHaveBeenCalled();
+      expect(eventSink).not.toHaveBeenCalled();
       expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
     });
 
     it('removes all hooks', () => {
       const didAddListenerSpy = jasmine.createSpy('onAddListener');
       bus.hook('didAddListener', didAddListenerSpy);
-      bus.on('foo', onTestEvent);
+      bus.on('foo', singleEventHandler);
       expect(didAddListenerSpy).toHaveBeenCalledWith('foo');
       didAddListenerSpy.calls.reset();
 
       bus.destroy();
-      bus.on('foo', onTestEvent);
+      bus.on('foo', singleEventHandler);
       expect(didAddListenerSpy).not.toHaveBeenCalled();
     });
 
-    it('clears all delegates', () => {
-      const bus2 = new DelegateTestBus({});
-      bus2.on('foo', onTestEvent);
-      bus2.every(onEveryEvent);
+    it('clears all downstreams', () => {
+      const bus2 = new DownstreamTestBus({});
+      bus2.on('foo', singleEventHandler);
+      bus2.pipe(eventSink);
 
       bus.pipe(bus2);
 
       bus.emit('foo', null);
-      expect(onTestEvent).toHaveBeenCalled();
-      expect(onEveryEvent).toHaveBeenCalled();
-      onTestEvent.calls.reset();
-      onEveryEvent.calls.reset();
+      expect(singleEventHandler).toHaveBeenCalled();
+      expect(eventSink).toHaveBeenCalled();
+      singleEventHandler.calls.reset();
+      eventSink.calls.reset();
 
       bus.destroy();
       bus.emit('foo', null);
-      expect(onTestEvent).not.toHaveBeenCalled();
-      expect(onEveryEvent).not.toHaveBeenCalled();
+      expect(singleEventHandler).not.toHaveBeenCalled();
+      expect(eventSink).not.toHaveBeenCalled();
     });
   });
 
   describe('Reserved events', () => {
     describe('given the wildcard (*) event is manually raised', () => {
       it('raises an error', () => {
-        bus.on('*', onAnyEvent);
+        bus.pipe(eventSink);
         const shouldThrow = () => bus.emit('*' as any, 'eagle');
 
         expect(shouldThrow).toThrow();
@@ -1523,7 +2898,7 @@ describe('Strongbus.Bus', () => {
     });
   });
 
-  describe('unsubscribe function return values (Events.Subscription)s', () => {
+  describe('unsubscribe function return values (Subscription)s', () => {
     describe('given it is invoked multiple times', () => {
       it('only invokes lifecycle methods once', () => {
         const onWillRemoveListener = jasmine.createSpy('willRemoveListener');
@@ -1535,7 +2910,7 @@ describe('Strongbus.Bus', () => {
         bus.hook('willIdle', onWillIdle);
         bus.hook('idle', onIdle);
 
-        const unsub = bus.on('foo', onTestEvent);
+        const unsub = bus.on('foo', singleEventHandler);
 
         unsub();
 
@@ -1590,7 +2965,7 @@ describe('Strongbus.Bus', () => {
           bus.emit('foo', 'FOO!');
           await sleep(1);
           expect(onReject).not.toHaveBeenCalled();
-          expect(onResolve).toHaveBeenCalledWith('FOO!');
+          expect(onResolve).toHaveBeenCalledWith({event: 'foo', payload: 'FOO!'});
           onResolve.calls.reset();
           bus.emit('foo', 'BAR!');
           expect(onResolve).not.toHaveBeenCalled();
@@ -1598,9 +2973,9 @@ describe('Strongbus.Bus', () => {
         });
 
         it('unsubscribes from the event source', () => {
-          expect([...bus.listeners.keys()]).toEqual(['foo', 'bar']);
+          expect(combinedListenerEvents(bus)).toEqual(['foo', 'bar']);
           bus.emit('foo', 'FOO!');
-          expect([...bus.listeners.keys()]).toEqual([]);
+          expect(combinedListenerEvents(bus)).toEqual([]);
         });
       });
 
@@ -1624,9 +2999,9 @@ describe('Strongbus.Bus', () => {
         });
 
         it('unsubscribes from the event source', () => {
-          expect([...bus.listeners.keys()]).toEqual(['foo', 'bar']);
+          expect(combinedListenerEvents(bus)).toEqual(['foo', 'bar']);
           bus.emit('bar', true);
-          expect([...bus.listeners.keys()]).toEqual([]);
+          expect(combinedListenerEvents(bus)).toEqual([]);
         });
       });
     });
@@ -1644,7 +3019,7 @@ describe('Strongbus.Bus', () => {
           bus.emit('foo', 'FOO!');
           await sleep(1);
           expect(onReject).not.toHaveBeenCalled();
-          expect(onResolve).toHaveBeenCalledWith('FOO!');
+          expect(onResolve).toHaveBeenCalledWith({event: 'foo', payload: 'FOO!'});
           onResolve.calls.reset();
           bus.emit('foo', 'BAR!');
           expect(onResolve).not.toHaveBeenCalled();
@@ -1652,9 +3027,9 @@ describe('Strongbus.Bus', () => {
         });
 
         it('unsubscribes from the event source', () => {
-          expect([...bus.listeners.keys()]).toEqual(['foo']);
+          expect(combinedListenerEvents(bus)).toEqual(['foo']);
           bus.emit('foo', 'FOO!');
-          expect([...bus.listeners.keys()]).toEqual([]);
+          expect(combinedListenerEvents(bus)).toEqual([]);
         });
       });
     });
@@ -1663,43 +3038,43 @@ describe('Strongbus.Bus', () => {
       it('unsubscribes from the event source', async () => {
         const p = bus.next('foo');
         p.then(onResolve).catch(onReject);
-        expect([...bus.listeners.keys()]).toEqual(['foo']);
+        expect(combinedListenerEvents(bus)).toEqual(['foo']);
         p.cancel();
         await sleep(1);
         expect(onReject).toHaveBeenCalled();
-        expect([...bus.listeners.keys()]).toEqual([]);
+        expect(combinedListenerEvents(bus)).toEqual([]);
       });
     });
 
-    describe('given the resolving event is the wildcard "*"', () => {
-      it('resolves on any event with an undefined value', async () => {
-        const p1 = bus.next('*');
+    describe('given the resolving event is every event in the map', () => {
+      it('resolves on any event with the triggering event and payload', async () => {
+        const p1 = bus.next(ALL_TEST_EVENTS);
         p1.then(onResolve);
         bus.emit('baz', 3);
         await sleep(1);
-        expect(onResolve).toHaveBeenCalledWith(undefined);
+        expect(onResolve).toHaveBeenCalledWith({event: 'baz', payload: 3});
         onResolve.calls.reset();
-        const p2 = bus.next('*');
+        const p2 = bus.next(ALL_TEST_EVENTS);
         p2.then(onResolve);
         bus.emit('foo', 'FOO!');
         await sleep(1);
-        expect(onResolve).toHaveBeenCalledWith(undefined);
+        expect(onResolve).toHaveBeenCalledWith({event: 'foo', payload: 'FOO!'});
       });
     });
 
     describe('given an array of resolving events', () => {
-      it('resolves on any of the events in the array with an undefined value', async () => {
+      it('resolves on any of the events in the array with the triggering event and payload', async () => {
         const p1 = bus.next(['bar', 'baz']);
         p1.then(onResolve);
         bus.emit('baz', 5);
         await sleep(1);
-        expect(onResolve).toHaveBeenCalledWith(undefined);
+        expect(onResolve).toHaveBeenCalledWith({event: 'baz', payload: 5});
         onResolve.calls.reset();
         const p2 = bus.next(['foo', 'baz']);
         p2.then(onResolve);
         bus.emit('foo', 'FOO!');
         await sleep(1);
-        expect(onResolve).toHaveBeenCalledWith(undefined);
+        expect(onResolve).toHaveBeenCalledWith({event: 'foo', payload: 'FOO!'});
       });
     });
 
@@ -1726,7 +3101,7 @@ describe('Strongbus.Bus', () => {
         bus.destroy();
         await sleep(1);
         expect(onReject).toHaveBeenCalled();
-        expect([...bus.listeners.keys()]).toEqual([]);
+        expect(combinedListenerEvents(bus)).toEqual([]);
       });
     });
   });
@@ -1772,7 +3147,7 @@ describe('Strongbus.Bus', () => {
           await sleep(1);
           expect(onResolve).not.toHaveBeenCalled();
 
-          expect([...bus.listeners.keys()]).toEqual([]);
+          expect(combinedListenerEvents(bus)).toEqual([]);
         });
       });
 
@@ -1835,7 +3210,7 @@ describe('Strongbus.Bus', () => {
           await sleep(1);
           expect(onResolve).not.toHaveBeenCalled();
 
-          expect([...bus.listeners.keys()]).toEqual([]);
+          expect(combinedListenerEvents(bus)).toEqual([]);
         });
       });
     });
@@ -1871,7 +3246,7 @@ describe('Strongbus.Bus', () => {
         await sleep(1);
         expect(onReject).not.toHaveBeenCalled();
 
-        expect([...bus.listeners.keys()]).toEqual([]);
+        expect(combinedListenerEvents(bus)).toEqual([]);
       });
     });
 
@@ -2673,12 +4048,12 @@ describe('Strongbus.Bus', () => {
             trigger: 'foo',
             timeout: 100
           });
-          expect(bus.hasListenersFor('foo')).toBeTrue();
+          expect(bus.getListenerCountFor('foo')).toBeGreaterThan(0);
 
           p1.then(() => done.fail())
           .catch((e) => {
             expect(e).toBeInstanceOf(TimeoutExpiredError);
-            expect(bus.hasListenersFor('foo')).toBeFalse();
+            expect(bus.getListenerCountFor('foo')).toBe(0);
             done();
           });
         });
@@ -2714,3 +4089,25 @@ describe('Strongbus.Bus', () => {
     });
   });
 });
+
+function combinedListenersToMap(bus: Strongbus.Bus<TestEventMap>): Map<string | number | symbol, Set<unknown>> {
+  const map = new Map<string | number | symbol, Set<unknown>>();
+  bus.forEach((event, handlers) => {
+    map.set(event, new Set(handlers));
+  });
+  return map;
+}
+
+function ownListenersToMap(bus: Strongbus.Bus<TestEventMap>): Map<string | number | symbol, Set<unknown>> {
+  const map = new Map<string | number | symbol, Set<unknown>>();
+  bus.forEach((event, handlers) => {
+    map.set(event, new Set(handlers));
+  }, {scope: Strongbus.ListenerScope.OWN});
+  return map;
+}
+
+function combinedListenerEvents(bus: Strongbus.Bus<TestEventMap>): string[] {
+  const keys: string[] = [];
+  bus.forEach((event) => keys.push(String(event)));
+  return keys;
+}

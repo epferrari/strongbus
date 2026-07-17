@@ -1,14 +1,13 @@
 import {autobind} from 'core-decorators';
 
-import {ListenerThresholds} from './types/options';
-import {Logger, LoggerProvider} from './types/logger';
-import {EventKeys} from './types/utility';
-import * as Events from './types/events';
-import { isFunction } from 'util';
+import type {ListenerThresholds} from './types/options';
+import type {Logger, LoggerProvider} from './types/logger';
+import type {EventKeys} from './types/utility';
+import {type EventMap, WILDCARD} from './types/events';
 
 
 @autobind
-export class StrongbusLogger<TEventMap extends Events.EventMap = Events.EventMap> {
+export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
   private readonly name: string;
   private readonly provider: LoggerProvider;
   private readonly thresholds: Required<ListenerThresholds>;
@@ -18,14 +17,14 @@ export class StrongbusLogger<TEventMap extends Events.EventMap = Events.EventMap
     Object.assign(this, params);
   }
 
-  public onAddListener(event: EventKeys<TEventMap>|Events.WILDCARD, n: number) {
+  public onAddListener(event: EventKeys<TEventMap>|WILDCARD, n: number) {
     (this.verbose
       ? this.onAddListenerVerbose
       : this.onAddListenerNonVerbose
     )(event, n);
   }
 
-  private onAddListenerNonVerbose(event: EventKeys<TEventMap>|Events.WILDCARD, n: number) {
+  private onAddListenerNonVerbose(event: EventKeys<TEventMap>|WILDCARD, n: number) {
     const {thresholds} = this;
     if(n === thresholds.info) {
       this.logInfoThresholdReached(event);
@@ -59,7 +58,7 @@ export class StrongbusLogger<TEventMap extends Events.EventMap = Events.EventMap
     }
   }
 
-  private onAddListenerVerbose(event: EventKeys<TEventMap>|Events.WILDCARD, count: number) {
+  private onAddListenerVerbose(event: EventKeys<TEventMap>|WILDCARD, count: number) {
     const {thresholds} = this;
     if(count > thresholds.error) {
       this.logErrorThresholdExceededVerbose(event, count);
@@ -70,52 +69,52 @@ export class StrongbusLogger<TEventMap extends Events.EventMap = Events.EventMap
     }
   }
 
-  private logInfoThresholdReached(event: EventKeys<TEventMap>|Events.WILDCARD) {
+  private logInfoThresholdReached(event: EventKeys<TEventMap>|WILDCARD) {
     const {name, thresholds} = this;
     this.info(StrongbusLogMessages.infoThresholdReached(name, thresholds.info, event));
   }
 
-  private logWarningThresholdReached(event: EventKeys<TEventMap>|Events.WILDCARD) {
+  private logWarningThresholdReached(event: EventKeys<TEventMap>|WILDCARD) {
     const {name, thresholds} = this;
     this.info(StrongbusLogMessages.warnThresholdReached(name, thresholds.warn, event));
   }
 
-  private logErrorThresholdReached(event: EventKeys<TEventMap>|Events.WILDCARD) {
+  private logErrorThresholdReached(event: EventKeys<TEventMap>|WILDCARD) {
     const {name, thresholds} = this;
     this.info(StrongbusLogMessages.errorThresholdReached(name, thresholds.error, event));
   }
 
-  private logErrorThresholdExceeded(event: EventKeys<TEventMap>|Events.WILDCARD, count: number) {
+  private logErrorThresholdExceeded(event: EventKeys<TEventMap>|WILDCARD, count: number) {
     const {name, thresholds} = this;
     this.error(StrongbusLogMessages.errorThresholdExceeded(name, thresholds.error, count, event));
   }
 
-  private logWarnThresholdExceeded(event: EventKeys<TEventMap>|Events.WILDCARD, count: number) {
+  private logWarnThresholdExceeded(event: EventKeys<TEventMap>|WILDCARD, count: number) {
     const {name, thresholds} = this;
     this.warn(StrongbusLogMessages.warnThresholdExceeded(name, thresholds.warn, count, event));
   }
 
-  private logInfoThresholdExceeded(event: EventKeys<TEventMap>|Events.WILDCARD, count: number) {
+  private logInfoThresholdExceeded(event: EventKeys<TEventMap>|WILDCARD, count: number) {
     const {name, thresholds} = this;
     this.info(StrongbusLogMessages.infoThresholdExceeded(name, thresholds.info, count, event));
   }
 
-  private logErrorThresholdExceededVerbose(event: EventKeys<TEventMap>|Events.WILDCARD, count: number) {
+  private logErrorThresholdExceededVerbose(event: EventKeys<TEventMap>|WILDCARD, count: number) {
     const {name, thresholds} = this;
     this.error(`Potential Memory Leak. ${name} has ${count} listeners for "${String(event)}", exceeds threshold set to ${thresholds.error}`);
   }
 
-  private logWarnThresholdExceededVerbose(event: EventKeys<TEventMap>|Events.WILDCARD, count: number) {
+  private logWarnThresholdExceededVerbose(event: EventKeys<TEventMap>|WILDCARD, count: number) {
     const {name, thresholds} = this;
     this.warn(`Potential Memory Leak. ${name} has ${count} listeners for "${String(event)}", exceeds threshold set to ${thresholds.warn}`);
   }
 
-  private logInfoThresholdExceededVerbose(event: EventKeys<TEventMap>|Events.WILDCARD, count: number) {
+  private logInfoThresholdExceededVerbose(event: EventKeys<TEventMap>|WILDCARD, count: number) {
     const {name, thresholds} = this;
     this.info(`${name} has ${count} listeners for "${String(event)}", ${thresholds.info} max listeners expected.`);
   }
 
-  public onListenerRemoved(event: EventKeys<TEventMap>|Events.WILDCARD, count: number): void {
+  public onListenerRemoved(event: EventKeys<TEventMap>|WILDCARD, count: number): void {
     const {name, thresholds} = this;
     if(count === thresholds.error - 1) {
       this.info(StrongbusLogMessages.memoryPressureReducedBelowErrorThreshold(name, thresholds, count, event));
@@ -136,6 +135,17 @@ export class StrongbusLogger<TEventMap extends Events.EventMap = Events.EventMap
 
   public error(...args: any[]): void {
     this.impl.error(...args);
+  }
+
+  public debug(...args: any[]): void {
+    this.impl.debug(...args);
+  }
+
+  public onDuplicateSubscription(message: string, level: 'never' | 'debug' | 'info' | 'warn' | 'error'): void {
+    if(level === 'never') {
+      return;
+    }
+    this[level](message);
   }
 
   private _impl: Logger;
@@ -183,5 +193,9 @@ export class StrongbusLogMessages {
 
   public static memoryPressureReducedBelowInfoThreshold(name: string, count: number, event: any): string {
     return `${name}'s listener count of ${count} for "${event}" is now within the expected range`;
+  }
+
+  public static duplicateSubscription(name: string, kind: string, listenable: string): string {
+    return `${name}: duplicate ${kind} subscription for "${listenable}" (same handler reference)`;
   }
 }

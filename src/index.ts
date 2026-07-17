@@ -1,11 +1,39 @@
 export {Bus} from './strongbus';
 export {Scanner} from './scanner';
-export {generateSubscription} from './utils/generateSubscription';
+export {subscriptionWrapper} from './utils/subscriptionWrapper';
 
 export * from './types/events';
-export * from './types/eventHandlers';
+export type {
+  EventHandler,
+  SingleEventHandler,
+  EventSink,
+  PipeSink,
+  PipeMessage,
+  PipeForward
+} from './types/eventHandlers';
 export * from './types/lifecycle';
-export {Logger, LoggerProvider} from './types/logger';
 export * from './types/options';
-export * from './types/scannable';
-export {EventKeys} from './types/utility';
+export type {Logger, LoggerProvider} from './types/logger';
+export {ListenerScope} from './types/listenerScope';
+export type {IntrospectionOptions} from './types/listenerScope';
+export type {
+  ControlSurface
+} from './types/surfaces/controlSurface';
+export type {
+  IntrospectionSurface
+} from './types/surfaces/introspectionSurface';
+export type {
+  MonitoringSurface,
+  MonitoringHook
+} from './types/surfaces/monitoringSurface';
+export type {Scannable} from './types/scannable';
+export type {
+  SubscriptionSurface,
+  ScanParams,
+  ScanOptions,
+  SubscribeOptions
+} from './types/surfaces/subscriptionSurface';
+export type {EventListenerMapKey, ListenerSet} from './types/listenerRegistry';
+export type {EventKeys, SubscribableEventKeys} from './types/utility';
+export type {Merge} from './types/merge';
+export type {SubscribableListenable} from './types/events';

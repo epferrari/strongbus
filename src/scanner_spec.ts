@@ -2,6 +2,7 @@ import {sleep} from 'jaasync';
 
 import {Scanner} from './scanner';
 import {Bus} from './strongbus';
+import {ListenerScope} from './types/listenerScope';
 
 class Store extends Bus<{value: void}> {
   private _value: 0|1|2 = 0;
@@ -15,7 +16,6 @@ class Store extends Bus<{value: void}> {
     }
   }
 }
-
 
 describe('Scanner', () => {
   let storeA: Store;
@@ -79,8 +79,8 @@ describe('Scanner', () => {
         });
 
         it('adds listeners to the Scannables', () => {
-          expect(storeA.listeners.size).toEqual(1);
-          expect(storeB.listeners.size).toEqual(1);
+          expect(storeA.getEventCount()).toEqual(1);
+          expect(storeB.getEventCount()).toEqual(1);
         });
 
         it('immediately invokes the evaluator', () => {
@@ -103,8 +103,8 @@ describe('Scanner', () => {
           });
 
           it('removes all listeners on all Scannables', async () => {
-            expect(storeA.listeners.size).toEqual(0);
-            expect(storeB.listeners.size).toEqual(0);
+            expect(storeA.getEventCount()).toEqual(0);
+            expect(storeB.getEventCount()).toEqual(0);
           });
         });
 
@@ -132,8 +132,8 @@ describe('Scanner', () => {
             });
 
             it('does not affect listeners on Scannables', async () => {
-              expect(storeA.listeners.size).toEqual(1);
-              expect(storeB.listeners.size).toEqual(1);
+              expect(storeA.getEventCount()).toEqual(1);
+              expect(storeB.getEventCount()).toEqual(1);
             });
           });
 
@@ -155,8 +155,8 @@ describe('Scanner', () => {
             });
 
             it('removes listeners from all Scannables', async () => {
-              expect(storeA.listeners.size).toEqual(0);
-              expect(storeB.listeners.size).toEqual(0);
+              expect(storeA.getEventCount()).toEqual(0);
+              expect(storeB.getEventCount()).toEqual(0);
             });
 
             describe('given one of the Scannables raises a monitored event again', () => {
@@ -230,8 +230,8 @@ describe('Scanner', () => {
             });
 
             it('removes listeners from all Scannables', async () => {
-              expect(storeA.listeners.size).toEqual(0);
-              expect(storeB.listeners.size).toEqual(0);
+              expect(storeA.getEventCount()).toEqual(0);
+              expect(storeB.getEventCount()).toEqual(0);
             });
 
             describe('given one of the Scannables raises a monitored event again', () => {
@@ -299,8 +299,8 @@ describe('Scanner', () => {
         });
 
         it('adds listeners to the Scannables', () => {
-          expect(storeA.listeners.size).toEqual(1);
-          expect(storeB.listeners.size).toEqual(1);
+          expect(storeA.getEventCount()).toEqual(1);
+          expect(storeB.getEventCount()).toEqual(1);
         });
 
         it('does not immediately invoke the evaluator', () => {
@@ -323,8 +323,8 @@ describe('Scanner', () => {
           });
 
           it('removes all listeners on all Scannables', async () => {
-            expect(storeA.listeners.size).toEqual(0);
-            expect(storeB.listeners.size).toEqual(0);
+            expect(storeA.getEventCount()).toEqual(0);
+            expect(storeB.getEventCount()).toEqual(0);
           });
         });
 
@@ -352,8 +352,8 @@ describe('Scanner', () => {
             });
 
             it('does not affect listeners on Scannables', async () => {
-              expect(storeA.listeners.size).toEqual(1);
-              expect(storeB.listeners.size).toEqual(1);
+              expect(storeA.getEventCount()).toEqual(1);
+              expect(storeB.getEventCount()).toEqual(1);
             });
           });
 
@@ -375,8 +375,8 @@ describe('Scanner', () => {
             });
 
             it('removes listeners from all Scannables', async () => {
-              expect(storeA.listeners.size).toEqual(0);
-              expect(storeB.listeners.size).toEqual(0);
+              expect(storeA.getEventCount()).toEqual(0);
+              expect(storeB.getEventCount()).toEqual(0);
             });
 
             describe('given one of the Scannables raises a monitored event again', () => {
@@ -450,8 +450,8 @@ describe('Scanner', () => {
             });
 
             it('removes listeners from all Scannables', async () => {
-              expect(storeA.listeners.size).toEqual(0);
-              expect(storeB.listeners.size).toEqual(0);
+              expect(storeA.getEventCount()).toEqual(0);
+              expect(storeB.getEventCount()).toEqual(0);
             });
 
             describe('given one of the Scannables raises a monitored event again', () => {
@@ -535,8 +535,8 @@ describe('Scanner', () => {
         });
 
         it('adds no listeners to the Scannables', () => {
-          expect(storeA.listeners.size).toEqual(0);
-          expect(storeB.listeners.size).toEqual(0);
+          expect(storeA.getEventCount()).toEqual(0);
+          expect(storeB.getEventCount()).toEqual(0);
         });
 
         describe('and all scanned buses are destroyed', () => {
@@ -623,8 +623,8 @@ describe('Scanner', () => {
         });
 
         it('does not affect listeners on Scannables', async () => {
-          expect(storeA.listeners.size).toEqual(1);
-          expect(storeB.listeners.size).toEqual(1);
+          expect(storeA.getEventCount()).toEqual(1);
+          expect(storeB.getEventCount()).toEqual(1);
         });
 
         describe('and all scanned buses are destroyed', () => {
@@ -641,8 +641,8 @@ describe('Scanner', () => {
           });
 
           it('removes all listeners on all Scannables', async () => {
-            expect(storeA.listeners.size).toEqual(0);
-            expect(storeB.listeners.size).toEqual(0);
+            expect(storeA.getEventCount()).toEqual(0);
+            expect(storeB.getEventCount()).toEqual(0);
           });
         });
       });
@@ -671,8 +671,8 @@ describe('Scanner', () => {
         });
 
         it('adds no listeners to the Scannables', () => {
-          expect(storeA.listeners.size).toEqual(0);
-          expect(storeB.listeners.size).toEqual(0);
+          expect(storeA.getEventCount()).toEqual(0);
+          expect(storeB.getEventCount()).toEqual(0);
         });
 
         describe('and all scanned buses are destroyed', () => {
@@ -759,8 +759,8 @@ describe('Scanner', () => {
         });
 
         it('does not affect listeners on Scannables', async () => {
-          expect(storeA.listeners.size).toEqual(1);
-          expect(storeB.listeners.size).toEqual(1);
+          expect(storeA.getEventCount()).toEqual(1);
+          expect(storeB.getEventCount()).toEqual(1);
         });
 
         describe('and all scanned buses are destroyed', () => {
@@ -777,8 +777,8 @@ describe('Scanner', () => {
           });
 
           it('removes all listeners on all Scannables', async () => {
-            expect(storeA.listeners.size).toEqual(0);
-            expect(storeB.listeners.size).toEqual(0);
+            expect(storeA.getEventCount()).toEqual(0);
+            expect(storeB.getEventCount()).toEqual(0);
           });
         });
       });
