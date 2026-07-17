@@ -1756,6 +1756,340 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('incognito', () => {
+    let onWillAddListener: jasmine.Spy;
+    let onWillRemoveListener: jasmine.Spy;
+    let onAddListener: jasmine.Spy;
+    let onRemoveListener: jasmine.Spy;
+    let onWillActivate: jasmine.Spy;
+    let onActive: jasmine.Spy;
+    let onWillIdle: jasmine.Spy;
+    let onIdle: jasmine.Spy;
+    let onMonitor: jasmine.Spy;
+
+    beforeEach(() => {
+      bus.hook('willAddListener', onWillAddListener = jasmine.createSpy('onWillAddListener'));
+      bus.hook('didAddListener', onAddListener = jasmine.createSpy('onAddListener'));
+      bus.hook('willRemoveListener', onWillRemoveListener = jasmine.createSpy('onWillRemoveListener'));
+      bus.hook('didRemoveListener', onRemoveListener = jasmine.createSpy('onRemoveListener'));
+      bus.hook('willActivate', onWillActivate = jasmine.createSpy('onWillActivate'));
+      bus.hook('active', onActive = jasmine.createSpy('onActive'));
+      bus.hook('willIdle', onWillIdle = jasmine.createSpy('onWillIdle'));
+      bus.hook('idle', onIdle = jasmine.createSpy('onIdle'));
+      onMonitor = jasmine.createSpy('onMonitor');
+      bus.monitor(onMonitor);
+    });
+
+    function expectNoMonitoringNoise(): void {
+      expect(onWillAddListener).not.toHaveBeenCalled();
+      expect(onAddListener).not.toHaveBeenCalled();
+      expect(onWillRemoveListener).not.toHaveBeenCalled();
+      expect(onRemoveListener).not.toHaveBeenCalled();
+      expect(onWillActivate).not.toHaveBeenCalled();
+      expect(onActive).not.toHaveBeenCalled();
+      expect(onWillIdle).not.toHaveBeenCalled();
+      expect(onIdle).not.toHaveBeenCalled();
+      expect(onMonitor).not.toHaveBeenCalled();
+      expect(bus.active).toBeFalse();
+      expect(bus.hasListeners()).toBeFalse();
+    }
+
+    describe('own listeners', () => {
+      it('delivers events without counting toward monitoring or default introspection', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+        bus.on('foo', handleFoo, {incognito: true});
+
+        expectNoMonitoringNoise();
+        expect(bus.getListenerCount()).toBe(0);
+        expect(bus.hasListenersFor('foo')).toBeFalse();
+        expect(bus.getListenersFor('foo').size).toBe(0);
+
+        bus.emit('foo', 'eagle');
+        expect(handleFoo).toHaveBeenCalledWith('eagle');
+      });
+
+      it('excludes incognito handlers from forEach by default and includes them when asked', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+        bus.on('foo', handleFoo, {incognito: true});
+
+        const seenDefault: string[] = [];
+        bus.forEach((event) => seenDefault.push(String(event)));
+        expect(seenDefault).toEqual([]);
+
+        const seenIncognito: string[] = [];
+        bus.forEach((event) => seenIncognito.push(String(event)), {includeIncognito: true});
+        expect(seenIncognito).toEqual(['foo']);
+        expect(bus.hasListeners({includeIncognito: true})).toBeTrue();
+        expect(bus.getListenerCount({includeIncognito: true})).toBe(1);
+        expect(bus.getListenersFor('foo', {includeIncognito: true}).has(handleFoo)).toBeTrue();
+        expect(bus.active).toBeFalse();
+      });
+
+      it('keeps the bus idle when only incognito listeners remain after a monitored listener leaves', () => {
+        const monitored = jasmine.createSpy('monitored') as (payload: string) => void;
+        const hidden = jasmine.createSpy('hidden') as (payload: string) => void;
+        bus.on('foo', monitored);
+        bus.on('foo', hidden, {incognito: true});
+
+        expect(bus.active).toBeTrue();
+        expect(bus.getListenerCount()).toBe(1);
+
+        onWillRemoveListener.calls.reset();
+        onRemoveListener.calls.reset();
+        onWillIdle.calls.reset();
+        onIdle.calls.reset();
+        onMonitor.calls.reset();
+
+        bus.off('foo', monitored);
+
+        expect(onWillIdle).toHaveBeenCalled();
+        expect(onIdle).toHaveBeenCalled();
+        expect(onMonitor).toHaveBeenCalledWith(false);
+        expect(bus.active).toBeFalse();
+        expect(bus.hasListeners()).toBeFalse();
+
+        bus.emit('foo', 'still-here');
+        expect(hidden).toHaveBeenCalledWith('still-here');
+      });
+
+      it('does not idle when an incognito listener is removed while a monitored listener remains', () => {
+        const monitored = jasmine.createSpy('monitored') as (payload: string) => void;
+        const hidden = jasmine.createSpy('hidden') as (payload: string) => void;
+        bus.on('foo', monitored);
+        bus.on('foo', hidden, {incognito: true});
+
+        onWillRemoveListener.calls.reset();
+        onRemoveListener.calls.reset();
+        onWillIdle.calls.reset();
+        onIdle.calls.reset();
+        onMonitor.calls.reset();
+
+        bus.off('foo', hidden);
+
+        expect(onWillRemoveListener).not.toHaveBeenCalled();
+        expect(onRemoveListener).not.toHaveBeenCalled();
+        expect(onWillIdle).not.toHaveBeenCalled();
+        expect(onIdle).not.toHaveBeenCalled();
+        expect(onMonitor).not.toHaveBeenCalled();
+        expect(bus.active).toBeTrue();
+        expect(bus.getListenerCount()).toBe(1);
+
+        bus.emit('foo', 'eagle');
+        expect(monitored).toHaveBeenCalledWith('eagle');
+        expect(hidden).not.toHaveBeenCalled();
+      });
+
+      it('tears down an incognito on() registration via off without monitoring noise', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+        bus.on('foo', handleFoo, {incognito: true});
+
+        bus.off('foo', handleFoo);
+
+        expectNoMonitoringNoise();
+        bus.emit('foo', 'eagle');
+        expect(handleFoo).not.toHaveBeenCalled();
+      });
+
+      it('keeps the first registration mode when on is called again with a different incognito flag', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+        const sub1 = bus.on('foo', handleFoo);
+        const sub2 = bus.on('foo', handleFoo, {incognito: true});
+
+        expect(sub2).toBe(sub1);
+        expect(bus.active).toBeTrue();
+        expect(bus.getListenerCount()).toBe(1);
+
+        onWillAddListener.calls.reset();
+        onAddListener.calls.reset();
+
+        const handleBar = jasmine.createSpy('handleBar') as (payload: boolean) => void;
+        const sub3 = bus.on('bar', handleBar, {incognito: true});
+        const sub4 = bus.on('bar', handleBar);
+
+        expect(sub4).toBe(sub3);
+        expect(bus.hasListenersFor('bar')).toBeFalse();
+        expect(bus.hasListenersFor('bar', {includeIncognito: true})).toBeTrue();
+        expect(bus.active).toBeTrue(); // still active from foo
+      });
+
+      it('supports once, any, and pipe(sink) with {incognito: true}', () => {
+        const handleOnce = jasmine.createSpy('handleOnce') as (payload: string) => void;
+        const handleAny = jasmine.createSpy('handleAny');
+        const handlePipe = jasmine.createSpy('handlePipe');
+
+        bus.once('foo', handleOnce, {incognito: true});
+        bus.any(['bar', 'baz'], handleAny, {incognito: true});
+        bus.pipe(handlePipe, {incognito: true});
+
+        expectNoMonitoringNoise();
+
+        bus.emit('foo', 'one');
+        bus.emit('bar', true);
+        bus.emit('baz', 3);
+
+        expect(handleOnce).toHaveBeenCalledWith('one');
+        expect(handleAny).toHaveBeenCalledWith('bar', true);
+        expect(handleAny).toHaveBeenCalledWith('baz', 3);
+        expect(handlePipe).toHaveBeenCalled();
+        expect(bus.active).toBeFalse();
+      });
+
+      it('still invokes logger thresholds for incognito own listeners', () => {
+        const logger: Logger = {
+          info: jasmine.createSpy('info'),
+          warn: jasmine.createSpy('warn'),
+          error: jasmine.createSpy('error')
+        };
+        bus = new Strongbus.Bus<TestEventMap>({
+          name: 'incognito-thresholds',
+          thresholds: {info: 2, warn: Infinity, error: Infinity},
+          logger
+        });
+
+        bus.on('foo', () => undefined, {incognito: true});
+        bus.on('foo', () => undefined, {incognito: true});
+
+        expect(logger.info).toHaveBeenCalled();
+      });
+    });
+
+    describe('pipe(bus, {incognito: true})', () => {
+      it('forwards events without coupling target listeners into src monitoring', () => {
+        const target = new Strongbus.Bus<TestEventMap>();
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+
+        bus.pipe(target, {incognito: true});
+        target.on('foo', handleFoo);
+
+        expectNoMonitoringNoise();
+        expect(target.active).toBeTrue();
+        expect(bus.hasListeners({scope: Strongbus.ListenerScope.DOWNSTREAM})).toBeFalse();
+
+        bus.emit('foo', 'eagle');
+        expect(handleFoo).toHaveBeenCalledWith('eagle');
+      });
+
+      it('does not count multi-layer listeners under an incognito pipe link', () => {
+        const mid = new Strongbus.Bus<TestEventMap>();
+        const leaf = new Strongbus.Bus<TestEventMap>();
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+
+        bus.pipe(mid, {incognito: true});
+        mid.pipe(leaf);
+        leaf.on('foo', handleFoo);
+
+        expect(bus.active).toBeFalse();
+        expect(bus.hasListeners()).toBeFalse();
+        expect(mid.active).toBeTrue();
+        expect(leaf.active).toBeTrue();
+
+        bus.emit('foo', 'eagle');
+        expect(handleFoo).toHaveBeenCalledWith('eagle');
+      });
+
+      it('still couples a normal pipe alongside an incognito pipe', () => {
+        const hidden = new Strongbus.Bus<TestEventMap>();
+        const counted = new Strongbus.Bus<TestEventMap>();
+        hidden.on('foo', () => undefined);
+        counted.on('bar', () => undefined);
+
+        bus.pipe(hidden, {incognito: true});
+        expect(bus.active).toBeFalse();
+        expect(bus.hasListenersFor('foo')).toBeFalse();
+
+        bus.pipe(counted);
+        expect(bus.active).toBeTrue();
+        expect(bus.hasListenersFor('bar')).toBeTrue();
+        expect(bus.hasListenersFor('foo')).toBeFalse();
+        expect(bus.hasListenersFor('foo', {includeIncognito: true})).toBeTrue();
+      });
+
+      it('stops forwarding on unpipe without detach lifecycle noise for an incognito link', () => {
+        const target = new Strongbus.Bus<TestEventMap>();
+        const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
+        bus.pipe(target, {incognito: true});
+        target.on('foo', handleFoo);
+
+        onWillRemoveListener.calls.reset();
+        onRemoveListener.calls.reset();
+        onWillIdle.calls.reset();
+        onIdle.calls.reset();
+        onMonitor.calls.reset();
+
+        bus.unpipe(target);
+        bus.emit('foo', 'eagle');
+
+        expect(handleFoo).not.toHaveBeenCalled();
+        expect(onWillRemoveListener).not.toHaveBeenCalled();
+        expect(onRemoveListener).not.toHaveBeenCalled();
+        expect(onWillIdle).not.toHaveBeenCalled();
+        expect(onIdle).not.toHaveBeenCalled();
+        expect(onMonitor).not.toHaveBeenCalled();
+        expect(target.active).toBeTrue();
+      });
+    });
+
+    describe('next / scan', () => {
+      it('awaits next without activating the bus when incognito', async () => {
+        const pending = bus.next('foo', {incognito: true});
+
+        expectNoMonitoringNoise();
+
+        bus.emit('foo', 'eagle');
+        await expectAsync(pending).toBeResolvedTo({event: 'foo', payload: 'eagle'});
+      });
+
+      it('awaits next with a rejection trigger without activating when incognito', async () => {
+        const pending = bus.next('foo', 'bar', {incognito: true});
+
+        expectNoMonitoringNoise();
+
+        bus.emit('bar', true);
+        await expectAsync(pending).toBeRejected();
+        expect(bus.active).toBeFalse();
+      });
+
+      it('scans without activating the bus when incognito', async () => {
+        const pending = bus.scan('foo', (resolve) => {
+          if(resolve.trigger.type === 'event' && resolve.trigger.event === 'foo') {
+            resolve(resolve.trigger.payload);
+          }
+        }, {incognito: true, eager: false, pool: false});
+
+        expectNoMonitoringNoise();
+
+        bus.emit('foo', 'eagle');
+        await expectAsync(pending).toBeResolvedTo('eagle');
+        expect(bus.active).toBeFalse();
+      });
+
+      it('does not pool scanners across different incognito modes', async () => {
+        const evaluator: Scanner.Evaluator<string, TestEventMap> = (resolve) => {
+          if(resolve.trigger.type === 'event' && resolve.trigger.event === 'foo') {
+            resolve(resolve.trigger.payload);
+          }
+        };
+
+        const monitored = bus.scan('foo', evaluator, {eager: false, pool: true});
+        monitored.catch((): void => undefined);
+        expect(bus.active).toBeTrue();
+
+        onWillAddListener.calls.reset();
+        onAddListener.calls.reset();
+        onMonitor.calls.reset();
+
+        const hidden = bus.scan('foo', evaluator, {incognito: true, eager: false, pool: true});
+        hidden.catch((): void => undefined);
+        // A separate subscription is required; joining the monitored pool would
+        // incorrectly leave the hidden waiters on a monitored listener (or vice versa).
+        expect(bus.getListenerCount({includeIncognito: true})).toBeGreaterThan(1);
+
+        monitored.cancel();
+        hidden.cancel();
+      });
+    });
+  });
+
   describe('#getListener', () => {
     let bus2: DownstreamTestBus;
 

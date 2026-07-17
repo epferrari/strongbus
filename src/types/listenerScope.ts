@@ -18,7 +18,16 @@ export enum ListenerScope {
  * Options accepted by the listener-introspection methods on {@link Bus} /
  * `IntrospectionSurface`. `scope` selects which handlers are included and
  * defaults to {@link ListenerScope.ANY}.
+ *
+ * `includeIncognito` defaults to `false` — incognito own listeners and
+ * incognito-piped downstream trees are omitted. Lifecycle / `active` /
+ * `monitor` never consult this flag; they always ignore incognito interest.
  */
 export interface IntrospectionOptions {
   scope?: ListenerScope;
+  /**
+   * When `true`, include incognito own handlers and listeners reached via
+   * incognito `pipe(bus)` links. Default `false`.
+   */
+  includeIncognito?: boolean;
 }

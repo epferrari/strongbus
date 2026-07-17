@@ -23,7 +23,8 @@ import type {
   SubscriptionSurfaceScan,
   SubscriptionSurfaceUnpipe,
   NextResult,
-  ScanOptions
+  ScanOptions,
+  SubscribeOptions
 } from './types/surfaces/subscriptionSurface';
 import type {ControlSurface} from './types/surfaces/controlSurface';
 import type {
@@ -195,7 +196,11 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    * Calling again with the same `event` and handler reference is a no-op and returns
    * the existing {@link Subscription}.
    */
-  public on<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): Subscription {
+  public on<T extends SubscribableEventKeys<TEventMap>>(
+    event: T,
+    handler: EventHandler<TEventMap, T>,
+    _options?: SubscribeOptions
+  ): Subscription {
     return this.addListener(event, handler);
   }
 
@@ -211,7 +216,11 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   /**
    * Subscribe a callback to an event. Automatically unsubscribes after the first invocation.
    */
-  public once<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): Subscription {
+  public once<T extends SubscribableEventKeys<TEventMap>>(
+    event: T,
+    handler: EventHandler<TEventMap, T>,
+    _options?: SubscribeOptions
+  ): Subscription {
     let sub: Subscription;
     const wrapper = ((payload: TEventMap[T]) => {
       sub();
@@ -252,7 +261,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    */
   public any: SubscriptionSurfaceAny<TEventMap> = ((
     events,
-    handler
+    handler,
+    _options?: SubscribeOptions
   ) => {
     return subscriptionWrapper(over(
       (events as EventKeys<TEventMap>[]).map((e) => {
@@ -287,7 +297,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    */
   public next: SubscriptionSurfaceNext<TEventMap> = ((
     resolutionTrigger,
-    rejectionTrigger
+    rejectionTriggerOrOptions?: unknown,
+    maybeOptions?: SubscribeOptions
   ) => {
     type T = typeof resolutionTrigger;
     type TResult = NextResult<TEventMap, T>;
@@ -296,11 +307,20 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     let rejectInternalPromise: (err?: Error) => void;
     let willDestroyListener: Subscription;
 
+    let rejectionTrigger: typeof rejectionTriggerOrOptions | undefined;
+    if(maybeOptions !== undefined) {
+      rejectionTrigger = rejectionTriggerOrOptions;
+    } else if(isSubscribeOptions(rejectionTriggerOrOptions)) {
+      rejectionTrigger = undefined;
+    } else {
+      rejectionTrigger = rejectionTriggerOrOptions;
+    }
+
     const resolutionSub = subscribeListenable(this, resolutionTrigger, (event, payload) => {
       resolve({event, payload} as TResult);
     });
     const rejectionSub = rejectionTrigger
-      ? subscribeListenable(this, rejectionTrigger, (event) => {
+      ? subscribeListenable(this, rejectionTrigger as any, (event) => {
           reject(new Error(`Rejected with event (${String(event)})`));
         })
       : null;
@@ -399,7 +419,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    * {@link Bus} instance — not a hand-rolled surface duck type.
    */
   public pipe: SubscriptionSurfacePipe<TEventMap> = ((
-    dest: PipeSink<TEventMap> | Bus<any>
+    dest: PipeSink<TEventMap> | Bus<any>,
+    _options?: SubscribeOptions
   ): Subscription | Bus<any> => {
     if(typeof dest === 'function') {
       const sink = dest as PipeSink<TEventMap>;
@@ -818,6 +839,13 @@ export interface Bus<TEventMap extends EventMap = EventMap> extends
   IntrospectionSurface<TEventMap>,
   MonitoringSurface<TEventMap> {}
 
+
+/**
+ * @ignore
+ */
+function isSubscribeOptions(value: unknown): value is SubscribeOptions {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 /**
  * @ignore

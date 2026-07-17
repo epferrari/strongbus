@@ -18,8 +18,20 @@ export type PipeEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
 
 export type ScanEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
 
+/**
+ * Options for registering interest that should not count toward monitoring
+ * (`active` / `idle`, default introspection, listener lifecycle hooks).
+ */
+export interface SubscribeOptions {
+  /**
+   * When `true`, the registration still receives / forwards events but is invisible
+   * to this bus's monitoring subsystem. Default `false`.
+   */
+  incognito?: boolean;
+}
+
 /** Options for {@link SubscriptionSurface.scan}. */
-export interface ScanOptions {
+export interface ScanOptions extends SubscribeOptions {
   eager?: boolean;
   pool?: boolean;
   timeout?: number;
@@ -60,14 +72,15 @@ export type SubscriptionSurfaceAny<in out TEventMap extends EventMap> = {
   bivarianceHack<
     TMap extends AnyEventMap<TEventMap>,
     TEvents extends SubscribableEventKeys<TMap>[] & SubscribableEventKeys<TEventMap>[]
-  >(events: TEvents, handler: EventSink<TMap>): Subscription;
+  >(events: TEvents, handler: EventSink<TMap>, options?: SubscribeOptions): Subscription;
 }['bivarianceHack'];
 
 export type SubscriptionSurfacePipe<in out TEventMap extends EventMap> = {
   bivarianceHack: {
-    <TMap extends PipeEventMap<TEventMap>>(sink: PipeSink<TMap>): Subscription;
+    <TMap extends PipeEventMap<TEventMap>>(sink: PipeSink<TMap>, options?: SubscribeOptions): Subscription;
     <TDownstream extends Bus<any>>(
-      downstream: TDownstream & PipePayloadOverlap<TEventMap, InferPipeDownstreamMap<TDownstream>>
+      downstream: TDownstream & PipePayloadOverlap<TEventMap, InferPipeDownstreamMap<TDownstream>>,
+      options?: SubscribeOptions
     ): TDownstream;
   };
 }['bivarianceHack'];
@@ -87,14 +100,21 @@ export type SubscriptionSurfacePipe<in out TEventMap extends EventMap> = {
  * that discriminates on `resolve.trigger` (see {@link Scanner.Evaluator}).
  */
 export type SubscriptionSurfaceNext<in out TEventMap extends EventMap> = {
-  bivarianceHack<T extends SubscribableListenable<EventKeys<TEventMap>>>(
-    resolutionTrigger: T,
-    rejectionTrigger?: T extends EventKeys<TEventMap>[]
-      ? SubscribableListenable<EventKeys<Omit<TEventMap, T[number]>>>
-      : T extends EventKeys<TEventMap>
-        ? SubscribableListenable<EventKeys<Omit<TEventMap, T>>>
-        : never
-  ): CancelablePromise<NextResult<TEventMap, T>>;
+  bivarianceHack: {
+    <T extends SubscribableListenable<EventKeys<TEventMap>>>(
+      resolutionTrigger: T,
+      options?: SubscribeOptions
+    ): CancelablePromise<NextResult<TEventMap, T>>;
+    <T extends SubscribableListenable<EventKeys<TEventMap>>>(
+      resolutionTrigger: T,
+      rejectionTrigger: T extends EventKeys<TEventMap>[]
+        ? SubscribableListenable<EventKeys<Omit<TEventMap, T[number]>>>
+        : T extends EventKeys<TEventMap>
+          ? SubscribableListenable<EventKeys<Omit<TEventMap, T>>>
+          : never,
+      options?: SubscribeOptions
+    ): CancelablePromise<NextResult<TEventMap, T>>;
+  };
 }['bivarianceHack'];
 
 export type SubscriptionSurfaceUnpipe<in out TEventMap extends EventMap> = {
@@ -119,7 +139,11 @@ export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMa
    * Subscribe a handler to a single event. A second call with the same `event` and
    * handler reference returns the existing {@link Subscription} without adding again.
    */
-  on<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): Subscription;
+  on<T extends SubscribableEventKeys<TEventMap>>(
+    event: T,
+    handler: EventHandler<TEventMap, T>,
+    options?: SubscribeOptions
+  ): Subscription;
 
   /**
    * Remove a handler previously registered with {@link SubscriptionSurface.on}.
@@ -129,7 +153,11 @@ export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMa
    */
   off<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): void;
 
-  once<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): Subscription;
+  once<T extends SubscribableEventKeys<TEventMap>>(
+    event: T,
+    handler: EventHandler<TEventMap, T>,
+    options?: SubscribeOptions
+  ): Subscription;
 
   any: SubscriptionSurfaceAny<TEventMap>;
 

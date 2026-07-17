@@ -30,7 +30,8 @@ export type {Scannable} from './types/scannable';
 export type {
   SubscriptionSurface,
   ScanParams,
-  ScanOptions
+  ScanOptions,
+  SubscribeOptions
 } from './types/surfaces/subscriptionSurface';
 export type {EventListenerMapKey, ListenerSet} from './types/listenerRegistry';
 export type {EventKeys, SubscribableEventKeys} from './types/utility';

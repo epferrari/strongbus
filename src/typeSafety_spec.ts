@@ -42,6 +42,13 @@ describe('type safety', () => {
       bus.on('baz', payload => expectType<void>(payload));
     });
 
+    it('accepts SubscribeOptions', () => {
+      const bus = new Bus<TestEventMap>();
+      bus.on('foo', () => undefined, {incognito: true});
+      bus.once('bar', () => undefined, {incognito: true});
+      bus.any(['foo', 'bar'], () => undefined, {incognito: true});
+    });
+
     it('rejects unknown event', () => {
       const bus = new Bus<TestEventMap>();
       // @ts-expect-error 'qux' is not a key of TestEventMap
@@ -158,6 +165,8 @@ describe('type safety', () => {
       });
       // disjoint resolution/rejection triggers are allowed
       bus.next('foo', 'bar');
+      bus.next('foo', {incognito: true});
+      bus.next('foo', 'bar', {incognito: true});
       // a multi-event trigger resolves with a discriminated {event, payload} union
       bus.next(['foo', 'bar']).then(result => {
         expectType<'foo' | 'bar'>(result.event);
@@ -636,14 +645,17 @@ describe('type safety', () => {
 
       expectType<boolean>(bus.hasListeners());
       expectType<boolean>(bus.hasListeners({scope: ListenerScope.ANY}));
+      expectType<boolean>(bus.hasListeners({includeIncognito: true}));
       expectType<number>(bus.getListenerCount());
       expectType<number>(bus.getListenerCount({scope: ListenerScope.OWN}));
+      expectType<number>(bus.getListenerCount({includeIncognito: true, scope: ListenerScope.OWN}));
       expectType<ListenerSet>(bus.getListeners());
       expectType<ListenerSet>(bus.getListeners({scope: ListenerScope.DOWNSTREAM}));
       expectType<number>(bus.getEventCount());
 
       expectType<boolean>(bus.hasListenersFor('foo'));
       expectType<boolean>(bus.hasListenersFor('foo', {scope: ListenerScope.ANY}));
+      expectType<boolean>(bus.hasListenersFor('foo', {includeIncognito: true}));
       expectType<number>(bus.getListenerCountFor('bar', {scope: ListenerScope.OWN}));
       expectType<ListenerSet>(bus.getListenersFor('baz'));
       expectType<ListenerSet>(bus.getListenersFor('baz', {scope: ListenerScope.DOWNSTREAM}));
@@ -657,6 +669,7 @@ describe('type safety', () => {
         expectType<EventKeys<TestEventMap> | typeof WILDCARD>(event);
         expectType<ListenerSet>(handlers);
       }, {scope: ListenerScope.ANY});
+      bus.forEach(() => undefined, {includeIncognito: true});
     });
 
     it('rejects unknown event on get listeners for', () => {
