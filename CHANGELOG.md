@@ -138,7 +138,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   set when none are registered. `forEach` callback event keys are compile-time
   narrowed only; at runtime all registered keys are visited.
 
-- **`on(event, handler)` is reference-idempotent** — a second `on` with the same
+- **`on(event, handler)` is reference-idempotent** with default `options.duplicateSubscriptionStrategy` — a second `on` with the same
   event and handler returns the existing `Subscription` (one emit invocation, one
   remove lifecycle).
 - **`emit(event, payload)` takes a single correlated payload** instead of a
