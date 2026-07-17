@@ -776,8 +776,6 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     }
 
     const incognito = options?.incognito === true;
-    const n: number = (this.handlersByEvent.get(event)?.size ?? 0) + 1;
-    this.logger.onAddListener(event, n);
     if(!incognito) {
       this.lifecycle.ownListenerWillAdd(event);
     }
@@ -793,6 +791,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     if(!incognito) {
       this.lifecycle.ownListenerDidAdd(event);
     }
+    this.logger.onAddListener(event, next.size);
     return this.generateListenerSubscription(event as EventKeys<TEventMap>, handler);
   }
 
