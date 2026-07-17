@@ -549,6 +549,254 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('#off', () => {
+    it('removes a handler previously registered with on', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+      bus.on('foo', handleFoo);
+
+      bus.off('foo', handleFoo);
+      bus.emit('foo', 'elephant');
+
+      expect(handleFoo).not.toHaveBeenCalled();
+      expect(bus.hasListeners()).toBeFalsy();
+    });
+
+    it('is a no-op when the handler is not registered', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+
+      expect(() => bus.off('foo', handleFoo)).not.toThrow();
+      expect(bus.hasListeners()).toBeFalsy();
+    });
+
+    it('is idempotent', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+      bus.on('foo', handleFoo);
+
+      bus.off('foo', handleFoo);
+      expect(() => bus.off('foo', handleFoo)).not.toThrow();
+      expect(bus.hasListeners()).toBeFalsy();
+    });
+
+    it('makes a previously returned Subscription a no-op', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+      const sub = bus.on('foo', handleFoo);
+
+      bus.off('foo', handleFoo);
+      expect(() => sub()).not.toThrow();
+      expect(bus.hasListeners()).toBeFalsy();
+    });
+
+    it('does not remove other handlers on the same event', () => {
+      const handleA = jasmine.createSpy('handleA') as (fooPayload: string) => void;
+      const handleB = jasmine.createSpy('handleB') as (fooPayload: string) => void;
+      bus.on('foo', handleA);
+      bus.on('foo', handleB);
+
+      bus.off('foo', handleA);
+      bus.emit('foo', 'elephant');
+
+      expect(handleA).not.toHaveBeenCalled();
+      expect(handleB).toHaveBeenCalledWith('elephant');
+    });
+
+    it('does not remove the same handler registered on a different event', () => {
+      const handle = jasmine.createSpy('handle');
+      bus.on('foo', handle as (fooPayload: string) => void);
+      bus.on('bar', handle as (barPayload: boolean) => void);
+
+      bus.off('foo', handle as (fooPayload: string) => void);
+      bus.emit('foo', 'elephant');
+      bus.emit('bar', true);
+
+      expect(handle).toHaveBeenCalledTimes(1);
+      expect(handle).toHaveBeenCalledWith(true);
+    });
+
+    it('returns void', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+      bus.on('foo', handleFoo);
+
+      expect(bus.off('foo', handleFoo)).toBeUndefined();
+    });
+
+    it('raises the same remove lifecycle hooks as unsubscribing', () => {
+      const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+      bus.on('foo', handleFoo);
+
+      const order: string[] = [];
+      bus.hook('willRemoveListener', (event) => order.push(`willRemove:${event}`));
+      bus.hook('didRemoveListener', (event) => order.push(`didRemove:${event}`));
+      bus.hook('willIdle', () => order.push('willIdle'));
+      bus.hook('idle', () => order.push('idle'));
+
+      bus.off('foo', handleFoo);
+
+      expect(order).toEqual([
+        'willIdle',
+        'willRemove:foo',
+        'didRemove:foo',
+        'idle'
+      ]);
+    });
+  });
+
+  describe('unsubscribe queue', () => {
+    let onWillRemoveListener: jasmine.Spy;
+    let onRemoveListener: jasmine.Spy;
+    let onWillIdle: jasmine.Spy;
+    let onIdle: jasmine.Spy;
+
+    beforeEach(() => {
+      bus.hook('willRemoveListener', onWillRemoveListener = jasmine.createSpy('onWillRemoveListener'));
+      bus.hook('didRemoveListener', onRemoveListener = jasmine.createSpy('onRemoveListener'));
+      bus.hook('willIdle', onWillIdle = jasmine.createSpy('onWillIdle'));
+      bus.hook('idle', onIdle = jasmine.createSpy('onIdle'));
+    });
+
+    it('handles unsubscribes fired from hooks', () => {
+      const sub1 = bus.on('foo', () => null);
+      const sub2 = bus.on('foo', () => null);
+      bus.hook('willRemoveListener', () => sub2());
+
+      sub1();
+      expect(onWillIdle).toHaveBeenCalledTimes(1);
+      expect(onIdle).toHaveBeenCalledTimes(1);
+    });
+
+    it('defers a nested unsubscribe until the current removal finishes', () => {
+      const order: string[] = [];
+      const sub1 = bus.on('foo', () => null);
+      const sub2 = bus.on('bar', () => null);
+      let nested = false;
+
+      bus.hook('willRemoveListener', (event) => {
+        order.push(`willRemove:${event}`);
+        if(!nested && event === 'foo') {
+          nested = true;
+          order.push('queue-sub2');
+          sub2();
+          order.push('after-queue-sub2');
+        }
+      });
+      bus.hook('didRemoveListener', (event) => order.push(`didRemove:${event}`));
+
+      sub1();
+
+      // nested sub2() returns before bar's willRemove — queued, not re-entrant
+      expect(order).toEqual([
+        'willRemove:foo',
+        'queue-sub2',
+        'after-queue-sub2',
+        'didRemove:foo',
+        'willRemove:bar',
+        'didRemove:bar'
+      ]);
+      expect(bus.hasListeners()).toBeFalse();
+      expect(onWillIdle).toHaveBeenCalledTimes(1);
+      expect(onIdle).toHaveBeenCalledTimes(1);
+    });
+
+    it('defers unsubscribes triggered from didRemoveListener', () => {
+      const order: string[] = [];
+      const sub1 = bus.on('foo', () => null);
+      const sub2 = bus.on('bar', () => null);
+      let nested = false;
+
+      bus.hook('willRemoveListener', (event) => order.push(`willRemove:${event}`));
+      bus.hook('didRemoveListener', (event) => {
+        order.push(`didRemove:${event}`);
+        if(!nested && event === 'foo') {
+          nested = true;
+          order.push('queue-sub2');
+          sub2();
+          order.push('after-queue-sub2');
+        }
+      });
+
+      sub1();
+
+      expect(order).toEqual([
+        'willRemove:foo',
+        'didRemove:foo',
+        'queue-sub2',
+        'after-queue-sub2',
+        'willRemove:bar',
+        'didRemove:bar'
+      ]);
+      expect(bus.hasListeners()).toBeFalse();
+    });
+
+    it('processes a chain of nested unsubscribes in FIFO order', () => {
+      const order: string[] = [];
+      const sub1 = bus.on('foo', () => null);
+      const sub2 = bus.on('bar', () => null);
+      const sub3 = bus.on('baz', () => null);
+
+      bus.hook('willRemoveListener', (event) => {
+        order.push(`willRemove:${event}`);
+        if(event === 'foo') {
+          sub2();
+        } else if(event === 'bar') {
+          sub3();
+        }
+      });
+      bus.hook('didRemoveListener', (event) => order.push(`didRemove:${event}`));
+
+      sub1();
+
+      expect(order).toEqual([
+        'willRemove:foo',
+        'didRemove:foo',
+        'willRemove:bar',
+        'didRemove:bar',
+        'willRemove:baz',
+        'didRemove:baz'
+      ]);
+      expect(bus.hasListeners()).toBeFalse();
+      expect(onWillIdle).toHaveBeenCalledTimes(1);
+      expect(onIdle).toHaveBeenCalledTimes(1);
+    });
+
+    it('treats a duplicate dispose of an already-queued subscription as a no-op', () => {
+      const sub1 = bus.on('foo', () => null);
+      const sub2 = bus.on('bar', () => null);
+
+      bus.hook('willRemoveListener', (event) => {
+        if(event === 'foo') {
+          sub2();
+          sub2();
+        }
+      });
+
+      sub1();
+
+      expect(bus.hasListeners()).toBeFalse();
+      expect(onWillRemoveListener).toHaveBeenCalledTimes(2);
+      expect(onRemoveListener).toHaveBeenCalledTimes(2);
+      expect(onWillIdle).toHaveBeenCalledTimes(1);
+      expect(onIdle).toHaveBeenCalledTimes(1);
+    });
+
+    it('removes handlers so subsequent emits do not invoke them', () => {
+      const handleFoo = jasmine.createSpy('handleFoo');
+      const handleBar = jasmine.createSpy('handleBar');
+      const sub1 = bus.on('foo', handleFoo);
+      const sub2 = bus.on('bar', handleBar);
+      bus.hook('willRemoveListener', (event) => {
+        if(event === 'foo') {
+          sub2();
+        }
+      });
+
+      sub1();
+      bus.emit('foo', 'x');
+      bus.emit('bar', true);
+
+      expect(handleFoo).not.toHaveBeenCalled();
+      expect(handleBar).not.toHaveBeenCalled();
+    });
+  });
+
   describe('#once', () => {
     it('subscribes handler to an event and unsubscribes after the first invocation', () => {
       const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
@@ -1182,16 +1430,6 @@ describe('Strongbus.Bus', () => {
         downstream.on('foo', singleEventHandler);
         expect(onDownstreamActive).toHaveBeenCalledTimes(1);
         expect(onActive).toHaveBeenCalledTimes(1);
-      });
-
-      it('handles unsubscribes fired from hooks', async () => {
-        const sub1 = bus.on('foo', () => null);
-        const sub2 = bus.on('foo', () => null);
-        bus.hook('willRemoveListener', () => sub2());
-
-        sub1();
-        expect(onWillIdle).toHaveBeenCalledTimes(1);
-        expect(onIdle).toHaveBeenCalledTimes(1);
       });
 
       it('raises "idle" events independently of downstreams', () => {

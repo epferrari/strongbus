@@ -87,14 +87,21 @@ customize).
 ## Subscriptions
 
 Every subscriber returns a `Subscription` — a function that releases the subscription. It can be disposed by
-invoking it directly or via `.unsubscribe()`; both are idempotent.
+invoking it directly or via `.unsubscribe()`; both are idempotent. For Node `EventEmitter` familiarity,
+`off(event, handler)` removes a handler by the same function reference passed to `on` (returns `void`).
 
 ```typescript
 const sub = bus.on('message', handler);
 
 sub();              // release
 sub.unsubscribe();  // equivalent; safe to call again
+
+// or, with the original handler reference:
+bus.off('message', handler);
 ```
+
+Prefer keeping the `Subscription` when you can; `off` is useful when the caller never stored it.
+It only removes handlers registered with `on` — not wrappers from `once`, `any`, or `pipe`.
 
 ## Subscribing to events
 

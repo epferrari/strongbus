@@ -117,6 +117,14 @@ export type NextResult<TEventMap extends EventMap, T> =
 export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMap> {
   on<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): Subscription;
 
+  /**
+   * Remove a handler previously registered with {@link SubscriptionSurface.on}.
+   * Uses the same handler reference; no-op if that handler is not registered for `event`.
+   * Does not remove wrappers created by {@link SubscriptionSurface.once}, {@link SubscriptionSurface.any},
+   * or {@link SubscriptionSurface.pipe}.
+   */
+  off<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): void;
+
   once<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): Subscription;
 
   any: SubscriptionSurfaceAny<TEventMap>;

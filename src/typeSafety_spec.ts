@@ -63,6 +63,38 @@ describe('type safety', () => {
     });
   });
 
+  describe('#off', () => {
+    it('accepts valid event and handler types', () => {
+      const bus = new Bus<TestEventMap>();
+      const handleFoo = (payload: number) => {
+        expectType<number>(payload);
+      };
+      bus.on('foo', handleFoo);
+      bus.off('foo', handleFoo);
+      expectType<void>(bus.off('foo', handleFoo));
+    });
+
+    it('rejects unknown event', () => {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'qux' is not a key of TestEventMap
+      bus.off('qux', () => undefined);
+    });
+
+    it('rejects mismatched handler payload', () => {
+      const bus = new Bus<TestEventMap>();
+      // @ts-expect-error 'foo' carries a number payload, not a string
+      bus.off('foo', (payload: string) => undefined);
+    });
+
+    it('rejects wildcard', () => {
+      const bus = new Bus<WildcardEventMap>();
+      // @ts-expect-error WILDCARD is reserved for internal use
+      bus.off(WILDCARD, () => undefined);
+      // @ts-expect-error WILDCARD is reserved for internal use
+      bus.off('*', () => undefined);
+    });
+  });
+
   describe('#once', () => {
     it('accepts valid event and payload types', () => {
       const bus = new Bus<TestEventMap>();
@@ -687,6 +719,7 @@ describe('type safety', () => {
         return this.bus.name;
       }
       public on: SubscriptionSurface<Narrow>['on'] = this.bus.on;
+      public off: SubscriptionSurface<Narrow>['off'] = this.bus.off;
       public hook = this.bus.hook;
       public once: SubscriptionSurface<Narrow>['once'] = this.bus.once;
       public any: SubscriptionSurface<Narrow>['any'] = this.bus.any;

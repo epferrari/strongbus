@@ -17,6 +17,10 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Added
 
+- **`off(event, handler)`** — remove a handler previously registered with `on` by
+  the same function reference. Returns `void` (not the bus). Prefer the
+  `Subscription` from `on` when available; `off` does not remove wrappers from
+  `once`, `any`, or `pipe`.
 - **`once(event, handler)`** — subscribe to a single event and automatically
   unsubscribe after the first emission.
 - **`pipe(sink)` accepts a function sink** in addition to a `Bus`. The sink

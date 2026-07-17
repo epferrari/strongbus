@@ -37,7 +37,6 @@ import type {MonitoringSurface, MonitoringHook} from './types/surfaces/monitorin
 import type {EventKeys, SubscribableEventKeys, VoidEventKeys} from './types/utility';
 import {over} from './utils/over';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
-import {randomId} from './utils/randomId';
 import {subscribeListenable} from './utils/subscribeListenable';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 
@@ -118,12 +117,19 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   private readonly downstreams = new Map<Bus<TEventMap>, VoidFunction>();
   private readonly downstreamListenerCountsByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
   private readonly sinks = new WeakMap<PipeSink<TEventMap>, Subscription>();
-  private readonly subscriptionCache = new Map<string, Subscription>();
+  /**
+   * Live disposer index: handler → event → Subscriptions for that pair.
+   * Supports O(k) {@link Bus.off} (k = handles for that pair, usually 1).
+   */
+  private readonly subscriptionsByHandler = new Map<
+    GenericHandler,
+    Map<EventKeys<TEventMap>|WILDCARD, Subscription[]>
+  >();
   private readonly bus = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
   private readonly scannerPools = new ScannerPools<TEventMap>();
   // queue of unsubscription requests so that they are processed transactionally in order
   private readonly unsubQueue: {
-    token: string;
+    subscription: Subscription;
     event: EventKeys<TEventMap>|WILDCARD;
     handler: GenericHandler;
   }[] = [];
@@ -188,6 +194,22 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    */
   public on<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): Subscription {
     return this.addListener(event, handler);
+  }
+
+  /**
+   * Remove a handler previously registered with {@link Bus.on}.
+   * Pass the same function reference; no-op if that handler is not registered for `event`.
+   * Does not remove wrappers from {@link Bus.once}, {@link Bus.any}, or {@link Bus.pipe}.
+   */
+  public off<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): void {
+    const list = this.subscriptionsByHandler.get(handler)?.get(event);
+    if(!list?.length) {
+      return;
+    }
+    // copy — each dispose mutates the live list
+    for(const sub of list.slice()) {
+      sub();
+    }
   }
 
   /**
@@ -634,8 +656,14 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   private releaseSubscribers(): void {
     // any un-invoked unsubscribes will be invoked,
     // their lifecycle hooks will be triggered,
-    // and they will be removed from the cache
-    over(this.subscriptionCache)();
+    // and they will be removed from the index
+    const pending: Subscription[] = [];
+    for(const byEvent of this.subscriptionsByHandler.values()) {
+      for(const list of byEvent.values()) {
+        pending.push(...list);
+      }
+    }
+    over(pending)();
     this.bus.clear();
   }
 
@@ -666,16 +694,26 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   private generateListenerSubscription(event: EventKeys<TEventMap>|WILDCARD, handler: GenericHandler): Subscription {
-    const token = randomId();
+    let byEvent = this.subscriptionsByHandler.get(handler);
+    if(!byEvent) {
+      byEvent = new Map();
+      this.subscriptionsByHandler.set(handler, byEvent);
+    }
+    let list = byEvent.get(event);
+    if(!list) {
+      list = [];
+      byEvent.set(event, list);
+    }
+
     const sub = subscriptionWrapper(() => {
       this.unsubQueue.push({
-        token,
+        subscription: sub,
         event,
         handler
       });
       this.purgeUnsubQueue();
     });
-    this.subscriptionCache.set(token, sub);
+    list.push(sub);
     return sub;
   }
 
@@ -687,12 +725,23 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     this._purgingUnsubQueue = true;
 
     while(this.unsubQueue.length) {
-      const {token, event, handler} = this.unsubQueue.shift();
-      if(this.subscriptionCache.has(token)) {
-        this.subscriptionCache.delete(token);
-        // lifecycle events may trigger additional unsubs, which will be pushed to the end of queue and handled in a subsequent iteration of this loop
-        this.removeListener(event, handler);
+      const {subscription, event, handler} = this.unsubQueue.shift();
+      const byEvent = this.subscriptionsByHandler.get(handler);
+      const list = byEvent?.get(event);
+      const idx = list?.indexOf(subscription) ?? -1;
+      if(idx === -1) {
+        continue;
       }
+
+      list.splice(idx, 1);
+      if(list.length === 0) {
+        byEvent.delete(event);
+        if(byEvent.size === 0) {
+          this.subscriptionsByHandler.delete(handler);
+        }
+      }
+      // lifecycle events may trigger additional unsubs, which will be pushed to the end of queue and handled in a subsequent iteration of this loop
+      this.removeListener(event, handler);
     }
 
     this._purgingUnsubQueue = false;
