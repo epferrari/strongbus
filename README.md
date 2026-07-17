@@ -16,14 +16,14 @@ memory-leak detection.
 - **Type-safe by construction** — payloads are inferred from your event map; unknown events and mismatched
   payloads are compile errors.
 - **Disposable subscriptions** — every subscriber returns a `Subscription` you can release.
-- **Lifecycle introspection** — hook into `active`/`idle` transitions, listener add/remove, and teardown.
-- **Incognito subscriptions** — `{incognito: true}` receives/forwards events without activating monitoring.
-- **Composable buses** — `pipe` events from one bus into another (or into a function sink).
-- **Promise interop** — `await` the next event with `next`, or resolve on a computed condition with `scan`.
-- **Configurable duplicate subscriptions** — `duplicateSubscriptionStrategy` controls counting, invoke,
+- **[Lifecycle introspection](#lifecycle-hooks)** — hook into `active`/`idle` transitions, listener add/remove, and teardown.
+- **[Incognito subscriptions](#incognito-subscriptions)** — `{incognito: true}` receives/forwards events without activating monitoring.
+- **[Composable buses](#piping)** — `pipe` events from one bus into another (or into a function sink).
+- **[Promise interop](#awaiting-events)** — `await` the next event with `next`, or resolve on a computed condition with `scan`.
+- **[Configurable duplicate subscriptions](#options)** — `duplicateSubscriptionStrategy` controls counting, invoke,
   dispose, and logging for the same listenable+handler, with presets aligned to familiar APIs
   (`EventEmitter` (Node-style), `EventTarget` (Browser-style), `SharedHandler`).
-- **Memory-leak detection** — configurable per-event listener thresholds with info/warn/error logging.
+- **[Memory-leak detection](#memory-leak-detection)** — configurable per-event listener thresholds with info/warn/error logging.
 
 ## Installation
 
