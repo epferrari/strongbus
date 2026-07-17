@@ -110,7 +110,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     }
   }
 
-  public unpipeSink(sink: PipeSink<TEventMap>): void {
+  public unpipe(sink: PipeSink<TEventMap>): void {
     const intent = this.pipeIntents.get(sink as GenericHandler)?.get(WILDCARD);
     if(intent?.frames.length) {
       const frames = intent.frames.slice();
@@ -358,7 +358,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     }
   }
 
-  public pipeSink(
+  public pipe(
     sink: PipeSink<TEventMap>,
     options?: SubscribeOptions
   ): Subscription {

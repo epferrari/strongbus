@@ -129,16 +129,15 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       })
     };
   }
-
-  private readonly forwards = new Forwards();
-  private readonly subscriptions!: SubscriptionManager<TEventMap>;
-  private readonly downstream!: DownstreamManager<TEventMap>;
-  private readonly introspection!: IntrospectionManager<TEventMap>;
-  private readonly scanners = new ScannerPools<TEventMap>();
-  // set on-construct
+  
   private readonly options!: MaterializedBusOptions;
   private readonly logger!: StrongbusLogger<TEventMap>;
   private readonly lifecycle!: LifecycleManager<TEventMap>;
+  private readonly forwards!: Forwards; 
+  private readonly subscriptions!: SubscriptionManager<TEventMap>;
+  private readonly downstream!: DownstreamManager<TEventMap>;
+  private readonly introspection!: IntrospectionManager<TEventMap>;
+  private readonly scanners!: ScannerPools<TEventMap>;
   /**
    * Subscribe to meta changes to the {@link Bus} with {@link Lifecycle} events
    */
@@ -157,6 +156,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       logger: this.logger
     });
     this.hook = this.lifecycle.hook;
+    this.forwards = new Forwards();
     this.subscriptions = new SubscriptionManager({
       host: this.createSubscriptionHost(),
       options: this.options,
@@ -172,6 +172,38 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       subscriptions: this.subscriptions,
       downstream: this.downstream
     });
+    this.scanners = new ScannerPools<TEventMap>();
+  }
+
+  public emit<T extends VoidEventKeys<TEventMap>>(event: T, payload?: null | undefined): boolean;
+  public emit<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T]): boolean;
+  public emit(
+    ...args: {[K in EventKeys<TEventMap>]: [event: K, payload: TEventMap[K]]}[EventKeys<TEventMap>]
+  ): boolean;
+  public emit(
+    event: EventKeys<TEventMap>,
+    payload?: TEventMap[EventKeys<TEventMap>]
+  ): boolean {
+    if((event as EventKeys<TEventMap> | WILDCARD) === WILDCARD) {
+      throw new Error(`Do not emit "${String(event)}" manually. Reserved for internal use.`);
+    }
+
+    let handled = false;
+
+    this.forwards.begin();
+    try {
+      handled = this.subscriptions.consumeEvent(event, payload) || handled;
+      handled = this.subscriptions.consumeEvent(WILDCARD, event, payload) || handled;
+      this.forwards.flush();
+      handled = this.downstream.propagate(event, payload) || handled;
+    } finally {
+      this.forwards.end();
+    }
+
+    if(!handled && !this.options.allowUnhandledEvents) {
+      this.handleUnexpectedEvent(event, payload);
+    }
+    return handled;
   }
 
   /**
@@ -228,37 +260,6 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     return this.subscriptions.once(event, handler, options);
   }
 
-  public emit<T extends VoidEventKeys<TEventMap>>(event: T, payload?: null | undefined): boolean;
-  public emit<T extends EventKeys<TEventMap>>(event: T, payload: TEventMap[T]): boolean;
-  public emit(
-    ...args: {[K in EventKeys<TEventMap>]: [event: K, payload: TEventMap[K]]}[EventKeys<TEventMap>]
-  ): boolean;
-  public emit(
-    event: EventKeys<TEventMap>,
-    payload?: TEventMap[EventKeys<TEventMap>]
-  ): boolean {
-    if((event as EventKeys<TEventMap> | WILDCARD) === WILDCARD) {
-      throw new Error(`Do not emit "${String(event)}" manually. Reserved for internal use.`);
-    }
-
-    let handled = false;
-
-    this.forwards.begin();
-    try {
-      handled = this.subscriptions.consumeEvent(event, payload) || handled;
-      handled = this.subscriptions.consumeEvent(WILDCARD, event, payload) || handled;
-      this.forwards.flush();
-      handled = this.downstream.propagate(event, payload) || handled;
-    } finally {
-      this.forwards.end();
-    }
-
-    if(!handled && !this.options.allowUnhandledEvents) {
-      this.handleUnexpectedEvent(event, payload);
-    }
-    return handled;
-  }
-
   /**
    * Handle multiple events with the same handler.
    * {@link EventSink} receives raised event as first argument, payload as second argument.
@@ -276,6 +277,42 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       options
     );
   }) as SubscriptionSurfaceAny<TEventMap>;
+
+  /**
+   * Pipe events into another {@link Bus}, or into a function sink.
+   * Function sinks must satisfy {@link PipeSink}: they receive the raised event as
+   * a single correlated `{event, payload}` {@link PipeMessage}, plus a `forward`
+   * function bound to that message. `forward(dst)` queues a re-emit on a
+   * payload-compatible bus (no downstream link) for the delegation phase after
+   * this bus's own handlers, and returns a promise that resolves to
+   * `dst.emit`'s result — or `false` if `forward` expired after this emit completed.
+   *
+   * Bus-to-bus piping returns the downstream bus (for chaining), and requires a real
+   * {@link Bus} instance — not a hand-rolled surface duck type.
+   */
+  public pipe: SubscriptionSurfacePipe<TEventMap> = ((
+    dest: PipeSink<TEventMap> | Bus<any>,
+    options?: SubscribeOptions
+  ): Subscription | Bus<any> => {
+    if(typeof dest === 'function') {
+      return this.subscriptions.pipe(dest as PipeSink<TEventMap>, options);
+    }
+    return this.downstream.pipe(dest, options) as Bus<any>;
+  }) as SubscriptionSurfacePipe<TEventMap>;
+
+  /**
+   * Stop piping events into a bus downstream or function sink previously passed to
+   * {@link Bus.pipe}. Function sinks must satisfy {@link PipeSink}.
+   */
+  public unpipe: SubscriptionSurfaceUnpipe<TEventMap> = ((
+    dest: PipeSink<TEventMap> | Bus<any>
+  ) => {
+    if(typeof dest === 'function') {
+      this.subscriptions.unpipe(dest as PipeSink<TEventMap>);
+    } else {
+      this.downstream.unpipe(dest);
+    }
+  }) as SubscriptionSurfaceUnpipe<TEventMap>;
 
   /**
    * Utility for resolving/rejecting a promise based on the reception of an event.
@@ -419,42 +456,6 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
     return this.scanners.scan<any>(this, scanParams);
   }) as SubscriptionSurfaceScan<TEventMap>;
-
-  /**
-   * Pipe events into another {@link Bus}, or into a function sink.
-   * Function sinks must satisfy {@link PipeSink}: they receive the raised event as
-   * a single correlated `{event, payload}` {@link PipeMessage}, plus a `forward`
-   * function bound to that message. `forward(dst)` queues a re-emit on a
-   * payload-compatible bus (no downstream link) for the delegation phase after
-   * this bus's own handlers, and returns a promise that resolves to
-   * `dst.emit`'s result — or `false` if `forward` expired after this emit completed.
-   *
-   * Bus-to-bus piping returns the downstream bus (for chaining), and requires a real
-   * {@link Bus} instance — not a hand-rolled surface duck type.
-   */
-  public pipe: SubscriptionSurfacePipe<TEventMap> = ((
-    dest: PipeSink<TEventMap> | Bus<any>,
-    options?: SubscribeOptions
-  ): Subscription | Bus<any> => {
-    if(typeof dest === 'function') {
-      return this.subscriptions.pipeSink(dest as PipeSink<TEventMap>, options);
-    }
-    return this.downstream.pipe(dest, options) as Bus<any>;
-  }) as SubscriptionSurfacePipe<TEventMap>;
-
-  /**
-   * Stop piping events into a bus downstream or function sink previously passed to
-   * {@link Bus.pipe}. Function sinks must satisfy {@link PipeSink}.
-   */
-  public unpipe: SubscriptionSurfaceUnpipe<TEventMap> = ((
-    dest: PipeSink<TEventMap> | Bus<any>
-  ) => {
-    if(typeof dest === 'function') {
-      this.subscriptions.unpipeSink(dest as PipeSink<TEventMap>);
-    } else {
-      this.downstream.unpipe(dest);
-    }
-  }) as SubscriptionSurfaceUnpipe<TEventMap>;
 
   /**
    * Subscribe to meta states of the {@link Bus}, `idle` and `active`.
