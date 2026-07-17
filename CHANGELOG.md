@@ -52,16 +52,20 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   ```
 
   To send the event on to another bus, call `forward(dest)` rather than splitting
-  the pair back into `(event, payload)`. This re-emits the whole message on `dest`
-  without a downstream link (avoiding the listener-lifecycle overhead
-  `pipe(bus)` incurs):
+  the pair back into `(event, payload)`. This queues a re-emit of the whole
+  message on `dest` without a downstream link (avoiding the listener-lifecycle
+  overhead `pipe(bus)` incurs). Queued emits run in the *delegation* phase after
+  every own handler on the source has returned (capture semantics). `forward` is
+  live for the duration of that source `emit` and returns a `Promise<boolean>`
+  that resolves to `dest.emit`'s result, or `false` if `forward` is called after
+  the emit has completed:
 
   ```ts
   bus.pipe((piped, forward) => {
     if (piped.event === 'didRemoveItem') {
       cache.delete(piped.payload.id);
     }
-    forward(other); // re-emit the whole message on a payload-compatible bus
+    forward(other); // queues re-emit after this bus's own handlers
   });
   ```
 
@@ -138,6 +142,13 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **`PipePayloadOverlap` uses tuple equality (`[A] extends [B]`)** so narrow-to-wide
   `pipe`/`forward` targets type-check when the source map is an open generic and
   the downstream map is a concrete superset (e.g. `_incomingPushBus.pipe(_bus)`).
+- **`pipe(sink)` `forward(dest)` is deferred and expiring** — calling `forward`
+  during a sink queues the re-emit until after every own handler on the source has
+  returned (capture → delegation), before structural `pipe(bus)` links. `forward`
+  is live for the duration of that source `emit` and returns `Promise<boolean>`:
+  it resolves to `dest.emit`'s result when the queued emit runs, or `false` if
+  called after the emit has completed (including after an `await` in an async sink,
+  since `emit` does not await sinks).
 - **`pipe(bus)` returns the concrete downstream type** (`TDownstream`), preserving
   subclasses for chaining (e.g. `head.pipe(mid).pipe(tail)`).
 - **`on(event, handler)` only accepts a single event key.** It no longer

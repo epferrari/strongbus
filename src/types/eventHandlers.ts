@@ -70,9 +70,17 @@ export type PipePayloadOverlap<TSource extends EventMap, TDownstream extends Eve
 
 /**
  * The `forward` function handed to a {@link PipeSink} as its second argument,
- * bound to the current {@link PipeMessage}. Calling `forward(dst)` re-emits that
- * message on `dst` — like `src.pipe(dst)` but per-message and without registering
- * a downstream link (so none of the listener-lifecycle overhead `pipe(bus)` incurs).
+ * bound to the current {@link PipeMessage}. Calling `forward(dst)` queues a
+ * re-emit of that message on `dst` — like `src.pipe(dst)` but per-message and
+ * without registering a downstream link (so none of the listener-lifecycle
+ * overhead `pipe(bus)` incurs).
+ *
+ * Queued emits run in the *delegation* phase of the source `emit`, after every
+ * own handler on the source has returned (capture semantics). `forward` is live
+ * for the duration of that source `emit`; once the emit completes, further calls
+ * resolve to `false` without emitting. The returned promise resolves to
+ * `target.emit`'s boolean result when the queued emit runs, or `false` if the
+ * forward expired.
  *
  * `dst` must be a {@link Bus} whose map is *payload-compatible* with the source:
  * every event `dst` declares must either be absent from the source or carry the
@@ -83,7 +91,7 @@ export type PipePayloadOverlap<TSource extends EventMap, TDownstream extends Eve
 export type PipeForward<in out TEventMap extends EventMap> = {
   bivarianceHack: <TDownstream extends Bus<any>>(
     dest: TDownstream & PipePayloadOverlap<TEventMap, InferPipeDownstreamMap<TDownstream>>
-  ) => boolean;
+  ) => Promise<boolean>;
 }['bivarianceHack'];
 
 /**
@@ -98,13 +106,14 @@ export type PipeForward<in out TEventMap extends EventMap> = {
  *   if (message.event === 'didRemoveItem') {
  *     cache.delete(message.payload.id); // payload narrowed to this event's type
  *   }
- *   forward(otherBus); // re-emit the whole message on a payload-compatible bus
+ *   forward(otherBus); // queues re-emit after this bus's own handlers
  * });
  * ```
  *
  * Because the message is never split back into `(event, payload)`, a mismatched
  * pair can't be fabricated, and `forward`'s target constraint keeps the payload
- * sound end-to-end.
+ * sound end-to-end. See {@link PipeForward} for deferral, expiry, and the
+ * `Promise<boolean>` result.
  *
  * Declared via the `bivarianceHack` indirection so the parameters are bivariant;
  * this lets a `Bus` over a wider event map satisfy a view over a narrower one.

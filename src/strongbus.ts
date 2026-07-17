@@ -121,6 +121,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }>();
   private readonly downstreamListenerCountsByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
   private readonly sinks = new WeakMap<PipeSink<TEventMap>, Subscription>();
+  private readonly forwards = new Forwards();
   /**
    * Live disposer index: handler → event → Subscription.
    * Duplicate {@link Bus.on} with the same handler returns the same Subscription;
@@ -265,9 +266,15 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
     let handled = false;
 
-    handled = this.emitEvent(event, payload) || handled;
-    handled = this.emitEvent(WILDCARD, event, payload) || handled;
-    handled = this.forward(event, payload) || handled;
+    this.forwards.begin();
+    try {
+      handled = this.emitEvent(event, payload) || handled;
+      handled = this.emitEvent(WILDCARD, event, payload) || handled;
+      this.forwards.flush();
+      handled = this.propagateDownstream(event, payload) || handled;
+    } finally {
+      this.forwards.end();
+    }
 
     if(!handled && !this.options.allowUnhandledEvents) {
       this.handleUnexpectedEvent(event, payload);
@@ -439,8 +446,10 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    * Pipe events into another {@link Bus}, or into a function sink.
    * Function sinks must satisfy {@link PipeSink}: they receive the raised event as
    * a single correlated `{event, payload}` {@link PipeMessage}, plus a `forward`
-   * function bound to that message. `forward(dst)` re-emits the whole message on a
-   * payload-compatible bus without a downstream link.
+   * function bound to that message. `forward(dst)` queues a re-emit on a
+   * payload-compatible bus (no downstream link) for the delegation phase after
+   * this bus's own handlers, and returns a promise that resolves to
+   * `dst.emit`'s result — or `false` if `forward` expired after this emit completed.
    *
    * Bus-to-bus piping returns the downstream bus (for chaining), and requires a real
    * {@link Bus} instance — not a hand-rolled surface duck type.
@@ -452,8 +461,9 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     if(typeof dest === 'function') {
       const sink = dest as PipeSink<TEventMap>;
       const wrapper: GenericHandler = (event, payload) => {
-        const forward = ((target: {emit: (e: any, p: any) => boolean}) =>
-          target.emit(event, payload)) as PipeForward<TEventMap>;
+        const forward = ((target: Bus<any>) =>
+          this.forwards.enqueue(() => target.emit(event, payload))
+        ) as PipeForward<TEventMap>;
         sink({event, payload} as PipeMessage<TEventMap>, forward);
       };
       this.sinks.set(sink, this.addListener(WILDCARD, wrapper, options));
@@ -912,14 +922,13 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       return false;
   }
 
-  private forward<T extends EventKeys<TEventMap>>(event: T, payload?: TEventMap[T]): boolean {
+  private propagateDownstream<T extends EventKeys<TEventMap>>(event: T, payload?: TEventMap[T]): boolean {
     const {downstreams: _downstreams} = this;
-    if(_downstreams.size) {
-      return Array.from(_downstreams.keys())
-        .reduce((acc, d) => (d.emit(event as any, payload as any) || acc), false);
-    } else {
-      return false;
+    let handled = false;
+    for(const d of this.downstreams.keys()) {
+      handled = d.emit(event as any, payload as any) || handled;
     }
+    return handled;
   }
 
   private createLifecycleHost(): LifecycleHost<TEventMap> {
@@ -1010,4 +1019,47 @@ function downstreamSnapshotFromListenersMap<TEventMap extends EventMap>(
     snapshot.push({event, count: handlers.size});
   }
   return snapshot;
+}
+
+class Forwards {
+  private turn: number = 0;
+  private accepting: boolean = false;
+  private readonly queue: {
+    turn: number;
+    delegateEmit: () => boolean;
+    resolve: (handled: boolean) => void;
+  }[] = [];
+
+  public begin(): void {
+    this.accepting = true;
+  }
+
+  public enqueue(delegateEmit: () => boolean): Promise<boolean> {
+    if(!this.accepting) {
+      return Promise.resolve(false);
+    }
+    const {turn} = this;
+    return new Promise<boolean>((resolve) => {
+      this.queue.push({turn, delegateEmit, resolve});
+    });
+  }
+
+  public flush(): void {
+    const curr = this.turn;
+    this.turn++;
+    const records = this.queue.slice();
+    this.queue.length = 0;
+    for(const {turn, delegateEmit, resolve} of records) {
+      resolve(turn === curr ? delegateEmit() : false);
+    }
+  }
+
+  public end(): void {
+    this.accepting = false;
+    const leftovers = this.queue.slice();
+    this.queue.length = 0;
+    for(const {resolve} of leftovers) {
+      resolve(false);
+    }
+  }
 }

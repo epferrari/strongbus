@@ -176,15 +176,18 @@ stop(); // stop receiving all events
 
 Keeping the pair as one value means narrowing `piped.event` correlatively narrows `piped.payload`. To send the
 event on to another bus, call `forward(dest)` rather than splitting the pair back into `(event, payload)` — this
-re-emits the whole message on `dest` without a downstream link (so none of the listener-lifecycle overhead
-`pipe(bus)` incurs):
+queues a re-emit of the whole message on `dest` without a downstream link (so none of the listener-lifecycle
+overhead `pipe(bus)` incurs). Queued emits run in the *delegation* phase after every own handler on the source
+has returned (capture semantics). `forward` is live for the duration of that source `emit` and returns a
+`Promise<boolean>` that resolves to `dest.emit`'s result, or `false` if `forward` is called after the emit
+has completed:
 
 ```typescript
 bus.pipe((piped, forward) => {
   if (piped.event === 'didRemoveItem') {
     cache.delete(piped.payload.id); // payload narrowed to this event's type
   }
-  forward(other); // re-emit the whole message on a payload-compatible bus
+  forward(other); // queues re-emit after this bus's own handlers
 });
 ```
 

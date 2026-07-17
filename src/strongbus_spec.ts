@@ -961,6 +961,119 @@ describe('Strongbus.Bus', () => {
 
           expect(received).toHaveBeenCalledWith('relayed');
         });
+
+        it('defers forward(dst) until after this bus\'s own handlers (capture semantics)', async () => {
+          const order: string[] = [];
+          const dst = new Strongbus.Bus<TestEventMap>();
+          dst.on('foo', () => order.push('dst'));
+
+          let forwardResult: Promise<boolean> | undefined;
+          bus.on('foo', () => order.push('own-specific'));
+          bus.pipe((_msg, forward) => {
+            order.push('sink');
+            forwardResult = forward(dst);
+            order.push('sink-after-forward');
+          });
+          bus.pipe(() => order.push('other-sink'));
+
+          bus.emit('foo', 'relayed');
+
+          expect(order).toEqual([
+            'own-specific',
+            'sink',
+            'sink-after-forward',
+            'other-sink',
+            'dst'
+          ]);
+          await expectAsync(forwardResult!).toBeResolvedTo(true);
+        });
+
+        it('keeps forward live for later own handlers during the same emit', async () => {
+          const order: string[] = [];
+          const dst = new Strongbus.Bus<TestEventMap>();
+          dst.on('foo', () => order.push('dst'));
+
+          let stolen: ((target: Strongbus.Bus<TestEventMap>) => Promise<boolean>) | undefined;
+          let stolenResult: Promise<boolean> | undefined;
+          bus.pipe((_msg, forward) => {
+            stolen = forward;
+            order.push('sink');
+          });
+          bus.pipe(() => {
+            order.push('later-sink');
+            // original sink has returned, but this emit is still in progress
+            stolenResult = stolen!(dst);
+          });
+
+          bus.emit('foo', 'shared');
+
+          expect(order).toEqual(['sink', 'later-sink', 'dst']);
+          await expectAsync(stolenResult!).toBeResolvedTo(true);
+        });
+
+        it('expires forward after the emit completes', async () => {
+          const dst = new Strongbus.Bus<TestEventMap>();
+          const received = jasmine.createSpy('received');
+          dst.on('foo', received);
+
+          let stolen: ((target: Strongbus.Bus<TestEventMap>) => Promise<boolean>) | undefined;
+          let liveResult: Promise<boolean> | undefined;
+          bus.pipe((_msg, forward) => {
+            stolen = forward;
+            liveResult = forward(dst);
+          });
+
+          bus.emit('foo', 'once');
+          expect(received).toHaveBeenCalledTimes(1);
+          await expectAsync(liveResult!).toBeResolvedTo(true);
+          await expectAsync(stolen!(dst)).toBeResolvedTo(false);
+          expect(received).toHaveBeenCalledTimes(1);
+        });
+
+        it('resolves false when the forwarded emit is unhandled', async () => {
+          const dst = new Strongbus.Bus<TestEventMap>({allowUnhandledEvents: true});
+          let forwardResult: Promise<boolean> | undefined;
+          bus.pipe((_msg, forward) => {
+            forwardResult = forward(dst);
+          });
+
+          bus.emit('foo', 'nobody-home');
+          await expectAsync(forwardResult!).toBeResolvedTo(false);
+        });
+
+        it('expires forward by the time an async sink continuation runs', async () => {
+          const dst = new Strongbus.Bus<TestEventMap>();
+          const received = jasmine.createSpy('received');
+          dst.on('foo', received);
+
+          const done = new Promise<void>((resolve) => {
+            bus.pipe(async (_msg, forward) => {
+              await Promise.resolve();
+              // emit does not await sinks, so the emit has already completed
+              await expectAsync(forward(dst)).toBeResolvedTo(false);
+              resolve();
+            });
+          });
+
+          bus.emit('foo', 'late');
+          await done;
+          expect(received).not.toHaveBeenCalled();
+        });
+
+        it('runs deferred forwards before structural pipe(bus) delegation', () => {
+          const order: string[] = [];
+          const viaForward = new Strongbus.Bus<TestEventMap>();
+          const viaPipe = new Strongbus.Bus<TestEventMap>();
+          viaForward.on('foo', () => order.push('forward-dst'));
+          viaPipe.on('foo', () => order.push('pipe-dst'));
+
+          bus.pipe((_msg, forward) => { forward(viaForward); });
+          bus.pipe(viaPipe);
+
+          bus.emit('foo', 'x');
+
+          expect(order).toEqual(['forward-dst', 'pipe-dst']);
+        });
       });
 
       describe('piping into another bus', () => {
