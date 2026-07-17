@@ -108,6 +108,8 @@ It only removes handlers registered with `on` — not wrappers from `once`, `any
 ### `on(event, handler)`
 
 Subscribe a handler to a single event. The handler receives the event's payload.
+Calling again with the same event and handler reference returns the same `Subscription`
+and does not invoke the handler twice on emit.
 
 ```typescript
 bus.on('count', (n) => console.log(n)); // n: number

@@ -115,6 +115,10 @@ export type NextResult<TEventMap extends EventMap, T> =
  * Subscribe, await, scan, and pipe events on a {@link Bus}.
  */
 export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMap> {
+  /**
+   * Subscribe a handler to a single event. A second call with the same `event` and
+   * handler reference returns the existing {@link Subscription} without adding again.
+   */
   on<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): Subscription;
 
   /**

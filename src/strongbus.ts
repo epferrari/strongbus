@@ -118,12 +118,13 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   private readonly downstreamListenerCountsByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
   private readonly sinks = new WeakMap<PipeSink<TEventMap>, Subscription>();
   /**
-   * Live disposer index: handler → event → Subscriptions for that pair.
-   * Supports O(k) {@link Bus.off} (k = handles for that pair, usually 1).
+   * Live disposer index: handler → event → Subscription.
+   * Duplicate {@link Bus.on} with the same handler returns the same Subscription;
+   * {@link Bus.off} is O(1) via this map.
    */
   private readonly subscriptionsByHandler = new Map<
     GenericHandler,
-    Map<EventKeys<TEventMap>|WILDCARD, Subscription[]>
+    Map<EventKeys<TEventMap>|WILDCARD, Subscription>
   >();
   private readonly handlersByEvent = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
   private readonly scannerPools = new ScannerPools<TEventMap>();
@@ -191,6 +192,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
   /**
    * Subscribe a callback to an event.
+   * Calling again with the same `event` and handler reference is a no-op and returns
+   * the existing {@link Subscription}.
    */
   public on<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): Subscription {
     return this.addListener(event, handler);
@@ -202,14 +205,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    * Does not remove wrappers from {@link Bus.once}, {@link Bus.any}, or {@link Bus.pipe}.
    */
   public off<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): void {
-    const list = this.subscriptionsByHandler.get(handler)?.get(event);
-    if(!list?.length) {
-      return;
-    }
-    // copy — each dispose mutates the live list
-    for(const sub of list.slice()) {
-      sub();
-    }
+    this.subscriptionsByHandler.get(handler)?.get(event)?.();
   }
 
   /**
@@ -659,8 +655,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     // and they will be removed from the index
     const pending: Subscription[] = [];
     for(const byEvent of this.subscriptionsByHandler.values()) {
-      for(const list of byEvent.values()) {
-        pending.push(...list);
+      for(const sub of byEvent.values()) {
+        pending.push(sub);
       }
     }
     over(pending)();
@@ -677,18 +673,19 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   private addListener(event: EventKeys<TEventMap>|WILDCARD, handler: GenericHandler): Subscription {
-    const handlers = this.handlersByEvent.get(event);
-    const addingNewHandler = !(handlers?.has(handler));
-    if(addingNewHandler) {
-      const n: number = handlers?.size + 1 || 1;
-      this.logger.onAddListener(event, n);
-      this.lifecycle.ownListenerWillAdd(event);
-      const {added} = addListener(this.handlersByEvent, event, handler);
-      if(added) {
-        this.invalidateCombinedListenerCache();
-        this.invalidateOwnListenerCache();
-        this.lifecycle.ownListenerDidAdd(event);
-      }
+    const existing = this.subscriptionsByHandler.get(handler)?.get(event);
+    if(existing) {
+      return existing;
+    }
+
+    const n: number = (this.handlersByEvent.get(event)?.size ?? 0) + 1;
+    this.logger.onAddListener(event, n);
+    this.lifecycle.ownListenerWillAdd(event);
+    const {added} = addListener(this.handlersByEvent, event, handler);
+    if(added) {
+      this.invalidateCombinedListenerCache();
+      this.invalidateOwnListenerCache();
+      this.lifecycle.ownListenerDidAdd(event);
     }
     return this.generateListenerSubscription(event as EventKeys<TEventMap>, handler);
   }
@@ -699,11 +696,6 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       byEvent = new Map();
       this.subscriptionsByHandler.set(handler, byEvent);
     }
-    let list = byEvent.get(event);
-    if(!list) {
-      list = [];
-      byEvent.set(event, list);
-    }
 
     const sub = subscriptionWrapper(() => {
       this.unsubQueue.push({
@@ -713,7 +705,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       });
       this.purgeUnsubQueue();
     });
-    list.push(sub);
+    byEvent.set(event, sub);
     return sub;
   }
 
@@ -727,18 +719,13 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     while(this.unsubQueue.length) {
       const {subscription, event, handler} = this.unsubQueue.shift();
       const byEvent = this.subscriptionsByHandler.get(handler);
-      const list = byEvent?.get(event);
-      const idx = list?.indexOf(subscription) ?? -1;
-      if(idx === -1) {
+      if(byEvent?.get(event) !== subscription) {
         continue;
       }
 
-      list.splice(idx, 1);
-      if(list.length === 0) {
-        byEvent.delete(event);
-        if(byEvent.size === 0) {
-          this.subscriptionsByHandler.delete(handler);
-        }
+      byEvent.delete(event);
+      if(byEvent.size === 0) {
+        this.subscriptionsByHandler.delete(handler);
       }
       // lifecycle events may trigger additional unsubs, which will be pushed to the end of queue and handled in a subsequent iteration of this loop
       this.removeListener(event, handler);
