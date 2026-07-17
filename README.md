@@ -8,9 +8,9 @@ It also ships with subscription lifecycle hooks, bus-to-bus piping, promise-base
 memory-leak detection.
 
 **[API Documentation v3 (current)](https://epferrari.github.io/strongbus/3.0.0/)**
-
+<br/>
 **[API Documentation v2](https://epferrari.github.io/strongbus/2.11.1/)**
-
+<br/>
 **[Migrating from v2 -> v3](./CHANGELOG.md#migrating-from-v2-to-v3)**
 
 ## Features
