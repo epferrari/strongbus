@@ -781,16 +781,17 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     if(!incognito) {
       this.lifecycle.ownListenerWillAdd(event);
     }
-    const {added} = addListener(this.handlersByEvent, event, handler);
-    if(added) {
-      if(incognito) {
-        this.markIncognito(handler, event);
-      }
-      this.invalidateCombinedListenerCache();
-      this.invalidateOwnListenerCache();
-      if(!incognito) {
-        this.lifecycle.ownListenerDidAdd(event);
-      }
+    const prev = this.handlersByEvent.get(event);
+    const next = new Set<GenericHandler>(prev);
+    next.add(handler);
+    this.handlersByEvent.set(event, next);
+    if(incognito) {
+      this.markIncognito(handler, event);
+    }
+    this.invalidateCombinedListenerCache();
+    this.invalidateOwnListenerCache();
+    if(!incognito) {
+      this.lifecycle.ownListenerDidAdd(event);
     }
     return this.generateListenerSubscription(event as EventKeys<TEventMap>, handler);
   }
@@ -844,16 +845,18 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     if(!incognito) {
       this.lifecycle.ownListenerWillRemove(event);
     }
-    const {removed} = removeListener(this.handlersByEvent, event, handler);
-    if(removed) {
-      this.clearIncognito(handler, event);
-      this.invalidateCombinedListenerCache();
-      this.invalidateOwnListenerCache();
-      if(!incognito) {
-        this.lifecycle.ownListenerDidRemove(event);
+    const set = this.handlersByEvent.get(event);
+    if(set?.size) {
+      const removed = set.delete(handler);
+      if(removed) {
+        this.clearIncognito(handler, event);
+        this.invalidateCombinedListenerCache();
+        this.invalidateOwnListenerCache();
+        if(!incognito) {
+          this.lifecycle.ownListenerDidRemove(event);
+        }
+        this.logger.onListenerRemoved(event, set.size);
       }
-      const count = this.handlersByEvent.get(event)?.size ?? 0;
-      this.logger.onListenerRemoved(event, count);
     }
   }
 
@@ -992,40 +995,6 @@ function normalizeScanParams<TEventMap extends EventMap>(
     evaluator: second as InternalScanParams<any, TEventMap>['evaluator'],
     ...(third as ScanOptions | undefined)
   };
-}
-
-/**
- * @ignore
- */
-function addListener<TKey>(bus: Map<TKey, Set<GenericHandler>>, event: TKey, handler: GenericHandler): {added: boolean, first: boolean} {
-  if(!handler) {
-    return {added: false, first: false};
-  }
-
-  const prevSet = bus.get(event);
-  const newSet = new Set<GenericHandler>(prevSet);
-  const first: boolean = Boolean(prevSet);
-  newSet.add(handler);
-  bus.set(event, newSet);
-  return {added: true, first};
-}
-
-/**
- * @ignore
- */
-function removeListener<TKey>(bus: Map<TKey, Set<GenericHandler>>, event: TKey, handler: GenericHandler): {removed: boolean, last: boolean} {
-  const set = bus.get(event);
-  if(!set) {
-    return {removed: false, last: false};
-  }
-  let last: boolean = false;
-  const {size} = set;
-  const removed: boolean = set.delete(handler);
-  if(set.size === 0) {
-    bus.delete(event);
-    last = size > 0;
-  }
-  return {removed, last};
 }
 
 /**
