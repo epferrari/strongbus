@@ -5,8 +5,7 @@ import {type CancelablePromise, cancelable, timeout} from 'jaasync';
 import {Scanner} from './scanner';
 import {normalizeScanParams, ScannerPools, type ScanParams} from './scannerPools';
 import {StrongbusLogger} from './strongbusLogger';
-import {DownstreamSnapshot, LifecycleManager} from './lifecycleManager';
-import type {LifecycleHost} from './types/lifecycleHost';
+import {DownstreamSnapshot, LifecycleManager, type LifecycleHost} from './lifecycleManager';
 import {type Subscription, type EventMap, WILDCARD} from './types/events';
 import type {EventHandler, EventSink, PipeSink, GenericHandler} from './types/eventHandlers';
 import {Lifecycle} from './types/lifecycle';
@@ -45,7 +44,7 @@ import {subscribeListenable} from './utils/subscribeListenable';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import {isSubscribeOptions} from './utils/isSubscribeOptions';
 import {Forwards} from './forwards';
-import {SubscriptionRegistry, type SubscriptionHost} from './subscriptionRegistry';
+import {SubscriptionManager, type SubscriptionHost} from './subscriptionManager';
 
 
 
@@ -138,7 +137,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }>();
   private readonly downstreamListenerCountsByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
   private readonly forwards = new Forwards();
-  private readonly subscriptions!: SubscriptionRegistry<TEventMap>;
+  private readonly subscriptions!: SubscriptionManager<TEventMap>;
   private readonly scannerPools = new ScannerPools<TEventMap>();
   private _downstreamListenerTotalCount: number = 0;
   private _cachedCombinedListeners: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
@@ -182,7 +181,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       logger: this.logger
     });
     this.hook = this.lifecycle.hook;
-    this.subscriptions = new SubscriptionRegistry({
+    this.subscriptions = new SubscriptionManager({
       host: this.createSubscriptionHost(),
       options: this.options,
       logger: this.logger,

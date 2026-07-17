@@ -1,6 +1,5 @@
-import {LifecycleManager} from './lifecycleManager';
+import {LifecycleManager, type LifecycleHost} from './lifecycleManager';
 import {StrongbusLogger} from './strongbusLogger';
-import type {LifecycleHost} from './types/lifecycleHost';
 
 type TestEventMap = {
   foo: string;

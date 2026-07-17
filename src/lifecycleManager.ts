@@ -3,7 +3,6 @@ import {autobind} from 'core-decorators';
 import type {StrongbusLogger} from './strongbusLogger';
 import type {MaterializedBusOptions} from './types/options';
 import {Lifecycle} from './types/lifecycle';
-import type {LifecycleHost} from './types/lifecycleHost';
 import type {GenericHandler} from './types/eventHandlers';
 import type {EventMap, WILDCARD} from './types/events';
 import type {MonitoringHook} from './types/surfaces/monitoringSurface';
@@ -19,6 +18,19 @@ export type DownstreamSnapshotEntry<TEventMap extends EventMap> = {
 
 export type DownstreamSnapshot<TEventMap extends EventMap> = DownstreamSnapshotEntry<TEventMap>[];
 
+/**
+ * Bus bookkeeping callbacks supplied to {@link LifecycleManager}.
+ * Shared resources (`logger`, `options`) are constructor deps, not host fields.
+ * @internal
+ */
+export interface LifecycleHost<TEventMap extends EventMap> {
+  hasListeners(): boolean;
+  getListenerCount(): number;
+  getOwnListenerCount(): number;
+  getListenerCountFor(event: EventKeys<TEventMap>|WILDCARD): number;
+  accountForDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void;
+  accountForRemovedDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void;
+}
 
 @autobind
 export class LifecycleManager<TEventMap extends EventMap = EventMap> {

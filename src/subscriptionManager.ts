@@ -28,7 +28,7 @@ type IntentFrameMeta = {
 
 /**
  * @ignore
- * Bus identity / callbacks {@link SubscriptionRegistry} needs.
+ * Bus identity / callbacks {@link SubscriptionManager} needs.
  * Shared resources (`options`, `logger`, `forwards`, `lifecycle`) are constructor deps.
  */
 export type SubscriptionHost = {
@@ -41,7 +41,7 @@ export type SubscriptionHost = {
  * @ignore
  * Owns duplicate-subscription stacks, emit-handler storage, and unsub queue.
  */
-export class SubscriptionRegistry<TEventMap extends EventMap> {
+export class SubscriptionManager<TEventMap extends EventMap> {
 
   private readonly onIntents = new Map<
     GenericHandler,
