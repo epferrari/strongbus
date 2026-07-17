@@ -17,6 +17,7 @@ memory-leak detection.
   payloads are compile errors.
 - **Disposable subscriptions** — every subscriber returns a `Subscription` you can release.
 - **Lifecycle introspection** — hook into `active`/`idle` transitions, listener add/remove, and teardown.
+- **Incognito subscriptions** — `{incognito: true}` receives/forwards events without activating monitoring.
 - **Composable buses** — `pipe` events from one bus into another (or into a function sink).
 - **Promise interop** — `await` the next event with `next`, or resolve on a computed condition with `scan`.
 - **Memory-leak detection** — configurable per-event listener thresholds with info/warn/error logging.
@@ -105,17 +106,18 @@ It only removes handlers registered with `on` — not wrappers from `once`, `any
 
 ## Subscribing to events
 
-### `on(event, handler)`
+### `on(event, handler, options?)`
 
 Subscribe a handler to a single event. The handler receives the event's payload.
 Calling again with the same event and handler reference returns the same `Subscription`
-and does not invoke the handler twice on emit.
+and does not invoke the handler twice on emit. Optional `SubscribeOptions` (see
+[Incognito subscriptions](#incognito-subscriptions)).
 
 ```typescript
 bus.on('count', (n) => console.log(n)); // n: number
 ```
 
-### `once(event, handler)`
+### `once(event, handler, options?)`
 
 Like `on`, but automatically unsubscribes after the first time the event fires.
 
@@ -123,7 +125,7 @@ Like `on`, but automatically unsubscribes after the first time the event fires.
 bus.once('connected', () => console.log('connected exactly once'));
 ```
 
-### `any(events, handler)`
+### `any(events, handler, options?)`
 
 Subscribe one handler to several events. The handler receives the raised event as its first argument and the
 payload as its second.
@@ -140,9 +142,10 @@ bus.any(['message', 'count'], (event, payload) => {
 `pipe` forwards every event from this bus into another `Bus` or into a function sink. Use `unpipe` to
 detach.
 
-### `pipe(bus)` — downstream piping
+### `pipe(bus, options?)` — downstream piping
 
-Pipe into another `Bus`, counting the downstream's listeners as handlers on this bus. Returns the downstream bus
+Pipe into another `Bus`, counting the downstream's listeners as handlers on this bus (unless
+`{incognito: true}` — see [Incognito subscriptions](#incognito-subscriptions)). Returns the downstream bus
 (so pipes chain and subclasses are preserved). The downstream must be a real `Bus` instance.
 
 ```typescript
@@ -157,11 +160,11 @@ producer.emit('message', 'hi'); // `handle` is invoked
 producer.unpipe(leaf);       // detach
 ```
 
-### `pipe(sink)` — function sink
+### `pipe(sink, options?)` — function sink
 
 Pipe *every* event into a function sink. The sink receives the raised event as a single correlated
 `{event, payload}` message, plus a `forward` function bound to that message. This is the wildcard
-subscription; the returned `Subscription` removes it.
+subscription; the returned `Subscription` removes it. Accepts the same `SubscribeOptions` as `on`.
 
 ```typescript
 const stop = bus.pipe((piped) => {
@@ -269,13 +272,41 @@ feederB.emit('foo', payload);  // handleFoo called
 
 See [Migrating from v2: `pipe(bus)` vs. forwarding sink](./CHANGELOG.md#pipebus-vs-forwarding-sink).
 
+## Incognito subscriptions
+
+Pass `{incognito: true}` as trailing `SubscribeOptions` on `on`, `once`, `any`, `pipe(sink)`,
+`pipe(bus)`, `next`, or `scan` when the registration should still receive or forward events but must
+**not** count toward this bus's monitoring subsystem:
+
+- `active` / `idle` / `monitor`
+- listener lifecycle hooks (`willAddListener` / `didAddListener` / remove pair)
+- default introspection (`hasListeners`, `getListenerCount`, …)
+
+```typescript
+bus.on('message', logMessage, {incognito: true});
+bus.pipe(telemetrySink, {incognito: true});
+src.pipe(target, {incognito: true}); // forward events; target's listeners do not activate src
+await bus.next('connected', {incognito: true});
+```
+
+`pipe(bus, {incognito: true})` still forwards events through the target (and any further chain). It does
+not couple the target's listener tree into the source's monitoring; the target's own `active` / hooks
+are unchanged. A second `pipe` of the same bus is a no-op (first mode sticks), matching idempotent `on`.
+
+`off(event, handler)` still removes an incognito `on` registration by handler reference (no options).
+The same behavior applies when releasing the returned `Subscription` or `unpipe` for `once` / `any` / `pipe`.
+
+Memory-leak logger thresholds still count own incognito handlers (real retention). To include
+incognito interest in queries, pass `{includeIncognito: true}` to introspection methods — that never
+flips `active`.
+
 ## Awaiting events
 
-### `next(resolutionTrigger, rejectionTrigger?)`
+### `next(resolutionTrigger, rejectionTrigger?, options?)`
 
 Returns a `CancelablePromise` that resolves with `{event, payload}` when the resolution trigger fires. Optionally
-provide a disjoint rejection trigger. Triggers are a single event key or an array of events (`SubscribableListenable`);
-`'*'` is not accepted.
+provide a disjoint rejection trigger, and/or trailing `SubscribeOptions`. Triggers are a single event key or an
+array of events (`SubscribableListenable`); `'*'` is not accepted.
 
 ```typescript
 const {event, payload} = await bus.next('message');
@@ -285,6 +316,9 @@ const result = await bus.next(['message', 'connected', 'count']);
 
 // resolve on either event; reject if `count` fires first
 const result = await bus.next(['message', 'connected'], 'count');
+
+await bus.next('message', {incognito: true});
+await bus.next('message', 'count', {incognito: true});
 
 // resolution and rejection triggers must be disjoint (compile error otherwise)
 bus.next('message', 'message'); // compile error
@@ -313,9 +347,12 @@ const ready = await bus.scan<boolean>(
 
 - `eager` — run the evaluator immediately, so an already-satisfied condition resolves without waiting for an
   event. This avoids the `if (!condition) { await scan(...) }` anti-pattern.
-- `pool` — reuse an in-flight scan that shares the same evaluator, eagerness, and a superset trigger, instead of
-  subscribing redundantly.
+- `pool` — reuse an in-flight scan that shares the same evaluator, eagerness, monitoring mode
+  (`incognito`), and a superset trigger, instead of subscribing redundantly. Monitored and
+  incognito scans never share a pool.
 - `timeout` — cancel the scan after N milliseconds. Configuring a timeout disables pooling.
+- `incognito` — wait without activating this bus's monitoring (see
+  [Incognito subscriptions](#incognito-subscriptions)).
 
 The `<T>` type argument is the resolved value's type and flows into the resolver:
 
@@ -491,18 +528,25 @@ If you must key the bus off a `Merge`, forward inside a discriminated branch (a 
 
 ## Introspection
 
-The introspection methods take an optional `{scope?: ListenerScope}` options
-argument. `ListenerScope` selects which handlers to include and defaults to
-`ListenerScope.ANY`:
+The introspection methods take optional `IntrospectionOptions`:
+
+- `scope?: ListenerScope` — which handlers to include; defaults to `ListenerScope.ANY`
+- `includeIncognito?: boolean` — when `true`, include incognito own handlers and
+  listeners reached via incognito `pipe(bus)` links; defaults to `false`
+
+`ListenerScope`:
 
 - `OWN` — registered directly on this bus (including function sinks from `pipe(handler)`)
-- `DOWNSTREAM` — on buses attached with `pipe(bus)` only
+- `DOWNSTREAM` — on buses attached with `pipe(bus)` only (monitored links by default;
+  incognito-piped trees only when `includeIncognito: true`)
 - `ANY` — `OWN | DOWNSTREAM` (equivalent alias, the default)
+
+`bus.active` / `monitor` / lifecycle hooks always ignore incognito interest.
 
 ```typescript
 import {Bus, ListenerScope} from 'strongbus';
 
-bus.active;                                                          // boolean: does the bus have any subscribers
+bus.active;                                                          // boolean: monitored subscribers only
 bus.hasListeners(/* options? */);                                    // any scope (default)
 bus.getListenerCount(/* options? */);                                // total handlers in scope
 bus.getListeners(/* options? */);                                    // union of all handlers in scope
@@ -512,6 +556,7 @@ bus.hasListenersFor('message', {scope: ListenerScope.OWN});
 bus.getListenerCountFor('message', {scope: ListenerScope.DOWNSTREAM});
 bus.getListenersFor('message', /* options? */);                        // empty set when none
 bus.forEach((event, handlers) => { /* ... */ }, /* options? */);
+bus.hasListeners({includeIncognito: true});
 ```
 
 ## Teardown

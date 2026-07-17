@@ -23,6 +23,17 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   the same function reference. Returns `void` (not the bus). Prefer the
   `Subscription` from `on` when available; `off` does not remove wrappers from
   `once`, `any`, or `pipe`.
+- **`SubscribeOptions` / `{incognito: true}`** — optional trailing options on
+  `on`, `once`, `any`, `pipe(sink)`, `pipe(bus)`, `next`, and `scan`. An
+  incognito registration still receives or forwards events but does not count
+  toward this bus's monitoring (`active` / `idle`, `monitor`, listener lifecycle
+  hooks, or default introspection). `pipe(bus, {incognito: true})` forwards
+  events without coupling the target's listener tree into the source's
+  monitoring (the target's own monitoring is unchanged). Duplicate `on` with the
+  same handler keeps the first registration's mode. Memory-leak logger thresholds
+  still count own incognito handlers. `ScanOptions` extends `SubscribeOptions`;
+  pooled scans never share a scanner across different `incognito` modes. See
+  [Incognito subscriptions](./README.md#incognito-subscriptions).
 - **`pipe(sink)` accepts a function sink** in addition to a `Bus`. The sink
   receives the raised event as a single correlated `{event, payload}` message plus
   a `forward` function bound to that message; the returned `Subscription` removes
@@ -66,15 +77,20 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **`Logger` and `LoggerProvider`** types are now exported, for typing a custom
   `options.logger`.
 - **`ControlSurface<TEventMap>`** — `emit` and `destroy`.
-- **`SubscriptionSurface<TEventMap>`** — subscribe, await, scan, and pipe (`on`, `once`, `any`, `next`, `scan`, `pipe`, `unpipe`). Use when a component should listen but must not raise events.
+- **`SubscriptionSurface<TEventMap>`** — subscribe, await, scan, and pipe (`on`, `once`, `off`, `any`,
+  `next`, `scan`, `pipe`, `unpipe`), including optional `SubscribeOptions` on subscribe/pipe/await
+  methods. Use when a component should listen but must not raise events.
 - **`IntrospectionSurface<TEventMap>`** — scoped listener introspection (`hasListeners`, `getListenerCount`, `getListeners`, `getEventCount`, `hasListenersFor`, `getListenerCountFor`, `getListenersFor`, `forEach`).
 - **`MonitoringSurface<TEventMap>`** — lifecycle observation (`monitor`, `hook`, `active`).
 - **`ListenerScope`** — selects own, downstream (piped bus), or combined (`ANY`)
   handlers for listener introspection. `ANY` is equivalent to
   `ListenerScope.OWN | ListenerScope.DOWNSTREAM`. `DOWNSTREAM` covers listeners on
   buses attached with `pipe(bus)` only, not function sinks from `pipe(handler)`.
-- **`IntrospectionOptions`** — the `{scope?: ListenerScope}` options object
-  accepted by the listener-introspection methods. Exported from the package root.
+- **`IntrospectionOptions`** — `{scope?: ListenerScope; includeIncognito?: boolean}`
+  accepted by the listener-introspection methods. `includeIncognito` defaults to
+  `false` (incognito own handlers and incognito-piped trees are omitted).
+  Lifecycle / `active` / `monitor` never consult this flag. Exported from the
+  package root along with **`SubscribeOptions`**.
 - **`Bus.configure(options)`** — merge partial `Options` (except `name`) onto static defaults for
   all subsequently constructed instances. Nested `thresholds` are merged recursively. Use the
   constructor for per-instance `name`.
@@ -97,11 +113,11 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **Listener introspection** — scoped methods on `Bus` / `IntrospectionSurface`:
   `hasListeners`, `getListenerCount`, `getListeners`, `getEventCount`,
   `hasListenersFor`, `getListenerCountFor`, `getListenersFor`, and `forEach`
-  (event-first callback). Each takes an optional `{scope?: ListenerScope}`
-  options argument to select own, downstream, or combined handlers; `scope`
-  defaults to `ListenerScope.ANY`. `getListenersFor` returns an empty set when
-  none are registered. `forEach` callback event keys are compile-time narrowed
-  only; at runtime all registered keys are visited.
+  (event-first callback). Each takes optional `IntrospectionOptions`
+  (`scope` and/or `includeIncognito`); `scope` defaults to `ListenerScope.ANY`
+  and `includeIncognito` defaults to `false`. `getListenersFor` returns an empty
+  set when none are registered. `forEach` callback event keys are compile-time
+  narrowed only; at runtime all registered keys are visited.
 
 - **`on(event, handler)` is reference-idempotent** — a second `on` with the same
   event and handler returns the existing `Subscription` (one emit invocation, one
@@ -395,11 +411,12 @@ const count = bus.getListenerCountFor('foo');
 const handlers = bus.listeners.get('foo');
 for (const [event, set] of bus.listeners) { /* ... */ }
 
-// v3 (scope is optional, defaults to ListenerScope.ANY)
+// v3 (scope / includeIncognito are optional)
 if (bus.hasListenersFor('foo')) { /* ... */ }
 const count = bus.getListenerCountFor('foo');
 const handlers = bus.getListenersFor('foo');
 bus.forEach((event, set) => { /* ... */ });
 bus.forEach((event, set) => { /* ... */ }, {scope: ListenerScope.OWN});
 bus.forEach((event, set) => { /* ... */ }, {scope: ListenerScope.DOWNSTREAM});
+bus.hasListeners({includeIncognito: true});
 ```
