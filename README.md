@@ -109,8 +109,9 @@ It only removes handlers registered with `on` — not wrappers from `once`, `any
 ### `on(event, handler, options?)`
 
 Subscribe a handler to a single event. The handler receives the event's payload.
-Calling again with the same event and handler reference returns the same `Subscription`
-and does not invoke the handler twice on emit. Optional `SubscribeOptions` (see
+Duplicate registrations for the same event and handler reference are governed by the bus's
+[`duplicateSubscriptionStrategy`](#options) (default: collapse — same `Subscription`,
+one invoke, warn on duplicate). Optional `SubscribeOptions` (see
 [Incognito subscriptions](#incognito-subscriptions)).
 
 ```typescript
@@ -120,6 +121,9 @@ bus.on('count', (n) => console.log(n)); // n: number
 ### `once(event, handler, options?)`
 
 Like `on`, but automatically unsubscribes after the first time the event fires.
+`once` honors `options.duplicateSubscriptionStrategy.{observability, invocation, logLevel}`, but disposal is
+always frame-based and kind-isolated from `on` for the same handler (`off` never removes
+`once` intent).
 
 ```typescript
 bus.once('connected', () => console.log('connected exactly once'));
@@ -164,7 +168,8 @@ producer.unpipe(leaf);       // detach
 
 Pipe *every* event into a function sink. The sink receives the raised event as a single correlated
 `{event, payload}` message, plus a `forward` function bound to that message. This is the wildcard
-subscription; the returned `Subscription` removes it. Accepts the same `SubscribeOptions` as `on`.
+subscription; the returned `Subscription` removes it (duplicate `pipe(sameSink)` follows
+`duplicateSubscriptionStrategy`). Accepts the same `SubscribeOptions` as `on`.
 
 ```typescript
 const stop = bus.pipe((piped) => {
@@ -581,13 +586,38 @@ bus.destroy();
 - `logger` — a `Logger`, or a `() => Logger` provider.
 - `verbose` — log on every listener past a threshold (`true`), or only at threshold boundaries
   (`false`, default).
+- `duplicateSubscriptionStrategy` — how duplicate listenable+handler registrations behave for
+  `on`, `any`, and `pipe(sink)` across four axes:
+
+  | Axis | `collapse` | `stack` |
+  |---|---|---|
+  | **observability** | Count / lifecycle once | Each register adds a counted frame |
+  | **invocation** | Handler runs once per emit | Handler runs once per stacked frame |
+  | **disposal** | `sub()` / `off` clears the identity | Pops one frame |
+  | **logLevel** | `never` \| `debug` \| `info` \| `warn` \| `error` | same |
+
+  Defaults are all `collapse` with `logLevel: 'warn'`. Presets:
+
+  ```typescript
+  import {Bus, DuplicateSubscriptionStrategy} from 'strongbus';
+
+  // Node EventEmitter-like
+  new Bus({duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy.NodeEventEmitter});
+
+  // DOM EventTarget-like (silent collapse)
+  new Bus({duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy.EventTarget});
+
+  // Shared handler, independent owners (invoke once; dispose/off pops one)
+  new Bus({duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy.SharedHandler});
+  ```
 
 ```typescript
 const bus = new Bus<Events>({
   name: 'MyBus',
   allowUnhandledEvents: false,
   thresholds: {warn: 50},
-  logger: console
+  logger: console,
+  duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy.SharedHandler
 });
 ```
 

@@ -154,11 +154,11 @@ describe('Strongbus.Bus', () => {
   describe('listener logging thresholds', () => {
 
     describe('given options.logger is a Logger instance', () => {
-      loggingSpecs(jasmine.createSpyObj('logger', ['info', 'warn', 'error']));
+      loggingSpecs(jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']));
     });
 
     describe('given options.logger is a LoggerProvider', () => {
-      loggingSpecs(() => jasmine.createSpyObj('logger', ['info', 'warn', 'error']));
+      loggingSpecs(() => jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']));
     });
 
     function loggingSpecs(p: jasmine.SpyObj<Logger>|(() => jasmine.SpyObj<Logger>)): void {
@@ -687,6 +687,188 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('duplicateSubscriptionStrategy', () => {
+    it('defaults to collapse + warn', () => {
+      const options: Strongbus.Options = (bus as any).options;
+      expect(options.duplicateSubscriptionStrategy).toEqual({
+        observability: 'collapse',
+        invocation: 'collapse',
+        disposal: 'collapse',
+        logLevel: 'warn'
+      });
+    });
+
+    it('exposes NodeEventEmitter, EventTarget, and SharedHandler presets', () => {
+      expect(Strongbus.DuplicateSubscriptionStrategy.NodeEventEmitter).toEqual({
+        observability: 'stack',
+        invocation: 'stack',
+        disposal: 'stack',
+        logLevel: 'never'
+      });
+      expect(Strongbus.DuplicateSubscriptionStrategy.EventTarget).toEqual({
+        observability: 'collapse',
+        invocation: 'collapse',
+        disposal: 'collapse',
+        logLevel: 'never'
+      });
+      expect(Strongbus.DuplicateSubscriptionStrategy.SharedHandler).toEqual({
+        observability: 'stack',
+        invocation: 'collapse',
+        disposal: 'stack',
+        logLevel: 'never'
+      });
+    });
+
+    describe('default collapse + warn', () => {
+      it('warns on duplicate on and keeps collapsed behavior', () => {
+        const warn = jasmine.createSpy('warn');
+        bus = new Strongbus.Bus<TestEventMap>({
+          logger: {info: () => undefined, warn, error: () => undefined, debug: () => undefined}
+        });
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+
+        const sub1 = bus.on('foo', handleFoo);
+        const sub2 = bus.on('foo', handleFoo);
+
+        expect(sub1).toBe(sub2);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.calls.mostRecent().args[0]).toContain('duplicate on');
+
+        bus.emit('foo', 'x');
+        expect(handleFoo).toHaveBeenCalledTimes(1);
+        expect(bus.getListenerCountFor('foo')).toBe(1);
+      });
+    });
+
+    describe('SharedHandler preset', () => {
+      beforeEach(() => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.SharedHandler
+        });
+      });
+
+      it('invokes once while allowing independent dispose', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+        const a = bus.on('foo', handleFoo);
+        const b = bus.on('foo', handleFoo);
+
+        expect(a).not.toBe(b);
+        expect(bus.getListenerCountFor('foo')).toBe(2);
+
+        bus.emit('foo', 'x');
+        expect(handleFoo).toHaveBeenCalledTimes(1);
+
+        a();
+        expect(bus.getListenerCountFor('foo')).toBe(1);
+        bus.emit('foo', 'y');
+        expect(handleFoo).toHaveBeenCalledTimes(2);
+
+        b();
+        expect(bus.hasListeners()).toBeFalse();
+      });
+
+      it('off pops one SharedHandler frame', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+        bus.on('foo', handleFoo);
+        bus.on('foo', handleFoo);
+
+        bus.off('foo', handleFoo);
+        expect(bus.getListenerCountFor('foo')).toBe(1);
+        bus.emit('foo', 'z');
+        expect(handleFoo).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('NodeEventEmitter preset', () => {
+      beforeEach(() => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.NodeEventEmitter
+        });
+      });
+
+      it('stacks observability, invocation, and disposal', () => {
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+        const a = bus.on('foo', handleFoo);
+        const b = bus.on('foo', handleFoo);
+
+        expect(a).not.toBe(b);
+        expect(bus.getListenerCountFor('foo')).toBe(2);
+
+        bus.emit('foo', 'x');
+        expect(handleFoo).toHaveBeenCalledTimes(2);
+
+        a();
+        expect(bus.getListenerCountFor('foo')).toBe(1);
+        bus.emit('foo', 'y');
+        expect(handleFoo).toHaveBeenCalledTimes(3);
+      });
+    });
+
+    describe('once kind isolation', () => {
+      it('does not clear on when disposing once for the same handler', () => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.EventTarget
+        });
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+        bus.on('foo', handleFoo);
+        const onceSub = bus.once('foo', handleFoo);
+
+        onceSub();
+        bus.emit('foo', 'still-on');
+        expect(handleFoo).toHaveBeenCalledWith('still-on');
+      });
+
+      it('does not clear once when off removes on for the same handler', () => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.EventTarget
+        });
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+        bus.on('foo', handleFoo);
+        bus.once('foo', handleFoo);
+
+        bus.off('foo', handleFoo);
+        bus.emit('foo', 'once-only');
+        expect(handleFoo).toHaveBeenCalledTimes(1);
+        expect(handleFoo).toHaveBeenCalledWith('once-only');
+        expect(bus.hasListeners()).toBeFalse();
+      });
+
+      it('honors invocation stack across duplicate once registrations', () => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: {
+            observability: 'collapse',
+            invocation: 'stack',
+            disposal: 'collapse',
+            logLevel: 'never'
+          }
+        });
+        const handleFoo = jasmine.createSpy('handleFoo') as (fooPayload: string) => void;
+        const a = bus.once('foo', handleFoo);
+        const b = bus.once('foo', handleFoo);
+        expect(a).not.toBe(b);
+
+        bus.emit('foo', 'x');
+        expect(handleFoo).toHaveBeenCalledTimes(2);
+        expect(bus.hasListeners()).toBeFalse();
+      });
+    });
+
+    describe('any event-set identity', () => {
+      it('treats order-independent event sets as the same listenable', () => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.EventTarget
+        });
+        const sink = jasmine.createSpy('sink');
+        const a = bus.any(['foo', 'bar'], sink);
+        const b = bus.any(['bar', 'foo'], sink);
+        expect(a).toBe(b);
+
+        bus.emit('foo', 'x');
+        expect(sink).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
   describe('unsubscribe queue', () => {
     let onWillRemoveListener: jasmine.Spy;
     let onRemoveListener: jasmine.Spy;
@@ -985,7 +1167,8 @@ describe('Strongbus.Bus', () => {
             'other-sink',
             'dst'
           ]);
-          await expectAsync(forwardResult!).toBeResolvedTo(true);
+          expect(forwardResult).toBeDefined();
+          await expectAsync(forwardResult as Promise<boolean>).toBeResolvedTo(true);
         });
 
         it('keeps forward live for later own handlers during the same emit', async () => {
@@ -1002,13 +1185,15 @@ describe('Strongbus.Bus', () => {
           bus.pipe(() => {
             order.push('later-sink');
             // original sink has returned, but this emit is still in progress
-            stolenResult = stolen!(dst);
+            expect(stolen).toBeDefined();
+            stolenResult = (stolen as NonNullable<typeof stolen>)(dst);
           });
 
           bus.emit('foo', 'shared');
 
           expect(order).toEqual(['sink', 'later-sink', 'dst']);
-          await expectAsync(stolenResult!).toBeResolvedTo(true);
+          expect(stolenResult).toBeDefined();
+          await expectAsync(stolenResult as Promise<boolean>).toBeResolvedTo(true);
         });
 
         it('expires forward after the emit completes', async () => {
@@ -1025,8 +1210,10 @@ describe('Strongbus.Bus', () => {
 
           bus.emit('foo', 'once');
           expect(received).toHaveBeenCalledTimes(1);
-          await expectAsync(liveResult!).toBeResolvedTo(true);
-          await expectAsync(stolen!(dst)).toBeResolvedTo(false);
+          expect(liveResult).toBeDefined();
+          expect(stolen).toBeDefined();
+          await expectAsync(liveResult as Promise<boolean>).toBeResolvedTo(true);
+          await expectAsync((stolen as NonNullable<typeof stolen>)(dst)).toBeResolvedTo(false);
           expect(received).toHaveBeenCalledTimes(1);
         });
 
@@ -1038,7 +1225,8 @@ describe('Strongbus.Bus', () => {
           });
 
           bus.emit('foo', 'nobody-home');
-          await expectAsync(forwardResult!).toBeResolvedTo(false);
+          expect(forwardResult).toBeDefined();
+          await expectAsync(forwardResult as Promise<boolean>).toBeResolvedTo(false);
         });
 
         it('expires forward by the time an async sink continuation runs', async () => {
@@ -1463,7 +1651,7 @@ describe('Strongbus.Bus', () => {
         const originalError = new Error('error in listener');
 
         beforeEach(() => {
-          logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error']);
+          logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
           loggingBus = new Strongbus.Bus<TestEventMap>({logger});
           loggingBus.on('bar', () => {
             throw originalError;
@@ -2051,7 +2239,8 @@ describe('Strongbus.Bus', () => {
         const logger: Logger = {
           info: jasmine.createSpy('info'),
           warn: jasmine.createSpy('warn'),
-          error: jasmine.createSpy('error')
+          error: jasmine.createSpy('error'),
+          debug: jasmine.createSpy('debug')
         };
         bus = new Strongbus.Bus<TestEventMap>({
           name: 'incognito-thresholds',

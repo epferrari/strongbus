@@ -22,7 +22,7 @@ describe('StrongbusLogger', () => {
   }
 
   beforeEach(() => {
-    logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error']);
+    logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
   });
 
   describe('#constructor', () => {

@@ -137,6 +137,17 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
     this.impl.error(...args);
   }
 
+  public debug(...args: any[]): void {
+    this.impl.debug(...args);
+  }
+
+  public onDuplicateSubscription(message: string, level: 'never' | 'debug' | 'info' | 'warn' | 'error'): void {
+    if(level === 'never') {
+      return;
+    }
+    this[level](message);
+  }
+
   private _impl: Logger;
   private get impl(): Logger {
     if(!this._impl) {
@@ -182,5 +193,9 @@ export class StrongbusLogMessages {
 
   public static memoryPressureReducedBelowInfoThreshold(name: string, count: number, event: any): string {
     return `${name}'s listener count of ${count} for "${event}" is now within the expected range`;
+  }
+
+  public static duplicateSubscription(name: string, kind: string, listenable: string): string {
+    return `${name}: duplicate ${kind} subscription for "${listenable}" (same handler reference)`;
   }
 }

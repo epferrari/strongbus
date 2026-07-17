@@ -17,6 +17,16 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Added
 
+- **`duplicateSubscriptionStrategy`** — bus option controlling duplicate listenable+handler
+  registrations along four axes (`observability`, `invocation`, `disposal`, `logLevel`), each
+  `collapse` | `stack` except `logLevel` (`never` | `debug` | `info` | `warn` | `error`).
+  Defaults are all `collapse` with `logLevel: 'warn'` (warns on duplicates; emit/count still
+  collapsed). Applies fully to `on`, `any`, and `pipe(sink)`. `once` honors observability,
+  invocation, and logLevel with kind-isolated disposal (`off` / disposing `on` never clears
+  `once` for the same handler, and vice versa). Named presets:
+  `DuplicateSubscriptionStrategy.NodeEventEmitter`, `.EventTarget`, `.SharedHandler`.
+  **`Logger.debug` is now required** on custom loggers (used when
+  `duplicateSubscriptionStrategy.logLevel` is `'debug'`).
 - **`once(event, handler)`** — subscribe to a single event and automatically
   unsubscribe after the first emission.
 - **`off(event, handler)`** — remove a handler previously registered with `on` by
@@ -30,7 +40,8 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   hooks, or default introspection). `pipe(bus, {incognito: true})` forwards
   events without coupling the target's listener tree into the source's
   monitoring (the target's own monitoring is unchanged). Duplicate `on` with the
-  same handler keeps the first registration's mode. Memory-leak logger thresholds
+  same handler under default `duplicateSubscriptionStrategy` keeps the first
+  registration's mode. Memory-leak logger thresholds
   still count own incognito handlers. `ScanOptions` extends `SubscribeOptions`;
   pooled scans never share a scanner across different `incognito` modes. See
   [Incognito subscriptions](./README.md#incognito-subscriptions).
@@ -114,6 +125,10 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Changed
 
+- **`Logger.debug` is required** — custom `options.logger` implementations must
+  provide `debug(...args)`. Strongbus invokes it when
+  `duplicateSubscriptionStrategy.logLevel` is `'debug'`. (`console` already
+  satisfies this.)
 - **Listener introspection** — scoped methods on `Bus` / `IntrospectionSurface`:
   `hasListeners`, `getListenerCount`, `getListeners`, `getEventCount`,
   `hasListenersFor`, `getListenerCountFor`, `getListenersFor`, and `forEach`
@@ -259,8 +274,15 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | `bus.forEachListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ...)` or `bus.forEach((event, handlers) => ..., {scope: ListenerScope.ANY})` |
 | `bus.forEachOwnListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., {scope: ListenerScope.OWN})` |
 | `bus.forEachDownstreamListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., {scope: ListenerScope.DOWNSTREAM})` |
+| custom `Logger` with only `info`/`warn`/`error` | add required `debug(...args)` |
 
 Import `ListenerScope` from `'strongbus'` wherever the v3 column uses it. `ListenerScope.ANY` is equivalent to `ListenerScope.OWN | ListenerScope.DOWNSTREAM`. `ListenerScope.DOWNSTREAM` covers listeners on buses attached with `pipe(bus)` only, not function sinks from `pipe(handler)` (those are `ListenerScope.OWN`).
+
+### Custom `Logger` must implement `debug`
+
+`Logger` now requires `debug(...args: any[]): void` alongside `info` / `warn` / `error`.
+Strongbus calls it when `duplicateSubscriptionStrategy.logLevel` is `'debug'`.
+`console` already implements `debug`; custom loggers need an explicit method (even a no-op).
 
 ### `on` with arrays or the wildcard
 

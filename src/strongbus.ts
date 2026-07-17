@@ -4,18 +4,23 @@ import {type CancelablePromise, cancelable, timeout} from 'jaasync';
 
 import {Scanner} from './scanner';
 import {ScannerPools, type ScanParams as InternalScanParams} from './scannerPools';
-import {StrongbusLogger} from './strongbusLogger';
+import {StrongbusLogger, StrongbusLogMessages} from './strongbusLogger';
 import {DownstreamSnapshot, LifecycleManager} from './lifecycleManager';
 import type {LifecycleHost} from './types/lifecycleHost';
 import {type Subscription, type EventMap, WILDCARD} from './types/events';
 import type {EventHandler, EventSink, PipeSink, PipeMessage, PipeForward, GenericHandler} from './types/eventHandlers';
 import {Lifecycle} from './types/lifecycle';
 import type {Logger} from './types/logger';
-import type {Options, ListenerThresholds, ConfigurableBusOptions} from './types/options';
+import {
+  resolveDuplicateSubscriptionStrategy,
+  type Options,
+  type ListenerThresholds,
+  type ConfigurableBusOptions,
+  type DuplicateSubscriptionStrategy
+} from './types/options';
 import {ListenerRegistryView, type ListenerRegistry, EMPTY_LISTENER_SET} from './types/listenerRegistry';
 import {ListenerScope, type IntrospectionOptions} from './types/listenerScope';
 import type {
-  AnyEventMap,
   SubscriptionSurface,
   SubscriptionSurfaceAny,
   SubscriptionSurfaceNext,
@@ -41,7 +46,27 @@ import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {subscribeListenable} from './utils/subscribeListenable';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 
-type ResolvedBusOptions = Required<Options> & {thresholds: Required<ListenerThresholds>};
+type ResolvedBusOptions = Omit<Required<Options>, 'duplicateSubscriptionStrategy' | 'thresholds'> & {
+  thresholds: Required<ListenerThresholds>;
+  duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy;
+};
+
+type HandlerIntent = {
+  frames: Subscription[];
+  invokeCount: number;
+  observabilityCount: number;
+  /** Handler placed in {@link handlersByEvent} for emit. */
+  emitHandler: GenericHandler;
+  incognito: boolean;
+};
+
+type IntentFrameMeta = {
+  honorDisposalConfig: boolean;
+  onFullyCleared: () => void;
+  adjustStackedObservability: (delta: number) => void;
+  fireBaseRemoveLifecycle: () => void;
+  fireBaseRemoveLifecycleDid: () => void;
+};
 
 @autobind
 export class Bus<TEventMap extends EventMap = EventMap> implements
@@ -60,7 +85,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     },
     logger: console,
     verbose: false,
-    coalesceDownstreamLifecycleEvents: true
+    coalesceDownstreamLifecycleEvents: true,
+    duplicateSubscriptionStrategy: resolveDuplicateSubscriptionStrategy()
   };
 
   /**
@@ -111,7 +137,11 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       thresholds: {
         ...base.thresholds,
         ...overrides.thresholds
-      }
+      },
+      duplicateSubscriptionStrategy: resolveDuplicateSubscriptionStrategy({
+        ...base.duplicateSubscriptionStrategy,
+        ...overrides.duplicateSubscriptionStrategy
+      })
     };
   }
 
@@ -120,32 +150,54 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     incognito: boolean;
   }>();
   private readonly downstreamListenerCountsByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
-  private readonly sinks = new WeakMap<PipeSink<TEventMap>, Subscription>();
   private readonly forwards = new Forwards();
   /**
-   * Live disposer index: handler → event → Subscription.
-   * Duplicate {@link Bus.on} with the same handler returns the same Subscription;
-   * {@link Bus.off} is O(1) via this map.
+   * Live disposer stacks for {@link Bus.on}: userHandler → event → intent.
    */
-  private readonly subscriptionsByHandler = new Map<
+  private readonly onIntents = new Map<
     GenericHandler,
-    Map<EventKeys<TEventMap>|WILDCARD, Subscription>
+    Map<EventKeys<TEventMap>|WILDCARD, HandlerIntent>
   >();
   /**
-   * Incognito registrations keyed like {@link subscriptionsByHandler}:
-   * handler → set of events registered with `{incognito: true}`.
+   * Live disposer stacks for {@link Bus.once}: userHandler → event → intent
+   * (emit uses a wrapper; disposal never clears {@link onIntents}).
+   */
+  private readonly onceIntents = new Map<
+    GenericHandler,
+    Map<EventKeys<TEventMap>|WILDCARD, HandlerIntent>
+  >();
+  /**
+   * {@link Bus.any} composites: userHandler → canonical events key → intent + per-event wrappers.
+   */
+  private readonly anyIntents = new Map<
+    GenericHandler,
+    Map<string, HandlerIntent & {
+      events: EventKeys<TEventMap>[];
+      wrappers: Map<EventKeys<TEventMap>, GenericHandler>;
+    }>
+  >();
+  /**
+   * Function {@link Bus.pipe} sinks: sink → {@link WILDCARD} → intent.
+   */
+  private readonly pipeIntents = new Map<
+    GenericHandler,
+    Map<typeof WILDCARD, HandlerIntent>
+  >();
+  /**
+   * Incognito registrations keyed by emit handler → events.
    */
   private readonly incognitoByHandler = new Map<
     GenericHandler,
     Set<EventKeys<TEventMap>|WILDCARD>
   >();
   private readonly handlersByEvent = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
+  /** Extra OWN observability weight beyond unique emit handlers (for `observability: 'stack'`). */
+  private readonly observabilityExtraByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
   private readonly scannerPools = new ScannerPools<TEventMap>();
   // queue of unsubscription requests so that they are processed transactionally in order
   private readonly unsubQueue: {
     subscription: Subscription;
-    event: EventKeys<TEventMap>|WILDCARD;
-    handler: GenericHandler;
+    dispose: () => void;
   }[] = [];
 
   // volatile internal state
@@ -214,41 +266,49 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
   /**
    * Subscribe a callback to an event.
-   * Calling again with the same `event` and handler reference is a no-op and returns
-   * the existing {@link Subscription}.
+   * Duplicate behavior is governed by {@link Options.duplicateSubscriptionStrategy}.
    */
   public on<T extends SubscribableEventKeys<TEventMap>>(
     event: T,
     handler: EventHandler<TEventMap, T>,
     options?: SubscribeOptions
   ): Subscription {
-    return this.addListener(event, handler, options);
+    return this.registerOnIntent(event, handler, options);
   }
 
   /**
    * Remove a handler previously registered with {@link Bus.on}.
    * Pass the same function reference; no-op if that handler is not registered for `event`.
-   * Does not remove wrappers from {@link Bus.once}, {@link Bus.any}, or {@link Bus.pipe}.
+   * Honors `duplicateSubscriptionStrategy.disposal` (`collapse` clears all stacked `on` intent;
+   * `stack` pops one). Does not remove {@link Bus.once} / {@link Bus.any} / {@link Bus.pipe} intent.
    */
   public off<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): void {
-    this.subscriptionsByHandler.get(handler)?.get(event)?.();
+    const intent = this.onIntents.get(handler)?.get(event);
+    if(!intent?.frames.length) {
+      return;
+    }
+    const strategy = this.options.duplicateSubscriptionStrategy;
+    if(strategy.disposal === 'collapse') {
+      const frames = intent.frames.slice();
+      for(const frame of frames) {
+        frame();
+      }
+    } else {
+      intent.frames[intent.frames.length - 1]();
+    }
   }
 
   /**
    * Subscribe a callback to an event. Automatically unsubscribes after the first invocation.
+   * Duplicate `once` registrations honor strategy `observability`, `invocation`, and `logLevel`;
+   * disposal is always isolated from {@link Bus.on} for the same handler.
    */
   public once<T extends SubscribableEventKeys<TEventMap>>(
     event: T,
     handler: EventHandler<TEventMap, T>,
     options?: SubscribeOptions
   ): Subscription {
-    let sub: Subscription;
-    const wrapper = ((payload: TEventMap[T]) => {
-      sub();
-      handler(payload);
-    }) as GenericHandler;
-    sub = this.addListener(event, wrapper, options);
-    return sub;
+    return this.registerOnceIntent(event, handler, options);
   }
 
   public emit<T extends VoidEventKeys<TEventMap>>(event: T, payload?: null | undefined): boolean;
@@ -284,19 +344,20 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
   /**
    * Handle multiple events with the same handler.
-   * {@link EventSink} receives raised event as first argument, payload as second argument
+   * {@link EventSink} receives raised event as first argument, payload as second argument.
+   * Duplicate `any` with the same event set (order-independent) and handler honors
+   * {@link Options.duplicateSubscriptionStrategy}.
    */
   public any: SubscriptionSurfaceAny<TEventMap> = ((
     events,
     handler,
     options?: SubscribeOptions
   ) => {
-    return subscriptionWrapper(over(
-      (events as EventKeys<TEventMap>[]).map((e) => {
-        const anyHandler = (payload: TEventMap[typeof e]) => handler(e as EventKeys<AnyEventMap<TEventMap>>, payload as any);
-        return this.addListener(e, anyHandler, options);
-      })
-    ));
+    return this.registerAnyIntent(
+      events as EventKeys<TEventMap>[],
+      handler as unknown as EventSink<TEventMap>,
+      options
+    );
   }) as SubscriptionSurfaceAny<TEventMap>;
 
   /**
@@ -459,15 +520,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     options?: SubscribeOptions
   ): Subscription | Bus<any> => {
     if(typeof dest === 'function') {
-      const sink = dest as PipeSink<TEventMap>;
-      const wrapper: GenericHandler = (event, payload) => {
-        const forward = ((target: Bus<any>) =>
-          this.forwards.enqueue(() => target.emit(event, payload))
-        ) as PipeForward<TEventMap>;
-        sink({event, payload} as PipeMessage<TEventMap>, forward);
-      };
-      this.sinks.set(sink, this.addListener(WILDCARD, wrapper, options));
-      return subscriptionWrapper(() => this.unpipe(sink));
+      return this.registerPipeIntent(dest as PipeSink<TEventMap>, options);
     } else {
       const downstream = dest;
       if(downstream !== this as any) {
@@ -505,8 +558,13 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     dest: PipeSink<TEventMap> | Bus<any>
   ) => {
     if(typeof dest === 'function') {
-      this.sinks.get(dest as PipeSink<TEventMap>)?.();
-      this.sinks.delete(dest as PipeSink<TEventMap>);
+      const intent = this.pipeIntents.get(dest as GenericHandler)?.get(WILDCARD);
+      if(intent?.frames.length) {
+        const frames = intent.frames.slice();
+        for(const frame of frames) {
+          frame();
+        }
+      }
     } else {
       const downstream = dest;
       const link = this.downstreams.get(downstream);
@@ -567,6 +625,11 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     this.registryForScope(scope, includeIncognito).forEach(handlers => {
       total += handlers.size;
     });
+    if((scope & ListenerScope.OWN) === ListenerScope.OWN) {
+      for(const extra of this.observabilityExtraByEvent.values()) {
+        total += extra;
+      }
+    }
     return total;
   }
 
@@ -602,7 +665,11 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       return this.getListenerCountFor(event, {scope: ListenerScope.OWN, includeIncognito})
         + this.getListenerCountFor(event, {scope: ListenerScope.DOWNSTREAM, includeIncognito});
     }
-    return this.registryForScope(scope, includeIncognito).getCount(event);
+    let count = this.registryForScope(scope, includeIncognito).getCount(event);
+    if((scope & ListenerScope.OWN) === ListenerScope.OWN) {
+      count += this.observabilityExtraByEvent.get(event) ?? 0;
+    }
+    return count;
   }) as IntrospectionSurfaceListenerCountForEvent<TEventMap>;
 
   public getListenersFor: IntrospectionSurfaceListenerForEvent<TEventMap> = ((
@@ -754,18 +821,26 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   private releaseSubscribers(): void {
-    // any un-invoked unsubscribes will be invoked,
-    // their lifecycle hooks will be triggered,
-    // and they will be removed from the index
     const pending: Subscription[] = [];
-    for(const byEvent of this.subscriptionsByHandler.values()) {
-      for(const sub of byEvent.values()) {
-        pending.push(sub);
+    const collect = (intents: Map<GenericHandler, Map<any, {frames: Subscription[]}>>) => {
+      for(const byKey of intents.values()) {
+        for(const intent of byKey.values()) {
+          pending.push(...intent.frames);
+        }
       }
-    }
+    };
+    collect(this.onIntents);
+    collect(this.onceIntents);
+    collect(this.anyIntents);
+    collect(this.pipeIntents);
     over(pending)();
     this.handlersByEvent.clear();
     this.incognitoByHandler.clear();
+    this.observabilityExtraByEvent.clear();
+    this.onIntents.clear();
+    this.onceIntents.clear();
+    this.anyIntents.clear();
+    this.pipeIntents.clear();
   }
 
   private releaseDownstreams(): void {
@@ -775,22 +850,450 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     this.downstreams.clear();
   }
 
-  private addListener(
+  private get duplicateSubscriptionStrategy(): DuplicateSubscriptionStrategy {
+    return this.options.duplicateSubscriptionStrategy;
+  }
+
+  private registerOnIntent(
     event: EventKeys<TEventMap>|WILDCARD,
     handler: GenericHandler,
     options?: SubscribeOptions
   ): Subscription {
-    const existing = this.subscriptionsByHandler.get(handler)?.get(event);
+    return this.registerHandlerIntent({
+      kind: 'on',
+      intents: this.onIntents,
+      listenableKey: event,
+      listenableLabel: String(event),
+      userHandler: handler,
+      emitHandler: handler,
+      options,
+      honorDisposalConfig: true
+    });
+  }
+
+  private registerOnceIntent(
+    event: EventKeys<TEventMap>|WILDCARD,
+    handler: GenericHandler,
+    options?: SubscribeOptions
+  ): Subscription {
+    let intentRef: HandlerIntent;
+    const emitHandler = ((payload: any) => {
+      const times = Math.max(intentRef.invokeCount, 1);
+      const frames = intentRef.frames.slice();
+      for(const frame of frames) {
+        frame();
+      }
+      for(let i = 0; i < times; i++) {
+        handler(payload);
+      }
+    }) as GenericHandler;
+
+    const sub = this.registerHandlerIntent({
+      kind: 'once',
+      intents: this.onceIntents,
+      listenableKey: event,
+      listenableLabel: String(event),
+      userHandler: handler,
+      emitHandler,
+      options,
+      // once ignores disposal config: always pop one frame
+      honorDisposalConfig: false
+    });
+    intentRef = this.onceIntents.get(handler)?.get(event) as HandlerIntent;
+    return sub;
+  }
+
+  private registerAnyIntent(
+    events: EventKeys<TEventMap>[],
+    handler: EventSink<TEventMap>,
+    options?: SubscribeOptions
+  ): Subscription {
+    const uniqueEvents = canonicalizeEventKeys(events);
+    const eventsKey = uniqueEvents.map(String).join('\0');
+    const strategy = this.duplicateSubscriptionStrategy;
+    let byKey = this.anyIntents.get(handler as GenericHandler);
+    if(!byKey) {
+      byKey = new Map();
+      this.anyIntents.set(handler as GenericHandler, byKey);
+    }
+    const intentsForHandler = byKey;
+
+    const existing = byKey.get(eventsKey);
     if(existing) {
-      return existing;
+      this.logDuplicate('any', uniqueEvents.map(String).join(','));
+      if(strategy.disposal === 'collapse') {
+        if(strategy.invocation === 'stack') {
+          existing.invokeCount += 1;
+        }
+        if(strategy.observability === 'stack') {
+          existing.observabilityCount += 1;
+          this.adjustAnyStackedObservability(uniqueEvents, existing.incognito, 1);
+        }
+        return existing.frames[0];
+      }
+      return this.pushIntentFrame(existing, {
+        honorDisposalConfig: true,
+        onFullyCleared: () => {
+          this.teardownAnyEmitHandlers(existing);
+          intentsForHandler.delete(eventsKey);
+          if(intentsForHandler.size === 0) {
+            this.anyIntents.delete(handler as GenericHandler);
+          }
+        },
+        adjustStackedObservability: (delta) => {
+          this.adjustAnyStackedObservability(uniqueEvents, existing.incognito, delta);
+        },
+        fireBaseRemoveLifecycle: () => {
+          if(existing.incognito) {
+            return;
+          }
+          for(const e of uniqueEvents) {
+            this.lifecycle.ownListenerWillRemove(e);
+          }
+        },
+        fireBaseRemoveLifecycleDid: () => {
+          if(existing.incognito) {
+            return;
+          }
+          for(const e of uniqueEvents) {
+            this.lifecycle.ownListenerDidRemove(e);
+          }
+        }
+      });
+    }
+
+    const wrappers = new Map<EventKeys<TEventMap>, GenericHandler>();
+    const intent: HandlerIntent & {
+      events: EventKeys<TEventMap>[];
+      wrappers: Map<EventKeys<TEventMap>, GenericHandler>;
+    } = {
+      frames: [],
+      invokeCount: 1,
+      observabilityCount: 1,
+      emitHandler: handler as GenericHandler,
+      incognito: options?.incognito === true,
+      events: uniqueEvents,
+      wrappers
+    };
+
+    for(const e of uniqueEvents) {
+      const wrapper = ((payload: any) => {
+        const times = Math.max(intent.invokeCount, 1);
+        for(let i = 0; i < times; i++) {
+          (handler as EventSink<TEventMap>)(e as any, payload);
+        }
+      }) as GenericHandler;
+      wrappers.set(e, wrapper);
+      this.attachEmitHandler(e, wrapper, intent.incognito, true);
+    }
+    byKey.set(eventsKey, intent);
+    return this.pushIntentFrame(intent, {
+      honorDisposalConfig: true,
+      onFullyCleared: () => {
+        this.teardownAnyEmitHandlers(intent);
+        intentsForHandler.delete(eventsKey);
+        if(intentsForHandler.size === 0) {
+          this.anyIntents.delete(handler as GenericHandler);
+        }
+      },
+      adjustStackedObservability: (delta) => {
+        this.adjustAnyStackedObservability(uniqueEvents, intent.incognito, delta);
+      },
+      fireBaseRemoveLifecycle: () => {
+        if(intent.incognito) {
+          return;
+        }
+        for(const e of uniqueEvents) {
+          this.lifecycle.ownListenerWillRemove(e);
+        }
+      },
+      fireBaseRemoveLifecycleDid: () => {
+        if(intent.incognito) {
+          return;
+        }
+        for(const e of uniqueEvents) {
+          this.lifecycle.ownListenerDidRemove(e);
+        }
+      }
+    });
+  }
+
+  private adjustAnyStackedObservability(
+    events: EventKeys<TEventMap>[],
+    incognito: boolean,
+    delta: number
+  ): void {
+    for(const e of events) {
+      this.bumpObservabilityExtra(e, delta, incognito);
+      if(!incognito) {
+        if(delta > 0) {
+          this.lifecycle.ownListenerWillAdd(e);
+          this.lifecycle.ownListenerDidAdd(e);
+        } else if(delta < 0) {
+          this.lifecycle.ownListenerWillRemove(e);
+          this.lifecycle.ownListenerDidRemove(e);
+        }
+      }
+    }
+  }
+
+  private teardownAnyEmitHandlers(intent: {
+    events: EventKeys<TEventMap>[];
+    wrappers: Map<EventKeys<TEventMap>, GenericHandler>;
+    incognito: boolean;
+  }): void {
+    for(const e of intent.events) {
+      const wrapper = intent.wrappers.get(e);
+      if(wrapper) {
+        this.detachEmitHandler(e, wrapper);
+      }
+    }
+  }
+
+  private registerPipeIntent(
+    sink: PipeSink<TEventMap>,
+    options?: SubscribeOptions
+  ): Subscription {
+    const existing = this.pipeIntents.get(sink as GenericHandler)?.get(WILDCARD);
+    const emitHandler: GenericHandler = existing?.emitHandler ?? ((event, payload) => {
+      const intent = this.pipeIntents.get(sink as GenericHandler)?.get(WILDCARD);
+      const times = Math.max(intent?.invokeCount ?? 1, 1);
+      const forward = ((target: Bus<any>) =>
+        this.forwards.enqueue(() => target.emit(event, payload))
+      ) as PipeForward<TEventMap>;
+      for(let i = 0; i < times; i++) {
+        sink({event, payload} as PipeMessage<TEventMap>, forward);
+      }
+    });
+
+    return this.registerHandlerIntent({
+      kind: 'pipe',
+      intents: this.pipeIntents,
+      listenableKey: WILDCARD,
+      listenableLabel: '*',
+      userHandler: sink as GenericHandler,
+      emitHandler,
+      options,
+      honorDisposalConfig: true
+    });
+  }
+
+  private registerHandlerIntent(params: {
+    kind: string;
+    intents: Map<GenericHandler, Map<any, HandlerIntent>>;
+    listenableKey: EventKeys<TEventMap>|WILDCARD;
+    listenableLabel: string;
+    userHandler: GenericHandler;
+    emitHandler: GenericHandler;
+    options?: SubscribeOptions;
+    honorDisposalConfig: boolean;
+  }): Subscription {
+    const {
+      kind,
+      intents,
+      listenableKey,
+      listenableLabel,
+      userHandler,
+      emitHandler,
+      options,
+      honorDisposalConfig
+    } = params;
+    const strategy = this.duplicateSubscriptionStrategy;
+    let byKey = intents.get(userHandler);
+    if(!byKey) {
+      byKey = new Map();
+      intents.set(userHandler, byKey);
+    }
+    const existing = byKey.get(listenableKey);
+    if(existing) {
+      this.logDuplicate(kind, listenableLabel);
+      // once: honorDisposalConfig false → never collapse (always pop one frame)
+      const disposalCollapse = honorDisposalConfig && strategy.disposal === 'collapse';
+      if(disposalCollapse) {
+        if(strategy.invocation === 'stack') {
+          existing.invokeCount += 1;
+        }
+        if(strategy.observability === 'stack') {
+          existing.observabilityCount += 1;
+          this.adjustSingleStackedObservability(listenableKey, existing.incognito, 1);
+        }
+        return existing.frames[0];
+      }
+      return this.pushIntentFrame(existing, this.singleEventFrameMeta({
+        honorDisposalConfig,
+        listenableKey,
+        incognito: existing.incognito,
+        emitHandler: existing.emitHandler,
+        intents,
+        userHandler,
+        byKey
+      }));
     }
 
     const incognito = options?.incognito === true;
+    const intent: HandlerIntent = {
+      frames: [],
+      invokeCount: 1,
+      observabilityCount: 1,
+      emitHandler,
+      incognito
+    };
+    byKey.set(listenableKey, intent);
+    this.attachEmitHandler(listenableKey, emitHandler, incognito, true);
+    return this.pushIntentFrame(intent, this.singleEventFrameMeta({
+      honorDisposalConfig,
+      listenableKey,
+      incognito,
+      emitHandler,
+      intents,
+      userHandler,
+      byKey
+    }));
+  }
+
+  private singleEventFrameMeta(params: {
+    honorDisposalConfig: boolean;
+    listenableKey: EventKeys<TEventMap>|WILDCARD;
+    incognito: boolean;
+    emitHandler: GenericHandler;
+    intents: Map<GenericHandler, Map<any, HandlerIntent>>;
+    userHandler: GenericHandler;
+    byKey: Map<any, HandlerIntent>;
+  }): IntentFrameMeta {
+    const {
+      honorDisposalConfig,
+      listenableKey,
+      incognito,
+      emitHandler,
+      intents,
+      userHandler,
+      byKey
+    } = params;
+    return {
+      honorDisposalConfig,
+      onFullyCleared: () => {
+        this.detachEmitHandler(listenableKey, emitHandler);
+        byKey.delete(listenableKey);
+        if(byKey.size === 0) {
+          intents.delete(userHandler);
+        }
+      },
+      adjustStackedObservability: (delta) => {
+        this.adjustSingleStackedObservability(listenableKey, incognito, delta);
+      },
+      fireBaseRemoveLifecycle: () => {
+        if(!incognito) {
+          this.lifecycle.ownListenerWillRemove(listenableKey);
+        }
+      },
+      fireBaseRemoveLifecycleDid: () => {
+        if(!incognito) {
+          this.lifecycle.ownListenerDidRemove(listenableKey);
+        }
+      }
+    };
+  }
+
+  private adjustSingleStackedObservability(
+    event: EventKeys<TEventMap>|WILDCARD,
+    incognito: boolean,
+    delta: number
+  ): void {
+    this.bumpObservabilityExtra(event, delta, incognito);
     if(!incognito) {
+      if(delta > 0) {
+        this.lifecycle.ownListenerWillAdd(event);
+        this.lifecycle.ownListenerDidAdd(event);
+      } else if(delta < 0) {
+        this.lifecycle.ownListenerWillRemove(event);
+        this.lifecycle.ownListenerDidRemove(event);
+      }
+    }
+  }
+
+  private pushIntentFrame(intent: HandlerIntent, meta: IntentFrameMeta): Subscription {
+    const strategy = this.duplicateSubscriptionStrategy;
+    const isDuplicateFrame = intent.frames.length > 0;
+    if(isDuplicateFrame) {
+      if(strategy.invocation === 'stack') {
+        intent.invokeCount += 1;
+      }
+      if(strategy.observability === 'stack') {
+        intent.observabilityCount += 1;
+        meta.adjustStackedObservability(1);
+      }
+    }
+
+    const sub = subscriptionWrapper(() => {
+      this.unsubQueue.push({
+        subscription: sub,
+        dispose: () => this.disposeIntentFrame(intent, sub, meta)
+      });
+      this.purgeUnsubQueue();
+    });
+    intent.frames.push(sub);
+    return sub;
+  }
+
+  private disposeIntentFrame(
+    intent: HandlerIntent,
+    sub: Subscription,
+    meta: IntentFrameMeta
+  ): void {
+    const idx = intent.frames.indexOf(sub);
+    if(idx === -1) {
+      return;
+    }
+    const strategy = this.duplicateSubscriptionStrategy;
+    const collapse = meta.honorDisposalConfig && strategy.disposal === 'collapse';
+
+    if(collapse) {
+      const obs = intent.observabilityCount;
+      intent.frames.length = 0;
+      intent.invokeCount = 0;
+      intent.observabilityCount = 0;
+      if(obs > 1) {
+        for(let i = 0; i < obs - 1; i++) {
+          meta.adjustStackedObservability(-1);
+        }
+      }
+      meta.fireBaseRemoveLifecycle();
+      meta.onFullyCleared();
+      meta.fireBaseRemoveLifecycleDid();
+      return;
+    }
+
+    intent.frames.splice(idx, 1);
+    if(strategy.invocation === 'stack' && intent.invokeCount > 0) {
+      intent.invokeCount -= 1;
+    }
+
+    if(strategy.observability === 'stack' && intent.observabilityCount > 1) {
+      intent.observabilityCount -= 1;
+      meta.adjustStackedObservability(-1);
+    } else if(strategy.observability === 'stack') {
+      intent.observabilityCount = 0;
+    }
+
+    if(intent.frames.length === 0) {
+      meta.fireBaseRemoveLifecycle();
+      meta.onFullyCleared();
+      meta.fireBaseRemoveLifecycleDid();
+    }
+  }
+
+  private attachEmitHandler(
+    event: EventKeys<TEventMap>|WILDCARD,
+    handler: GenericHandler,
+    incognito: boolean,
+    fireLifecycle: boolean
+  ): void {
+    if(fireLifecycle && !incognito) {
       this.lifecycle.ownListenerWillAdd(event);
     }
     const prev = this.handlersByEvent.get(event);
     const next = new Set<GenericHandler>(prev);
+    const added = !next.has(handler);
     next.add(handler);
     this.handlersByEvent.set(event, next);
     if(incognito) {
@@ -798,75 +1301,74 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     }
     this.invalidateCombinedListenerCache();
     this.invalidateOwnListenerCache();
-    if(!incognito) {
+    if(fireLifecycle && !incognito) {
       this.lifecycle.ownListenerDidAdd(event);
     }
-    this.logger.onAddListener(event, next.size);
-    return this.generateListenerSubscription(event as EventKeys<TEventMap>, handler);
+    if(added) {
+      this.logger.onAddListener(event, this.ownListenerCountForEvent(event));
+    }
   }
 
-  private generateListenerSubscription(event: EventKeys<TEventMap>|WILDCARD, handler: GenericHandler): Subscription {
-    let byEvent = this.subscriptionsByHandler.get(handler);
-    if(!byEvent) {
-      byEvent = new Map();
-      this.subscriptionsByHandler.set(handler, byEvent);
+  private detachEmitHandler(
+    event: EventKeys<TEventMap>|WILDCARD,
+    handler: GenericHandler
+  ): void {
+    const set = this.handlersByEvent.get(event);
+    if(!set?.size) {
+      return;
     }
+    const removed = set.delete(handler);
+    if(removed) {
+      this.clearIncognito(handler, event);
+      if(set.size === 0) {
+        this.handlersByEvent.delete(event);
+      }
+      this.invalidateCombinedListenerCache();
+      this.invalidateOwnListenerCache();
+      this.logger.onListenerRemoved(event, this.ownListenerCountForEvent(event));
+    }
+  }
 
-    const sub = subscriptionWrapper(() => {
-      this.unsubQueue.push({
-        subscription: sub,
-        event,
-        handler
-      });
-      this.purgeUnsubQueue();
-    });
-    byEvent.set(event, sub);
-    return sub;
+  private ownListenerCountForEvent(event: EventKeys<TEventMap>|WILDCARD): number {
+    const setSize = this.handlersByEvent.get(event)?.size ?? 0;
+    const extra = this.observabilityExtraByEvent.get(event) ?? 0;
+    return setSize + extra;
+  }
+
+  private bumpObservabilityExtra(
+    event: EventKeys<TEventMap>|WILDCARD,
+    delta: number,
+    incognito: boolean
+  ): void {
+    if(incognito) {
+      return;
+    }
+    const curr = this.observabilityExtraByEvent.get(event) ?? 0;
+    const next = Math.max(curr + delta, 0);
+    if(next === 0) {
+      this.observabilityExtraByEvent.delete(event);
+    } else {
+      this.observabilityExtraByEvent.set(event, next);
+    }
+  }
+
+  private logDuplicate(kind: string, listenable: string): void {
+    this.logger.onDuplicateSubscription(
+      StrongbusLogMessages.duplicateSubscription(this.name, kind, listenable),
+      this.duplicateSubscriptionStrategy.logLevel
+    );
   }
 
   private purgeUnsubQueue() {
     if(this._purgingUnsubQueue) {
       return;
     }
-
     this._purgingUnsubQueue = true;
-
     while(this.unsubQueue.length) {
-      const {subscription, event, handler} = this.unsubQueue.shift();
-      const byEvent = this.subscriptionsByHandler.get(handler);
-      if(byEvent?.get(event) !== subscription) {
-        continue;
-      }
-
-      byEvent.delete(event);
-      if(byEvent.size === 0) {
-        this.subscriptionsByHandler.delete(handler);
-      }
-      // lifecycle events may trigger additional unsubs, which will be pushed to the end of queue and handled in a subsequent iteration of this loop
-      this.removeListener(event, handler);
+      const {dispose} = this.unsubQueue.shift();
+      dispose();
     }
-
     this._purgingUnsubQueue = false;
-  }
-
-  private removeListener(event: EventKeys<TEventMap>|WILDCARD, handler: GenericHandler): void {
-    const incognito = this.isIncognito(handler, event);
-    if(!incognito) {
-      this.lifecycle.ownListenerWillRemove(event);
-    }
-    const set = this.handlersByEvent.get(event);
-    if(set?.size) {
-      const removed = set.delete(handler);
-      if(removed) {
-        this.clearIncognito(handler, event);
-        this.invalidateCombinedListenerCache();
-        this.invalidateOwnListenerCache();
-        if(!incognito) {
-          this.lifecycle.ownListenerDidRemove(event);
-        }
-        this.logger.onListenerRemoved(event, set.size);
-      }
-    }
   }
 
   private isIncognito(
@@ -904,12 +1406,12 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
   private emitEvent(event: EventKeys<TEventMap>|WILDCARD, ...args: any[]): boolean {
     const handlers = this.handlersByEvent.get(event);
-      if(handlers && handlers.size) {
-        for(const fn of handlers) {
+    if(handlers && handlers.size) {
+      for(const fn of handlers) {
+        const times = this.invokeTimesFor(event, fn);
+        for(let i = 0; i < times; i++) {
           try {
             const execution = fn(...args);
-
-            // emit errors if fn returns promise that rejects
             (execution as Promise<any>)?.catch?.((e) => {
               this.lifecycle.emitHandlerError(e, event);
             });
@@ -917,9 +1419,21 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
             this.lifecycle.emitHandlerError(e, event);
           }
         }
-        return true;
       }
-      return false;
+      return true;
+    }
+    return false;
+  }
+
+  private invokeTimesFor(event: EventKeys<TEventMap>|WILDCARD, emitHandler: GenericHandler): number {
+    for(const byEvent of this.onIntents.values()) {
+      const intent = byEvent.get(event);
+      if(intent?.emitHandler === emitHandler) {
+        return Math.max(intent.invokeCount, 1);
+      }
+    }
+    // once / any / pipe wrappers handle multiplicity internally
+    return 1;
   }
 
   private propagateDownstream<T extends EventKeys<TEventMap>>(event: T, payload?: TEventMap[T]): boolean {
@@ -979,6 +1493,22 @@ export interface Bus<TEventMap extends EventMap = EventMap> extends
  */
 function isSubscribeOptions(value: unknown): value is SubscribeOptions {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * @ignore
+ * Stable unique event keys for {@link Bus.any} intent identity (order-independent).
+ */
+function canonicalizeEventKeys<T extends string | number | symbol>(events: T[]): T[] {
+  const seen = new Set<T>();
+  const unique: T[] = [];
+  for(const e of events) {
+    if(!seen.has(e)) {
+      seen.add(e);
+      unique.push(e);
+    }
+  }
+  return unique.sort((a, b) => String(a).localeCompare(String(b)));
 }
 
 /**

@@ -12,8 +12,8 @@ export type {
   PipeForward
 } from './types/eventHandlers';
 export * from './types/lifecycle';
-export type {Logger, LoggerProvider} from './types/logger';
 export * from './types/options';
+export type {Logger, LoggerProvider} from './types/logger';
 export {ListenerScope} from './types/listenerScope';
 export type {IntrospectionOptions} from './types/listenerScope';
 export type {
