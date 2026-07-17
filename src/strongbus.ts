@@ -115,7 +115,10 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     };
   }
 
-  private readonly downstreams = new Map<Bus<TEventMap>, VoidFunction>();
+  private readonly downstreams = new Map<Bus<TEventMap>, {
+    unlink: VoidFunction;
+    incognito: boolean;
+  }>();
   private readonly downstreamListenerCountsByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
   private readonly sinks = new WeakMap<PipeSink<TEventMap>, Subscription>();
   /**
@@ -126,6 +129,14 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   private readonly subscriptionsByHandler = new Map<
     GenericHandler,
     Map<EventKeys<TEventMap>|WILDCARD, Subscription>
+  >();
+  /**
+   * Incognito registrations keyed like {@link subscriptionsByHandler}:
+   * handler → set of events registered with `{incognito: true}`.
+   */
+  private readonly incognitoByHandler = new Map<
+    GenericHandler,
+    Set<EventKeys<TEventMap>|WILDCARD>
   >();
   private readonly handlersByEvent = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
   private readonly scannerPools = new ScannerPools<TEventMap>();
@@ -139,16 +150,22 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   // volatile internal state
   private _purgingUnsubQueue: boolean = false;
   private _downstreamListenerTotalCount: number = 0;
-  private _cachedCombinedListenersMap: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
-  private _cachedOwnListenersMap: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
-  private _cachedDownstreamListenersMap: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
+  private _cachedCombinedListeners: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
+  private _cachedCombinedListenersWithIncognito: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
+  private _cachedOwnListeners: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
+  private _cachedOwnListenersWithIncognito: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
+  private _cachedDownstreamListeners: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
+  private _cachedDownstreamListenersWithIncognito: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
 
   // set on-construct
   private readonly options!: ResolvedBusOptions;
   private readonly logger!: StrongbusLogger<TEventMap>;
   private readonly listenersRegistry!: ListenerRegistry<TEventMap>;
+  private readonly listenersRegistryWithIncognito!: ListenerRegistry<TEventMap>;
   private readonly ownListenersRegistry!: ListenerRegistry<TEventMap>;
+  private readonly ownListenersRegistryWithIncognito!: ListenerRegistry<TEventMap>;
   private readonly downstreamListenersRegistry!: ListenerRegistry<TEventMap>;
+  private readonly downstreamListenersRegistryWithIncognito!: ListenerRegistry<TEventMap>;
   private readonly lifecycle!: LifecycleManager<TEventMap>;
   /**
    * Subscribe to meta changes to the {@link Bus} with {@link Lifecycle} events
@@ -162,9 +179,12 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       provider: this.options.logger,
       name: this.name
     });
-    this.listenersRegistry = ListenerRegistryView.create(() => this.getCombinedListenersMap());
-    this.ownListenersRegistry = ListenerRegistryView.create(() => this.getOwnListenersMap());
-    this.downstreamListenersRegistry = ListenerRegistryView.create(() => this.getDownstreamListenersMap());
+    this.listenersRegistry = ListenerRegistryView.create(() => this.getCombinedListenersMap(false));
+    this.listenersRegistryWithIncognito = ListenerRegistryView.create(() => this.getCombinedListenersMap(true));
+    this.ownListenersRegistry = ListenerRegistryView.create(() => this.getOwnListenersMap(false));
+    this.ownListenersRegistryWithIncognito = ListenerRegistryView.create(() => this.getOwnListenersMap(true));
+    this.downstreamListenersRegistry = ListenerRegistryView.create(() => this.getDownstreamListenersMap(false));
+    this.downstreamListenersRegistryWithIncognito = ListenerRegistryView.create(() => this.getDownstreamListenersMap(true));
     this.lifecycle = new LifecycleManager<TEventMap>({
       host: this.createLifecycleHost(),
       logger: this.logger,
@@ -199,9 +219,9 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   public on<T extends SubscribableEventKeys<TEventMap>>(
     event: T,
     handler: EventHandler<TEventMap, T>,
-    _options?: SubscribeOptions
+    options?: SubscribeOptions
   ): Subscription {
-    return this.addListener(event, handler);
+    return this.addListener(event, handler, options);
   }
 
   /**
@@ -219,14 +239,14 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   public once<T extends SubscribableEventKeys<TEventMap>>(
     event: T,
     handler: EventHandler<TEventMap, T>,
-    _options?: SubscribeOptions
+    options?: SubscribeOptions
   ): Subscription {
     let sub: Subscription;
     const wrapper = ((payload: TEventMap[T]) => {
       sub();
       handler(payload);
     }) as GenericHandler;
-    sub = this.addListener(event, wrapper);
+    sub = this.addListener(event, wrapper, options);
     return sub;
   }
 
@@ -262,12 +282,12 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   public any: SubscriptionSurfaceAny<TEventMap> = ((
     events,
     handler,
-    _options?: SubscribeOptions
+    options?: SubscribeOptions
   ) => {
     return subscriptionWrapper(over(
       (events as EventKeys<TEventMap>[]).map((e) => {
         const anyHandler = (payload: TEventMap[typeof e]) => handler(e as EventKeys<AnyEventMap<TEventMap>>, payload as any);
-        return this.addListener(e, anyHandler);
+        return this.addListener(e, anyHandler, options);
       })
     ));
   }) as SubscriptionSurfaceAny<TEventMap>;
@@ -308,21 +328,24 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     let willDestroyListener: Subscription;
 
     let rejectionTrigger: typeof rejectionTriggerOrOptions | undefined;
+    let options: SubscribeOptions | undefined;
     if(maybeOptions !== undefined) {
       rejectionTrigger = rejectionTriggerOrOptions;
+      options = maybeOptions;
     } else if(isSubscribeOptions(rejectionTriggerOrOptions)) {
       rejectionTrigger = undefined;
+      options = rejectionTriggerOrOptions;
     } else {
       rejectionTrigger = rejectionTriggerOrOptions;
     }
 
     const resolutionSub = subscribeListenable(this, resolutionTrigger, (event, payload) => {
       resolve({event, payload} as TResult);
-    });
+    }, options);
     const rejectionSub = rejectionTrigger
       ? subscribeListenable(this, rejectionTrigger as any, (event) => {
           reject(new Error(`Rejected with event (${String(event)})`));
-        })
+        }, options)
       : null;
 
     function resolve(result: TResult): void {
@@ -383,9 +406,13 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     const params = normalizeScanParams<TEventMap>(args);
     const scanParams = params as unknown as InternalScanParams<any, TEventMap>;
 
+    const subscribeOptions: SubscribeOptions | undefined = params.incognito
+      ? {incognito: true}
+      : undefined;
+
     if(params.timeout && params.timeout > 0) {
       const scanner = new Scanner<any>(scanParams);
-      scanner.scan<TEventMap>(this, params.trigger);
+      scanner.scan<TEventMap>(this, params.trigger, subscribeOptions);
       // tslint:disable-next-line:prefer-object-spread
       return Object.assign(
         timeout(scanner, {ms: params.timeout, cancelUnderlyingPromiseOnTimeout: true}),
@@ -396,7 +423,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       );
     } else if(params.pool === false) {
       const scanner = new Scanner<any>(scanParams);
-      scanner.scan<TEventMap>(this, params.trigger);
+      scanner.scan<TEventMap>(this, params.trigger, subscribeOptions);
       // tslint:disable-next-line:prefer-object-spread
       return Object.assign(
         scanner,
@@ -420,7 +447,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    */
   public pipe: SubscriptionSurfacePipe<TEventMap> = ((
     dest: PipeSink<TEventMap> | Bus<any>,
-    _options?: SubscribeOptions
+    options?: SubscribeOptions
   ): Subscription | Bus<any> => {
     if(typeof dest === 'function') {
       const sink = dest as PipeSink<TEventMap>;
@@ -429,19 +456,31 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
           target.emit(event, payload)) as PipeForward<TEventMap>;
         sink({event, payload} as PipeMessage<TEventMap>, forward);
       };
-      this.sinks.set(sink, this.addListener(WILDCARD, wrapper));
+      this.sinks.set(sink, this.addListener(WILDCARD, wrapper, options));
       return subscriptionWrapper(() => this.unpipe(sink));
     } else {
       const downstream = dest;
       if(downstream !== this as any) {
         if(!this.downstreams.has(downstream)) {
-          this.downstreams.set(downstream, over([
-            downstream.hook(Lifecycle.willAddListener, (event) => this.lifecycle.onDownstreamWillAdd(event as EventKeys<TEventMap>|WILDCARD)),
-            downstream.hook(Lifecycle.didAddListener, (event) => this.lifecycle.onDownstreamDidAdd(event as EventKeys<TEventMap>|WILDCARD)),
-            downstream.hook(Lifecycle.willRemoveListener, (event) => this.lifecycle.onDownstreamWillRemove(event as EventKeys<TEventMap>|WILDCARD)),
-            downstream.hook(Lifecycle.didRemoveListener, (event) => this.lifecycle.onDownstreamDidRemove(event as EventKeys<TEventMap>|WILDCARD))
-          ]));
-          this.lifecycle.onDownstreamAttached(this.buildDownstreamSnapshot(downstream));
+          const incognito = options?.incognito === true;
+          if(incognito) {
+            this.downstreams.set(downstream, {
+              unlink: () => undefined,
+              incognito: true
+            });
+          } else {
+            this.downstreams.set(downstream, {
+              unlink: over([
+                downstream.hook(Lifecycle.willAddListener, (event) => this.lifecycle.onDownstreamWillAdd(event as EventKeys<TEventMap>|WILDCARD)),
+                downstream.hook(Lifecycle.didAddListener, (event) => this.lifecycle.onDownstreamDidAdd(event as EventKeys<TEventMap>|WILDCARD)),
+                downstream.hook(Lifecycle.willRemoveListener, (event) => this.lifecycle.onDownstreamWillRemove(event as EventKeys<TEventMap>|WILDCARD)),
+                downstream.hook(Lifecycle.didRemoveListener, (event) => this.lifecycle.onDownstreamDidRemove(event as EventKeys<TEventMap>|WILDCARD))
+              ]),
+              incognito: false
+            });
+            this.lifecycle.onDownstreamAttached(this.buildDownstreamSnapshot(downstream));
+          }
+          this.invalidateCombinedListenerCache();
         }
       }
       return downstream;
@@ -460,11 +499,13 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       this.sinks.delete(dest as PipeSink<TEventMap>);
     } else {
       const downstream = dest;
-      const unhook = this.downstreams.get(downstream);
-      if(unhook) {
-        const snapshot = this.buildDownstreamSnapshot(downstream);
-        this.lifecycle.onDownstreamDetached(snapshot);
-        unhook();
+      const link = this.downstreams.get(downstream);
+      if(link) {
+        if(!link.incognito) {
+          const snapshot = this.buildDownstreamSnapshot(downstream);
+          this.lifecycle.onDownstreamDetached(snapshot);
+        }
+        link.unlink();
         this.downstreams.delete(downstream);
         this.invalidateCombinedListenerCache();
       }
@@ -507,23 +548,24 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    * still counts twice).
    */
   public getListenerCount(options: IntrospectionOptions = {}): number {
-    const {scope = ListenerScope.ANY} = options;
+    const {scope = ListenerScope.ANY, includeIncognito = false} = options;
     const includesOwn = (scope & ListenerScope.OWN) !== 0;
     const includesDownstream = (scope & ListenerScope.DOWNSTREAM) !== 0;
     if(includesOwn && includesDownstream) {
-      return this.getListenerCount({scope: ListenerScope.OWN}) + this.getListenerCount({scope: ListenerScope.DOWNSTREAM});
+      return this.getListenerCount({scope: ListenerScope.OWN, includeIncognito})
+        + this.getListenerCount({scope: ListenerScope.DOWNSTREAM, includeIncognito});
     }
     let total = 0;
-    this.registryForScope(scope).forEach(handlers => {
+    this.registryForScope(scope, includeIncognito).forEach(handlers => {
       total += handlers.size;
     });
     return total;
   }
 
   public getListeners(options: IntrospectionOptions = {}): ReadonlySet<GenericHandler> {
-    const {scope = ListenerScope.ANY} = options;
+    const {scope = ListenerScope.ANY, includeIncognito = false} = options;
     const union = new Set<GenericHandler>();
-    this.registryForScope(scope).forEach(handlers => {
+    this.registryForScope(scope, includeIncognito).forEach(handlers => {
       for(const handler of handlers) {
         union.add(handler);
       }
@@ -532,8 +574,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   public getEventCount(options: IntrospectionOptions = {}): number {
-    const {scope = ListenerScope.ANY} = options;
-    return this.registryForScope(scope).size;
+    const {scope = ListenerScope.ANY, includeIncognito = false} = options;
+    return this.registryForScope(scope, includeIncognito).size;
   }
 
   public hasListenersFor: IntrospectionSurfaceHasListenersForEvent<TEventMap> = ((
@@ -547,30 +589,30 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     event,
     options: IntrospectionOptions = {}
   ) => {
-    const {scope = ListenerScope.ANY} = options;
+    const {scope = ListenerScope.ANY, includeIncognito = false} = options;
     const includesOwn = (scope & ListenerScope.OWN) !== 0;
     const includesDownstream = (scope & ListenerScope.DOWNSTREAM) !== 0;
     if(includesOwn && includesDownstream) {
-      return this.getListenerCountFor(event, {scope: ListenerScope.OWN})
-        + this.getListenerCountFor(event, {scope: ListenerScope.DOWNSTREAM});
+      return this.getListenerCountFor(event, {scope: ListenerScope.OWN, includeIncognito})
+        + this.getListenerCountFor(event, {scope: ListenerScope.DOWNSTREAM, includeIncognito});
     }
-    return this.registryForScope(scope).getCount(event);
+    return this.registryForScope(scope, includeIncognito).getCount(event);
   }) as IntrospectionSurfaceListenerCountForEvent<TEventMap>;
 
   public getListenersFor: IntrospectionSurfaceListenerForEvent<TEventMap> = ((
     event,
     options: IntrospectionOptions = {}
   ) => {
-    const {scope = ListenerScope.ANY} = options;
-    return this.registryForScope(scope).get(event) ?? EMPTY_LISTENER_SET;
+    const {scope = ListenerScope.ANY, includeIncognito = false} = options;
+    return this.registryForScope(scope, includeIncognito).get(event) ?? EMPTY_LISTENER_SET;
   }) as IntrospectionSurfaceListenerForEvent<TEventMap>;
 
   public forEach: IntrospectionSurfaceListenerForEach<TEventMap> = ((
     fn,
     options: IntrospectionOptions = {}
   ) => {
-    const {scope = ListenerScope.ANY} = options;
-    this.registryForScope(scope).forEach((handlers, event) => {
+    const {scope = ListenerScope.ANY, includeIncognito = false} = options;
+    this.registryForScope(scope, includeIncognito).forEach((handlers, event) => {
       fn(event, handlers);
     });
   }) as IntrospectionSurfaceListenerForEach<TEventMap>;
@@ -578,25 +620,30 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   private static readonly _emptyListenersRegistry: ListenerRegistry<any> =
     ListenerRegistryView.create(() => new Map());
 
-  private registryForScope(scope: ListenerScope): ListenerRegistry<TEventMap> {
+  private registryForScope(scope: ListenerScope, includeIncognito = false): ListenerRegistry<TEventMap> {
     const includesOwn = (scope & ListenerScope.OWN) !== 0;
     const includesDownstream = (scope & ListenerScope.DOWNSTREAM) !== 0;
     if(includesOwn && includesDownstream) {
-      return this.listenersRegistry;
+      return includeIncognito ? this.listenersRegistryWithIncognito : this.listenersRegistry;
     }
     if(includesOwn) {
-      return this.ownListenersRegistry;
+      return includeIncognito ? this.ownListenersRegistryWithIncognito : this.ownListenersRegistry;
     }
     if(includesDownstream) {
-      return this.downstreamListenersRegistry;
+      return includeIncognito ? this.downstreamListenersRegistryWithIncognito : this.downstreamListenersRegistry;
     }
     return Bus._emptyListenersRegistry;
   }
 
-  private getCombinedListenersMap(): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
-    if(!this._cachedCombinedListenersMap) {
-      const listenerCache = new Map(this.getOwnListenersMap());
-      for(const [event, downstreamListeners] of this.getDownstreamListenersMap()) {
+  private getCombinedListenersMap(
+    includeIncognito = false
+  ): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
+    const cached = includeIncognito
+      ? this._cachedCombinedListenersWithIncognito
+      : this._cachedCombinedListeners;
+    if(!cached) {
+      const listenerCache = new Map(this.getOwnListenersMap(includeIncognito));
+      for(const [event, downstreamListeners] of this.getDownstreamListenersMap(includeIncognito)) {
         if(!downstreamListeners.size) {
           continue;
         }
@@ -609,16 +656,29 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
           (listeners as Set<any>).add(listener);
         }
       }
-      this._cachedCombinedListenersMap = listenerCache;
+      if(includeIncognito) {
+        this._cachedCombinedListenersWithIncognito = listenerCache;
+      } else {
+        this._cachedCombinedListeners = listenerCache;
+      }
+      return listenerCache;
     }
-    return this._cachedCombinedListenersMap;
+    return cached;
   }
 
-  private getDownstreamListenersMap(): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
-    if(!this._cachedDownstreamListenersMap) {
+  private getDownstreamListenersMap(
+    includeIncognito = false
+  ): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
+    const cached = includeIncognito
+      ? this._cachedDownstreamListenersWithIncognito
+      : this._cachedDownstreamListeners;
+    if(!cached) {
       const downstreamListenerCache = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
-      for(const downstream of this.downstreams.keys()) {
-        for(const [event, listeners] of downstream.getCombinedListenersMap()) {
+      for(const [downstream, link] of this.downstreams) {
+        if(link.incognito && !includeIncognito) {
+          continue;
+        }
+        for(const [event, listeners] of downstream.getCombinedListenersMap(includeIncognito)) {
           if(!listeners.size) {
             continue;
           }
@@ -632,31 +692,52 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
           }
         }
       }
-      this._cachedDownstreamListenersMap = downstreamListenerCache;
+      if(includeIncognito) {
+        this._cachedDownstreamListenersWithIncognito = downstreamListenerCache;
+      } else {
+        this._cachedDownstreamListeners = downstreamListenerCache;
+      }
+      return downstreamListenerCache;
     }
-    return this._cachedDownstreamListenersMap;
+    return cached;
   }
 
-  private getOwnListenersMap(): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
-    if(!this._cachedOwnListenersMap) {
+  private getOwnListenersMap(
+    includeIncognito = false
+  ): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
+    const cached = includeIncognito
+      ? this._cachedOwnListenersWithIncognito
+      : this._cachedOwnListeners;
+    if(!cached) {
       const ownListenerCache = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
       for(const [event, listeners] of this.handlersByEvent) {
-        if(listeners.size) {
-          ownListenerCache.set(event, new Set(listeners));
+        const filtered = includeIncognito
+          ? new Set(listeners)
+          : new Set([...listeners].filter(handler => !this.isIncognito(handler, event)));
+        if(filtered.size) {
+          ownListenerCache.set(event, filtered);
         }
       }
-      this._cachedOwnListenersMap = ownListenerCache;
+      if(includeIncognito) {
+        this._cachedOwnListenersWithIncognito = ownListenerCache;
+      } else {
+        this._cachedOwnListeners = ownListenerCache;
+      }
+      return ownListenerCache;
     }
-    return this._cachedOwnListenersMap;
+    return cached;
   }
 
   private invalidateCombinedListenerCache(): void {
-    this._cachedCombinedListenersMap = null;
-    this._cachedDownstreamListenersMap = null;
+    this._cachedCombinedListeners = null;
+    this._cachedCombinedListenersWithIncognito = null;
+    this._cachedDownstreamListeners = null;
+    this._cachedDownstreamListenersWithIncognito = null;
   }
 
   private invalidateOwnListenerCache(): void {
-    this._cachedOwnListenersMap = null;
+    this._cachedOwnListeners = null;
+    this._cachedOwnListenersWithIncognito = null;
   }
 
   /**
@@ -682,31 +763,42 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     }
     over(pending)();
     this.handlersByEvent.clear();
+    this.incognitoByHandler.clear();
   }
 
   private releaseDownstreams(): void {
-    for(const subs of Object.values(this.downstreams)) {
-      for(const sub of subs()) {
-        sub();
-      }
+    for(const link of this.downstreams.values()) {
+      link.unlink();
     }
     this.downstreams.clear();
   }
 
-  private addListener(event: EventKeys<TEventMap>|WILDCARD, handler: GenericHandler): Subscription {
+  private addListener(
+    event: EventKeys<TEventMap>|WILDCARD,
+    handler: GenericHandler,
+    options?: SubscribeOptions
+  ): Subscription {
     const existing = this.subscriptionsByHandler.get(handler)?.get(event);
     if(existing) {
       return existing;
     }
 
+    const incognito = options?.incognito === true;
     const n: number = (this.handlersByEvent.get(event)?.size ?? 0) + 1;
     this.logger.onAddListener(event, n);
-    this.lifecycle.ownListenerWillAdd(event);
+    if(!incognito) {
+      this.lifecycle.ownListenerWillAdd(event);
+    }
     const {added} = addListener(this.handlersByEvent, event, handler);
     if(added) {
+      if(incognito) {
+        this.markIncognito(handler, event);
+      }
       this.invalidateCombinedListenerCache();
       this.invalidateOwnListenerCache();
-      this.lifecycle.ownListenerDidAdd(event);
+      if(!incognito) {
+        this.lifecycle.ownListenerDidAdd(event);
+      }
     }
     return this.generateListenerSubscription(event as EventKeys<TEventMap>, handler);
   }
@@ -756,14 +848,53 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   private removeListener(event: EventKeys<TEventMap>|WILDCARD, handler: GenericHandler): void {
-    this.lifecycle.ownListenerWillRemove(event);
+    const incognito = this.isIncognito(handler, event);
+    if(!incognito) {
+      this.lifecycle.ownListenerWillRemove(event);
+    }
     const {removed} = removeListener(this.handlersByEvent, event, handler);
     if(removed) {
+      this.clearIncognito(handler, event);
       this.invalidateCombinedListenerCache();
       this.invalidateOwnListenerCache();
-      this.lifecycle.ownListenerDidRemove(event);
+      if(!incognito) {
+        this.lifecycle.ownListenerDidRemove(event);
+      }
       const count = this.handlersByEvent.get(event)?.size ?? 0;
       this.logger.onListenerRemoved(event, count);
+    }
+  }
+
+  private isIncognito(
+    handler: GenericHandler,
+    event: EventKeys<TEventMap>|WILDCARD
+  ): boolean {
+    return this.incognitoByHandler.get(handler)?.has(event) ?? false;
+  }
+
+  private markIncognito(
+    handler: GenericHandler,
+    event: EventKeys<TEventMap>|WILDCARD
+  ): void {
+    let events = this.incognitoByHandler.get(handler);
+    if(!events) {
+      events = new Set();
+      this.incognitoByHandler.set(handler, events);
+    }
+    events.add(event);
+  }
+
+  private clearIncognito(
+    handler: GenericHandler,
+    event: EventKeys<TEventMap>|WILDCARD
+  ): void {
+    const events = this.incognitoByHandler.get(handler);
+    if(!events) {
+      return;
+    }
+    events.delete(event);
+    if(events.size === 0) {
+      this.incognitoByHandler.delete(handler);
     }
   }
 
@@ -810,7 +941,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
   private buildDownstreamSnapshot(downstream: Bus<any>) {
     return downstreamSnapshotFromListenersMap<TEventMap>(
-      downstream.getCombinedListenersMap() as ReadonlyMap<
+      downstream.getCombinedListenersMap(false) as ReadonlyMap<
         EventKeys<TEventMap>|WILDCARD,
         ReadonlySet<GenericHandler>
       >

@@ -4,6 +4,7 @@ import {type CancelablePromise, Deferred} from 'jaasync';
 import type {EventMap, Subscription, Listenable} from './types/events';
 import {Lifecycle} from './types/lifecycle';
 import type {Scannable} from './types/scannable';
+import type {SubscribeOptions} from './types/surfaces/subscriptionSurface';
 import type {EventKeys} from './types/utility';
 import {over} from './utils/over';
 import {subscribeListenable} from './utils/subscribeListenable';
@@ -146,7 +147,8 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
    */
   public scan<TEventMap extends EventMap>(
     scannable: Scannable<TEventMap>,
-    listenable: Listenable<EventKeys<TEventMap>>
+    listenable: Listenable<EventKeys<TEventMap>>,
+    options?: SubscribeOptions
   ): this {
     if(this.settled) {
       return this;
@@ -158,7 +160,7 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
         event,
         payload
       } as Scanner.ScanResolverEventTrigger<TEventMap>);
-    });
+    }, options);
 
     const willDestroyListener = scannable.hook(Lifecycle.willDestroy, async () => {
       willDestroyListener();

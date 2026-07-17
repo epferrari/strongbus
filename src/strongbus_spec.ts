@@ -2080,7 +2080,7 @@ describe('Strongbus.Bus', () => {
 
         const hidden = bus.scan('foo', evaluator, {incognito: true, eager: false, pool: true});
         hidden.catch((): void => undefined);
-        // A separate subscription is required; joining the monitored pool would
+        // a separate subscription is required; joining the monitored pool would
         // incorrectly leave the hidden waiters on a monitored listener (or vice versa).
         expect(bus.getListenerCount({includeIncognito: true})).toBeGreaterThan(1);
 
