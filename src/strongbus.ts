@@ -44,6 +44,7 @@ import {Forwards} from './forwards';
 import {DownstreamManager, type DownstreamHost} from './downstreamManager';
 import {IntrospectionManager} from './introspectionManager';
 import {SubscriptionManager, type SubscriptionHost} from './subscriptionManager';
+import { EventDispatcher } from './eventDispatcher';
 
 
 
@@ -62,7 +63,6 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
 
   private static defaultOptions: MaterializedBusOptions = {
     name: 'Anonymous',
-    allowUnhandledEvents: true,
     thresholds: {
       info: 100,
       warn: 500,
@@ -71,7 +71,8 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     logger: console,
     verbose: false,
     coalesceDownstreamLifecycleEvents: true,
-    duplicateSubscriptionStrategy: resolveDuplicateSubscriptionStrategy()
+    duplicateSubscriptionStrategy: resolveDuplicateSubscriptionStrategy(),
+    onUnhandledEvent: 'ignore'
   };
 
   /**
@@ -85,10 +86,10 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   /**
-   * @deprecated Use {@link Bus.configure} instead.
+   * @deprecated Use {@link Bus.configure} with `onUnhandledEvent` instead.
    */
   public static set defaultAllowUnhandledEvents(allow: boolean) {
-    Bus.configure({allowUnhandledEvents: allow});
+    Bus.configure({onUnhandledEvent: allow ? 'ignore' : 'throw'});
   }
 
   /**
@@ -129,15 +130,16 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       })
     };
   }
-  
+
   private readonly options!: MaterializedBusOptions;
   private readonly logger!: StrongbusLogger<TEventMap>;
   private readonly lifecycle!: LifecycleManager<TEventMap>;
-  private readonly forwards!: Forwards; 
+  private readonly forwards!: Forwards;
   private readonly subscriptions!: SubscriptionManager<TEventMap>;
   private readonly downstream!: DownstreamManager<TEventMap>;
   private readonly introspection!: IntrospectionManager<TEventMap>;
   private readonly scanners!: ScannerPools<TEventMap>;
+  private readonly dispatcher!: EventDispatcher<TEventMap>;
   /**
    * Subscribe to meta changes to the {@link Bus} with {@link Lifecycle} events
    */
@@ -173,6 +175,12 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       downstream: this.downstream
     });
     this.scanners = new ScannerPools<TEventMap>();
+    this.dispatcher = new EventDispatcher<TEventMap>({
+      forwards: this.forwards,
+      subscriptions: this.subscriptions,
+      downstream: this.downstream,
+      options: this.options
+    });
   }
 
   public emit<T extends VoidEventKeys<TEventMap>>(event: T, payload?: null | undefined): boolean;
@@ -184,44 +192,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     event: EventKeys<TEventMap>,
     payload?: TEventMap[EventKeys<TEventMap>]
   ): boolean {
-    if((event as EventKeys<TEventMap> | WILDCARD) === WILDCARD) {
-      throw new Error(`Do not emit "${String(event)}" manually. Reserved for internal use.`);
-    }
-
-    let handled = false;
-
-    this.forwards.begin();
-    try {
-      handled = this.subscriptions.consumeEvent(event, payload) || handled;
-      handled = this.subscriptions.consumeEvent(WILDCARD, event, payload) || handled;
-      this.forwards.flush();
-      handled = this.downstream.propagate(event, payload) || handled;
-    } finally {
-      this.forwards.end();
-    }
-
-    if(!handled && !this.options.allowUnhandledEvents) {
-      this.handleUnexpectedEvent(event, payload);
-    }
-    return handled;
-  }
-
-  /**
-   * @override
-   * Declare how the bus should handle events emitted that have no listeners.
-   * Will be invoked when an instance's `options.allowUnhandledEvents = false` (default is true).
-   * The default implementation is to throw an error.
-   */
-  protected handleUnexpectedEvent<T extends EventKeys<TEventMap>>(
-    event: T,
-    payload?: TEventMap[T]
-  ) {
-    const errorMessage = [
-      `Strongbus.Bus received unexpected message type '${String(event)}' with contents:`,
-      JSON.stringify(payload, null, 2)
-    ].join('\n');
-
-    throw new Error(errorMessage);
+    return this.dispatcher.dispatchEvent(event, payload);
   }
 
   /**

@@ -150,10 +150,14 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   emitted as `emit(event)` or `emit(event, null)`. Anything the type system
   already accepted keeps working; only genuine multi-arg spreads (which were never
   typeable) are gone. Generic-key forwarding (`emit<K extends keyof M>(event: K, payload: M[K])`)
-  works over concrete maps. `ControlSurface.emit` and `handleUnexpectedEvent` adopt
-  the same correlated shape. A correlated-tuple overload remains for call sites that
-  discriminated on `event` first. Pipe sinks receive `{event, payload}` as one
-  value and should use `forward(dest)` rather than splitting the pair.
+  works over concrete maps. `ControlSurface.emit` adopts the same correlated shape. A
+  correlated-tuple overload remains for call sites that discriminated on `event` first.
+  Pipe sinks receive `{event, payload}` as one value and should use `forward(dest)` rather
+  than splitting the pair.
+- **`options.onUnhandledEvent`** replaces **`allowUnhandledEvents`** — `'ignore'` (default),
+  `'throw'`, or a `(event, payload) => void` callback. Subclassing `handleUnexpectedEvent` is
+  no longer the customization path; pass a callback (or `'throw'`) instead.
+  `Bus.defaultAllowUnhandledEvents = false` still maps to `configure({onUnhandledEvent: 'throw'})`.
 - **`PipePayloadOverlap` uses tuple equality (`[A] extends [B]`)** so narrow-to-wide
   `pipe`/`forward` targets type-check when the source map is an open generic and
   the downstream map is a concrete superset (e.g. `_incomingPushBus.pipe(_bus)`).
@@ -191,6 +195,10 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Removed
 
+- **`options.allowUnhandledEvents`** — use **`options.onUnhandledEvent`** (`'ignore'` |
+  `'throw'` | callback).
+- **`Bus#handleUnexpectedEvent`** — override path removed; use `onUnhandledEvent: 'throw'` or
+  a callback.
 - **`proxy(handler)` and `every(handler)`** — use `pipe(handler)`.
 - **`on('*', handler)` and `on([...], handler)`** overloads — use
   `pipe(handler)` and `any([...], handler)` respectively.
@@ -235,6 +243,9 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | v2 (removed or changed) | v3 equivalent |
 | --- | --- |
 | `bus.on('*', handler)` | `bus.pipe(handler)` |
+| `allowUnhandledEvents: false` | `onUnhandledEvent: 'throw'` |
+| `allowUnhandledEvents: true` (default) | `onUnhandledEvent: 'ignore'` (default) or omit |
+| subclass `handleUnexpectedEvent` | `onUnhandledEvent: (event, payload) => { ... }` |
 | `feeder.on('*', hub.emit)` | `feeder.pipe((msg, forward) => forward(hub))` — see [`pipe(bus)` vs. forwarding sink](#pipebus-vs-forwarding-sink) |
 | `bus.on([...events], handler)` | `bus.any([...events], handler)` |
 | `bus.proxy(handler)` | `bus.pipe(handler)` |

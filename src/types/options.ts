@@ -20,7 +20,8 @@ export interface ListenerThresholds {
 }
 
 /**
- * @prop allowUnhandledEvents `true` - Should the Bus throw an error when an event is emitted and there are no listeners for the event
+ * @prop onUnhandledEvent [`'ignore'`] — what to do when an event is emitted with no listeners:
+ * `'ignore'` (default no-op), `'throw'`, or a custom `(event, payload) => void` callback
  * @prop name `"Anonymous"` - A name for the bus. Included in warn/info/error potential memory leak messages and unhandled event errors thrown
  * @prop thresholds {@link ListenerThresholds}
  * @prop logger {@link Logger | () => Logger} [`console`] - How to log potential memory leaks, if thresholds are < Infinity
@@ -30,13 +31,13 @@ export interface ListenerThresholds {
  * @prop duplicateSubscriptionStrategy - how duplicate listenable+handler registrations behave
  */
 export interface Options {
-  allowUnhandledEvents?: boolean;
   name?: string;
   thresholds?: Partial<ListenerThresholds>;
   logger?: LoggerProvider;
   verbose?: boolean;
   coalesceDownstreamLifecycleEvents?: boolean;
   duplicateSubscriptionStrategy?: Partial<DuplicateSubscriptionStrategy>;
+  onUnhandledEvent?: 'throw'|'ignore'|((event: string|number|symbol, payload: unknown) => void);
 }
 
 /** Options accepted by {@link Bus.configure}; `name` is per-instance only. */

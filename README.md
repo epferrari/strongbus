@@ -84,9 +84,9 @@ bus.emit('connected');
 bus.emit('connected', null);
 ```
 
-By default, emitting an event with no listeners is a no-op. Set `allowUnhandledEvents: false` to instead route
-unhandled events through `handleUnexpectedEvent` (which throws by default; override it in a subclass to
-customize).
+By default, emitting an event with no listeners is a no-op (`onUnhandledEvent: 'ignore'`).
+Set `onUnhandledEvent: 'throw'` to throw, or pass a `(event, payload) => void` callback to handle
+unhandled events yourself.
 
 ## Subscriptions
 
@@ -583,8 +583,8 @@ bus.destroy();
 `new Bus<Events>(options)` accepts:
 
 - `name` — included in logs and unhandled-event errors.
-- `allowUnhandledEvents` — when `false`, unhandled events route to `handleUnexpectedEvent` instead of being a
-  no-op.
+- `onUnhandledEvent` — `'ignore'` (default), `'throw'`, or a `(event, payload) => void` callback
+  invoked when an event is emitted with no listeners.
 - `thresholds` — per-event listener-count thresholds (`info`/`warn`/`error`) for memory-leak logging.
 - `logger` — a `Logger`, or a `() => Logger` provider.
 - `verbose` — log on every listener past a threshold (`true`), or only at threshold boundaries
@@ -617,7 +617,7 @@ bus.destroy();
 ```typescript
 const bus = new Bus<Events>({
   name: 'MyBus',
-  allowUnhandledEvents: false,
+  onUnhandledEvent: 'throw',
   thresholds: {warn: 50},
   logger: console,
   duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy.SharedHandler
@@ -632,7 +632,7 @@ Defaults for all instances can be set globally with `Bus.configure()`:
 
 ```typescript
 Bus.configure({
-  allowUnhandledEvents: false,
+  onUnhandledEvent: 'throw',
   thresholds: {warn: 50},
   logger: myLogger
 });
