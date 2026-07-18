@@ -7,9 +7,11 @@ Strongbus gives you a fully type-safe event bus: events and their payloads are d
 It also ships with subscription lifecycle hooks, bus-to-bus piping, promise-based event awaiting, and built-in
 memory-leak detection.
 
-[API Documentation](https://epferrari.github.io/strongbus)
-
-[Migrating from v2 -> v3](./CHANGELOG.md#migrating-from-v2-to-v3)
+**[API Documentation v3 (current)](https://epferrari.github.io/strongbus/docs/3.0.0/)**
+<br/>
+**[API Documentation v2](https://epferrari.github.io/strongbus/docs/2.11.1/)**
+<br/>
+**[Migrating from v2 -> v3](./CHANGELOG.md#migrating-from-v2-to-v3)**
 
 ## Features
 
