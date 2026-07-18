@@ -16,7 +16,8 @@ memory-leak detection.
 ## Features
 
 - **Type-safe by construction** — payloads are inferred from your event map; unknown events and mismatched
-  payloads are compile errors.
+  payloads are compile errors. See [Type safety](./docs/examples/type-safety.md) for subscribe / emit / pipe
+  examples of what TypeScript accepts and rejects.
 - **Disposable subscriptions** — every subscriber returns a `Subscription` you can release.
 - **[Lifecycle introspection](#lifecycle-hooks)** — hook into `active`/`idle` transitions, listener add/remove, and teardown.
 - **[Incognito subscriptions](#incognito-subscriptions)** — `{incognito: true}` receives/forwards events without activating monitoring.
