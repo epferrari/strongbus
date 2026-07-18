@@ -200,8 +200,11 @@ bus.pipe((piped, forward) => {
 ```
 
 `forward`'s target is constrained exactly like `pipe(dest)`: every event `dest` declares must either
-be absent from the source or carry the same payload type. It's therefore impossible to land an event on `dest`
-with a payload type `dest` doesn't expect, and source-only events `dest` doesn't declare are simply dropped.
+be absent from the source or carry a *compatible* payload. Compatibility means identical types, or a
+one-way widen within the same primitive family (`'a'|'b' → string`, `true → boolean`, `1|2 → number`).
+Object and other structured payloads still require an exact match. It's therefore impossible to land an
+event on `dest` with a payload type `dest` doesn't expect, and source-only events `dest` doesn't declare
+are simply dropped.
 Because the sink never hands you a bare `(event, payload)` pair to re-`emit`, a mismatched pair can't be
 fabricated — `emit` itself only accepts a correlated `(event, payload)`, never a `{event, payload}` object.
 

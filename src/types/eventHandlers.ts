@@ -48,9 +48,32 @@ export type PipeMessage<TEventMap extends EventMap> = {
 export type InferPipeDownstreamMap<TDownstream> =
   TDownstream extends Bus<infer M extends EventMap> ? M : never;
 
+/** True when `T` is assignable to `string` (includes string literal unions). */
+type IsStringy<T> = [T] extends [string] ? true : false;
+/** True when `T` is assignable to `boolean` (includes `true` / `false` literals). */
+type IsBooly<T> = [T] extends [boolean] ? true : false;
+/** True when `T` is assignable to `number` (includes numeric literal unions). */
+type IsNumbery<T> = [T] extends [number] ? true : false;
+
 /**
- * For events shared by the pipe source and target maps, payload types must match
- * exactly. Source-only events are not required on the target; target-only events
+ * True when source and dest payloads are in the same primitive family that may
+ * widen one-way under {@link PipePayloadOverlap}: string, boolean, or number
+ * (including their literal unions).
+ */
+type SamePrimitiveFamily<S, D> =
+  IsStringy<S> extends true ? IsStringy<D>
+  : IsBooly<S> extends true ? IsBooly<D>
+  : IsNumbery<S> extends true ? IsNumbery<D>
+  : false;
+
+/**
+ * Shared-key payload compatibility for {@link Bus.pipe} / {@link PipeForward}.
+ *
+ * Compatible when payloads are identical, or when the source is assignable to
+ * the dest and both are in the same primitive family (`string` / `boolean` /
+ * `number`, including literal unions such as `'a'|'b' → string` or
+ * `1|2 → number`). Object and other structured payloads still require exact
+ * match. Source-only events are not required on the target; target-only events
  * are simply never raised by the source.
  */
 export type PipePayloadOverlap<TSource extends EventMap, TDownstream extends EventMap> =
@@ -60,7 +83,7 @@ export type PipePayloadOverlap<TSource extends EventMap, TDownstream extends Eve
         [K in Extract<EventKeys<TSource>, EventKeys<TDownstream>>]: [TSource[K]] extends [TDownstream[K]]
           ? [TDownstream[K]] extends [TSource[K]]
             ? true
-            : false
+            : SamePrimitiveFamily<TSource[K], TDownstream[K]>
           : false;
       } extends infer Result
         ? Exclude<Result[keyof Result], true> extends never
@@ -83,10 +106,11 @@ export type PipePayloadOverlap<TSource extends EventMap, TDownstream extends Eve
  * forward expired.
  *
  * `dst` must be a {@link Bus} whose map is *payload-compatible* with the source:
- * every event `dst` declares must either be absent from the source or carry the
- * same payload type on every event key they share. This makes it impossible to
- * land an event on `dst` with a payload type `dst` doesn't expect. Source events
- * `dst` doesn't declare are simply dropped by `dst` at runtime.
+ * every event `dst` declares must either be absent from the source or carry a
+ * compatible payload on every event key they share (exact match, or a one-way
+ * primitive-family widen — see {@link PipePayloadOverlap}). This makes it
+ * impossible to land an event on `dst` with a payload type `dst` doesn't expect.
+ * Source events `dst` doesn't declare are simply dropped by `dst` at runtime.
  */
 export type PipeForward<in out TEventMap extends EventMap> = {
   bivarianceHack: <TDownstream extends Bus<any>>(

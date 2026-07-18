@@ -461,6 +461,51 @@ describe('type safety', () => {
       });
     });
 
+    it('allows one-way primitive-family widens via forward(dst)', () => {
+      const src = new Bus<{
+        status: 'a' | 'b';
+        flag: true;
+        count: 1 | 2;
+      }>();
+      const wider = new Bus<{
+        status: string;
+        flag: boolean;
+        count: number;
+      }>();
+
+      src.pipe((_msg, forward) => {
+        forward(wider);
+      });
+    });
+
+    it('rejects the unsafe reverse of a primitive-family widen via forward(dst)', () => {
+      const src = new Bus<{
+        status: string;
+        flag: boolean;
+        count: number;
+      }>();
+      const narrower = new Bus<{
+        status: 'a' | 'b';
+        flag: true;
+        count: 1 | 2;
+      }>();
+
+      src.pipe((_msg, forward) => {
+        // @ts-expect-error string/boolean/number must not narrow onto literal unions
+        forward(narrower);
+      });
+    });
+
+    it('still requires exact match for object payloads via forward(dst)', () => {
+      const src = new Bus<{item: {id: 'a'}}>();
+      const wider = new Bus<{item: {id: string}}>();
+
+      src.pipe((_msg, forward) => {
+        // @ts-expect-error object payloads are not in the primitive-family carve-out
+        forward(wider);
+      });
+    });
+
     it('forwards into a Bus subclass', () => {
       class DerivedBus<M extends EventMap> extends Bus<M> {}
 
@@ -518,6 +563,45 @@ describe('type safety', () => {
       src.pipe(noOverlap);
       noOverlap.pipe(partialOverlap);
       partialOverlap.pipe(properSubset);
+    });
+
+    it('allows one-way primitive-family widens on pipe(bus)', () => {
+      const src = new Bus<{
+        status: 'a' | 'b';
+        flag: true;
+        count: 1 | 2;
+      }>();
+      const wider = new Bus<{
+        status: string;
+        flag: boolean;
+        count: number;
+      }>();
+
+      src.pipe(wider);
+    });
+
+    it('rejects the unsafe reverse of a primitive-family widen on pipe(bus)', () => {
+      const src = new Bus<{
+        status: string;
+        flag: boolean;
+        count: number;
+      }>();
+      const narrower = new Bus<{
+        status: 'a' | 'b';
+        flag: true;
+        count: 1 | 2;
+      }>();
+
+      // @ts-expect-error string/boolean/number must not narrow onto literal unions
+      src.pipe(narrower);
+    });
+
+    it('still requires exact match for object payloads on pipe(bus)', () => {
+      const src = new Bus<{item: {id: 'a'}}>();
+      const wider = new Bus<{item: {id: string}}>();
+
+      // @ts-expect-error object payloads are not in the primitive-family carve-out
+      src.pipe(wider);
     });
 
     it('pipe(bus) returns the concrete downstream bus type, including subclasses', () => {

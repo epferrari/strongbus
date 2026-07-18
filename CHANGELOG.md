@@ -81,12 +81,14 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   ```
 
   `forward`'s target is constrained exactly like `pipe(dest)`: every
-  event `dest` declares must either be absent from the source or carry the same
-  payload type, so it's impossible to land an event on `dest` with a payload it
-  doesn't expect (source-only events are dropped). `PipeSink<TEventMap>` and
-  `PipeForward<TEventMap>` are the exported types for this handler. `emit` itself
-  stays strictly `(event, payload)` — it never accepts a `{event, payload}`
-  object — so a mismatched pair can't be fabricated and re-emitted.
+  event `dest` declares must either be absent from the source or carry a
+  compatible payload (exact match, or a one-way widen within the same
+  primitive family — see `PipePayloadOverlap`), so it's impossible to
+  land an event on `dest` with a payload it doesn't expect (source-only events
+  are dropped). `PipeSink<TEventMap>` and `PipeForward<TEventMap>` are the
+  exported types for this handler. `emit` itself stays strictly
+  `(event, payload)` — it never accepts a `{event, payload}` object — so a
+  mismatched pair can't be fabricated and re-emitted.
 - **`EventSink<TEventMap>`** handler type — the `(event, payload)` handler shape
   used by `any`.
 - **`Logger` and `LoggerProvider`** types are now exported, for typing a custom
@@ -161,6 +163,11 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **`PipePayloadOverlap` uses tuple equality (`[A] extends [B]`)** so narrow-to-wide
   `pipe`/`forward` targets type-check when the source map is an open generic and
   the downstream map is a concrete superset (e.g. `_incomingPushBus.pipe(_bus)`).
+  Shared keys also allow a one-way widen within the same primitive family
+  (`string` / `boolean` / `number`, including literal unions such as
+  `'a'|'b' → string` or `1|2 → number`); object and other structured payloads
+  still require an exact match. The unsafe reverse (`string → 'a'|'b'`) remains
+  a type error.
 - **`pipe(sink)` `forward(dest)` is deferred and expiring** — calling `forward`
   during a sink queues the re-emit until after every own handler on the source has
   returned (capture → delegation), before structural `pipe(bus)` links. `forward`
