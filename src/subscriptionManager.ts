@@ -31,7 +31,6 @@ type IntentFrameMeta = {
  * Shared resources (`options`, `logger`, `lifecycle`) are constructor deps.
  */
 export type SubscriptionHost = {
-  readonly name: string;
   invalidateOwnListenerCache(): void;
   invalidateCombinedListenerCache(): void;
 };

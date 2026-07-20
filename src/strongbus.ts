@@ -518,12 +518,10 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
 
   private createSubscriptionHost(): SubscriptionHost {
     const {
-      name,
       invalidateOwnListenerCache,
       invalidateCombinedListenerCache
     } = this;
     return {
-      name,
       invalidateOwnListenerCache,
       invalidateCombinedListenerCache
     };
