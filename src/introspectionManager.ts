@@ -1,6 +1,5 @@
 import {autobind} from 'core-decorators';
 
-import type {DownstreamManager} from './downstreamManager';
 import type {SubscriptionManager} from './subscriptionManager';
 import type {EventMap, WILDCARD} from './types/events';
 import type {GenericHandler} from './types/eventHandlers';
@@ -13,6 +12,19 @@ import type {
   IntrospectionSurfaceListenerForEvent
 } from './types/surfaces/introspectionSurface';
 import type {EventKeys} from './types/utility';
+
+export namespace IntrospectionManager {
+  export type Graph<TEventMap extends EventMap> = {
+    forEachDownstream(
+      fn: (downstream: {
+        getCombinedListenersMap(
+          includeIncognito: boolean
+        ): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
+        incognito: boolean;
+      }) => void
+    ): void;
+  };
+}
 
 /**
  * @ignore
@@ -35,17 +47,17 @@ export class IntrospectionManager<TEventMap extends EventMap = EventMap> {
   private readonly downstreamListenersRegistryWithIncognito: ListenerRegistry<TEventMap>;
 
   private readonly subscriptions: SubscriptionManager<TEventMap>;
-  private readonly downstream: DownstreamManager<TEventMap>;
+  private readonly graph: IntrospectionManager.Graph<TEventMap>;
 
   private static readonly _emptyListenersRegistry: ListenerRegistry<any> =
     ListenerRegistryView.create(() => new Map());
 
   constructor(params: {
     subscriptions: SubscriptionManager<TEventMap>;
-    downstream: DownstreamManager<TEventMap>;
+    graph: IntrospectionManager.Graph<TEventMap>;
   }) {
     this.subscriptions = params.subscriptions;
-    this.downstream = params.downstream;
+    this.graph = params.graph;
     this.listenersRegistry = ListenerRegistryView.create(() => this.getCombinedListenersMap(false));
     this.listenersRegistryWithIncognito = ListenerRegistryView.create(() => this.getCombinedListenersMap(true));
     this.ownListenersRegistry = ListenerRegistryView.create(() => this.getOwnListenersMap(false));
@@ -193,7 +205,7 @@ export class IntrospectionManager<TEventMap extends EventMap = EventMap> {
       : this._cachedDownstreamListeners;
     if(!cached) {
       const downstreamListenerCache = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
-      this.downstream.forEach(({getCombinedListenersMap, incognito}) => {
+      this.graph.forEachDownstream(({getCombinedListenersMap, incognito}) => {
         if(incognito && !includeIncognito) {
           return;
         }

@@ -1,15 +1,22 @@
 import {autobind} from 'core-decorators';
 
-import type {DownstreamManager} from './downstreamManager';
 import type {SubscriptionManager} from './subscriptionManager';
 import {WILDCARD, type EventMap} from './types/events';
 import type {MaterializedBusOptions} from './types/options';
 import type {EventKeys} from './types/utility';
 
 export namespace EventDispatcher {
+  export type Graph<TEventMap extends EventMap> = {
+    propagate<T extends EventKeys<TEventMap>>(
+      event: T,
+      payload: TEventMap[T] | undefined,
+      fromUpstream: boolean
+    ): boolean;
+  };
+
   export type Params<TEventMap extends EventMap> = {
     subscriptions: Pick<SubscriptionManager<TEventMap>, 'consumeEvent'>;
-    downstream: Pick<DownstreamManager<TEventMap>, 'propagate'>;
+    graph: Graph<TEventMap>;
     options: Pick<MaterializedBusOptions, 'onUnhandledEvent'>;
   };
 }
@@ -18,12 +25,12 @@ export namespace EventDispatcher {
 export class EventDispatcher<TEventMap extends EventMap = EventMap> {
 
   private readonly subscriptions!: Pick<SubscriptionManager<TEventMap>, 'consumeEvent'>;
-  private readonly downstream!: Pick<DownstreamManager<TEventMap>, 'propagate'>;
+  private readonly graph!: EventDispatcher.Graph<TEventMap>;
   private readonly options!: Pick<MaterializedBusOptions, 'onUnhandledEvent'>;
 
   constructor(params: EventDispatcher.Params<TEventMap>) {
     this.subscriptions = params.subscriptions;
-    this.downstream = params.downstream;
+    this.graph = params.graph;
     this.options = params.options;
   }
 
@@ -39,7 +46,7 @@ export class EventDispatcher<TEventMap extends EventMap = EventMap> {
     let handled = false;
     handled = this.subscriptions.consumeEvent(event, payload) || handled;
     handled = this.subscriptions.consumeEvent(WILDCARD as any, event, payload) || handled;
-    handled = this.downstream.propagate(event, payload, fromUpstream) || handled;
+    handled = this.graph.propagate(event, payload, fromUpstream) || handled;
 
     if(!handled) {
       if(this.options.onUnhandledEvent === 'throw') {

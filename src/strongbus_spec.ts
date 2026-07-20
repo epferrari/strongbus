@@ -33,7 +33,7 @@ class DownstreamTestBus<T extends EventMap = TestEventMap> extends Strongbus.Bus
     return this.emulateListenerCount;
   }
 
-  public acceptFromUpstream(event: any, payload?: any): boolean {
+  protected acceptFromUpstream(event: any, payload?: any): boolean {
     super.acceptFromUpstream(event, payload);
     return this.emulateListenerCount;
   }
@@ -1246,14 +1246,14 @@ describe('Strongbus.Bus', () => {
 
         describe('given an event is raised from the parent bus', () => {
           it('handles the event on the parent bus AND the downstream bus', () => {
-            spyOn(bus2, 'acceptFromUpstream');
+            spyOn(bus2 as any, 'acceptFromUpstream');
             bus.pipe(bus2);
 
             bus.on('foo', singleEventHandler);
             bus.emit('foo', 'wow!');
 
             expect(singleEventHandler).toHaveBeenCalledWith('wow!');
-            expect(bus2.acceptFromUpstream).toHaveBeenCalledWith('foo', 'wow!');
+            expect((bus2 as any).acceptFromUpstream).toHaveBeenCalledWith('foo', 'wow!');
           });
         });
 
@@ -1316,12 +1316,12 @@ describe('Strongbus.Bus', () => {
           const receivedOn3 = jasmine.createSpy('receivedOn3');
           bus3.on('foo', receivedOn3);
 
-          spyOn(bus2, 'acceptFromUpstream').and.callThrough();
+          spyOn(bus2 as any, 'acceptFromUpstream').and.callThrough();
           bus.pipe(bus2);
           bus2.pipe(bus3);
 
           bus.emit('foo', 'woot');
-          expect(bus2.acceptFromUpstream).toHaveBeenCalledWith('foo', 'woot');
+          expect((bus2 as any).acceptFromUpstream).toHaveBeenCalledWith('foo', 'woot');
           expect(receivedOn3).not.toHaveBeenCalled();
           expect(logger.warn).toHaveBeenCalledWith(
             StrongbusLogMessages.unsoundPipeGraph(bus2.name, bus.name, bus3.name)
@@ -1439,38 +1439,38 @@ describe('Strongbus.Bus', () => {
         });
 
         it('removes a piped msg bus', () => {
-          spyOn(bus2, 'acceptFromUpstream');
+          spyOn(bus2 as any, 'acceptFromUpstream');
           bus.pipe(bus2);
 
           bus.emit('foo', 'wow!');
 
-          expect(bus2.acceptFromUpstream).toHaveBeenCalledWith('foo', 'wow!');
-          (bus2.acceptFromUpstream as jasmine.Spy).calls.reset();
+          expect((bus2 as any).acceptFromUpstream).toHaveBeenCalledWith('foo', 'wow!');
+          ((bus2 as any).acceptFromUpstream as jasmine.Spy).calls.reset();
 
           bus.unpipe(bus2);
 
           bus.emit('foo', 'wow!');
-          expect(bus2.acceptFromUpstream).not.toHaveBeenCalled();
+          expect((bus2 as any).acceptFromUpstream).not.toHaveBeenCalled();
         });
 
         it('breaks the a chain of piped buses', () => {
           bus3 = new DownstreamTestBus({});
-          spyOn(bus2, 'acceptFromUpstream').and.callThrough();
-          spyOn(bus3, 'acceptFromUpstream').and.callThrough();
+          spyOn(bus2 as any, 'acceptFromUpstream').and.callThrough();
+          spyOn(bus3 as any, 'acceptFromUpstream').and.callThrough();
           const receivedOn3 = jasmine.createSpy('receivedOn3');
           bus3.on('foo', receivedOn3);
 
           bus.pipe(bus2).pipe(bus3);
           bus.emit('foo', null);
 
-          expect(bus2.acceptFromUpstream).toHaveBeenCalledWith('foo', null);
+          expect((bus2 as any).acceptFromUpstream).toHaveBeenCalledWith('foo', null);
           expect(receivedOn3).not.toHaveBeenCalled();
-          (bus2.acceptFromUpstream as jasmine.Spy).calls.reset();
+          ((bus2 as any).acceptFromUpstream as jasmine.Spy).calls.reset();
           receivedOn3.calls.reset();
 
           bus.unpipe(bus2);
           bus.emit('foo', null);
-          expect(bus2.acceptFromUpstream).not.toHaveBeenCalled();
+          expect((bus2 as any).acceptFromUpstream).not.toHaveBeenCalled();
           expect(receivedOn3).not.toHaveBeenCalled();
 
           // bus2 is still delegating to bus3 via the chain for local emits
