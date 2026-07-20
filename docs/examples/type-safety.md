@@ -136,15 +136,15 @@ bus.any(['message', 'count'], (event, payload) => {
 
 ## Pipe
 
-### Function sink — `pipe(sink)`
+### Observe — `tap(handler)`
 
-The sink receives one correlated `{event, payload}` message (plus optional
-`forward`). Narrow by discriminating on `message.event`.
+The handler receives one correlated `{event, payload}` message. Narrow by
+discriminating on `message.event`. Does not create a graph edge.
 
 **Allowed**
 
 ```typescript
-bus.pipe((message) => {
+bus.tap((message) => {
   // message.payload is string | number | void until you narrow
   if (message.event === 'message') {
     message.payload.toUpperCase(); // string
@@ -157,62 +157,34 @@ bus.pipe((message) => {
 **Compile error**
 
 ```typescript
-bus.pipe((message) => {
+bus.tap((message) => {
   // cannot call string methods on the full payload union
   message.payload.toUpperCase();
 });
 
-// sink typed for a disjoint event map
-bus.pipe((message: {event: 'other'; payload: boolean}) => {});
+// handler typed for a disjoint event map
+bus.tap((message: {event: 'other'; payload: boolean}) => {});
 ```
 
-### `forward(dest)`
+### Filtered multi-hop — `pipe(pred).pipe(dest)`
 
-`forward` re-emits the **whole** message onto another `Bus` (no downstream link).
-Shared events must be payload-compatible; source-only events are dropped;
-disjoint targets are allowed (nothing lands).
-
-Compatibility: identical types, or a **one-way widen** in the same primitive
-family (`'a'|'b' → string`, `true → boolean`, `1|2 → number`). Object payloads
-still require an exact match.
+When a bus is both a pipe target and a pipe source, allow passthrough with an
+explicit predicate on the outbound edge (see [`docs/pipe_limitations.md`](../pipe_limitations.md)):
 
 ```typescript
-const hub = new Bus<Events>();
-const wider = new Bus<{status: string}>();
-const statusBus = new Bus<{status: 'ok' | 'err'}>();
+const mid = new Bus<{message: string}>();
+const leaf = new Bus<Events>();
 
-statusBus.pipe((_msg, forward) => {
-  forward(wider); // ok: 'ok'|'err' widens to string
-});
-
-bus.pipe((_msg, forward) => {
-  forward(hub); // same map — ok
-});
+bus.pipe(mid);
+mid.pipe((msg) => msg.event === 'message').pipe(leaf);
 ```
-
-**Compile error**
-
-```typescript
-const wrong = new Bus<{message: number}>();
-bus.pipe((_msg, forward) => {
-  forward(wrong); // shared 'message' payload disagrees (string vs number)
-});
-
-wider.pipe((_msg, forward) => {
-  forward(statusBus); // string must not narrow onto 'ok'|'err'
-});
-
-bus.pipe((_msg, forward) => {
-  forward({emit: () => true}); // must be a Bus instance, not a duck type
-});
-```
-
-Prefer `forward(dest)` over splitting a pipe message back into `dest.emit(...)`.
 
 ### Bus downstream — `pipe(bus)`
 
-Same overlap rules as `forward`. Returns the **downstream** bus (for chaining).
-Requires a real `Bus` instance — not a hand-rolled surface.
+Shared events must be payload-compatible: identical types, or a **one-way widen**
+in the same primitive family (`'a'|'b' → string`, `true → boolean`, `1|2 → number`).
+Object payloads still require an exact match. Returns the **downstream** bus (for
+chaining). Requires a real `Bus` instance — not a hand-rolled surface.
 
 **Allowed**
 
@@ -262,8 +234,8 @@ d.on('baz', () => {}); // 'baz' is not on Narrow
 | `on` / `once` / `off` | Key in the map; matching handler payload | Unknown key, `'*'`, wrong payload type |
 | `any` | Array of known keys | Unknown key, `'*'` |
 | `emit` | Correlated `(event, payload)` | Missing/wrong payload, `'*'`, `{event, payload}` object, uncorrelated union pair |
-| `pipe(sink)` | Sink for this map (or compatible overlap) | Disjoint sink map; using payload before discriminating |
-| `forward` / `pipe(bus)` | `Bus` whose shared events are compatible | Payload conflict; unsafe narrow; non-`Bus` duck type |
+| `tap` | Handler for this map (or compatible overlap) | Disjoint handler map; using payload before discriminating |
+| `pipe(bus)` / `pipe(pred).pipe(bus)` | `Bus` whose shared events are compatible | Payload conflict; unsafe narrow; non-`Bus` duck type |
 
 For variance (`Bus<Wide>` as `SubscriptionSurface<Narrow>`), generics, `next` /
 `scan` triggers, and lifecycle hooks, see

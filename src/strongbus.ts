@@ -7,7 +7,13 @@ import {normalizeScanParams, ScannerPools, type ScanParams} from './scannerPools
 import {StrongbusLogger} from './strongbusLogger';
 import {LifecycleManager, type LifecycleHost} from './lifecycleManager';
 import {type Subscription, type EventMap, WILDCARD} from './types/events';
-import type {EventHandler, EventSink, PipeSink, GenericHandler} from './types/eventHandlers';
+import type {
+  EventHandler,
+  EventSink,
+  TapHandler,
+  PipePredicate,
+  GenericHandler
+} from './types/eventHandlers';
 import type {Logger} from './types/logger';
 import {
   resolveDuplicateSubscriptionStrategy,
@@ -23,7 +29,9 @@ import type {
   SubscriptionSurfaceNext,
   SubscriptionSurfacePipe,
   SubscriptionSurfaceScan,
+  SubscriptionSurfaceTap,
   SubscriptionSurfaceUnpipe,
+  FilteredPipeHandle,
   NextResult,
   SubscribeOptions
 } from './types/surfaces/subscriptionSurface';
@@ -40,7 +48,6 @@ import type {EventKeys, SubscribableEventKeys, VoidEventKeys} from './types/util
 import {subscribeListenable} from './utils/subscribeListenable';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import {isSubscribeOptions} from './utils/isSubscribeOptions';
-import {Forwards} from './forwards';
 import {DownstreamManager, type DownstreamHost} from './downstreamManager';
 import {IntrospectionManager} from './introspectionManager';
 import {SubscriptionManager, type SubscriptionHost} from './subscriptionManager';
@@ -134,7 +141,6 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   private readonly options!: MaterializedBusOptions;
   private readonly logger!: StrongbusLogger<TEventMap>;
   private readonly lifecycle!: LifecycleManager<TEventMap>;
-  private readonly forwards!: Forwards;
   private readonly subscriptions!: SubscriptionManager<TEventMap>;
   private readonly downstream!: DownstreamManager<TEventMap>;
   private readonly introspection!: IntrospectionManager<TEventMap>;
@@ -158,17 +164,16 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       logger: this.logger
     });
     this.hook = this.lifecycle.hook;
-    this.forwards = new Forwards();
     this.subscriptions = new SubscriptionManager({
       host: this.createSubscriptionHost(),
       options: this.options,
       logger: this.logger,
-      forwards: this.forwards,
       lifecycle: this.lifecycle
     });
     this.downstream = new DownstreamManager({
       host: this.createDownstreamHost(),
-      lifecycle: this.lifecycle
+      lifecycle: this.lifecycle,
+      logger: this.logger
     });
     this.introspection = new IntrospectionManager({
       subscriptions: this.subscriptions,
@@ -176,7 +181,6 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     });
     this.scanners = new ScannerPools<TEventMap>();
     this.dispatcher = new EventDispatcher<TEventMap>({
-      forwards: this.forwards,
       subscriptions: this.subscriptions,
       downstream: this.downstream,
       options: this.options
@@ -212,7 +216,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    * Pass the same function reference; no-op if that handler is not registered for `event`.
    * Honors `duplicateSubscriptionStrategy.disposal` (`collapse` clears all stacked `on` intent;
    * `stack` pops the oldest frame — head of the stack). Does not remove {@link Bus.once} /
-   * {@link Bus.any} / {@link Bus.pipe} intent.
+   * {@link Bus.any} / {@link Bus.tap} intent.
    */
   public off<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): void {
     this.subscriptions.off(event, handler);
@@ -250,39 +254,44 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }) as SubscriptionSurfaceAny<TEventMap>;
 
   /**
-   * Pipe events into another {@link Bus}, or into a function sink.
-   * Function sinks must satisfy {@link PipeSink}: they receive the raised event as
-   * a single correlated `{event, payload}` {@link PipeMessage}, plus a `forward`
-   * function bound to that message. `forward(dst)` queues a re-emit on a
-   * payload-compatible bus (no downstream link) for the delegation phase after
-   * this bus's own handlers, and returns a promise that resolves to
-   * `dst.emit`'s result — or `false` if `forward` expired after this emit completed.
+   * Observe every raised event as a correlated `{event, payload}` message.
+   * Does not create a graph edge. Unsubscribe via the returned {@link Subscription}.
+   */
+  public tap: SubscriptionSurfaceTap<TEventMap> = ((
+    handler: TapHandler<TEventMap>,
+    options?: SubscribeOptions
+  ) => {
+    return this.subscriptions.tap(handler, options);
+  }) as SubscriptionSurfaceTap<TEventMap>;
+
+  /**
+   * Attach a graph edge to another {@link Bus}, or return a {@link FilteredPipeHandle}
+   * when given a {@link PipePredicate} for gated multi-hop relay.
    *
-   * Bus-to-bus piping returns the downstream bus (for chaining), and requires a real
-   * {@link Bus} instance — not a hand-rolled surface duck type.
+   * - `pipe(dest)` — first-hop / local raises always deliver to `dest`.
+   * - `pipe(predicate).pipe(dest)` — stores `predicate` on the edge; passthrough (upstream-sourced)
+   *   events are delivered only when `predicate` returns true. Unfiltered outbound edges from
+   *   a bus that already has inbound pipes warn once and block passthrough.
+   *
+   * Requires a real {@link Bus} instance — not a hand-rolled surface duck type.
    */
   public pipe: SubscriptionSurfacePipe<TEventMap> = ((
-    dest: PipeSink<TEventMap> | Bus<any>,
+    dest: PipePredicate<TEventMap> | Bus<any>,
     options?: SubscribeOptions
-  ): Subscription | Bus<any> => {
+  ): FilteredPipeHandle<TEventMap> | Bus<any> => {
     if(typeof dest === 'function') {
-      return this.subscriptions.pipe(dest as PipeSink<TEventMap>, options);
+      return this.createFilteredPipeHandle(dest as PipePredicate<TEventMap>);
     }
     return this.downstream.pipe(dest, options) as Bus<any>;
   }) as SubscriptionSurfacePipe<TEventMap>;
 
   /**
-   * Stop piping events into a bus downstream or function sink previously passed to
-   * {@link Bus.pipe}. Function sinks must satisfy {@link PipeSink}.
+   * Stop piping events into a bus previously passed to {@link Bus.pipe}.
    */
   public unpipe: SubscriptionSurfaceUnpipe<TEventMap> = ((
-    dest: PipeSink<TEventMap> | Bus<any>
+    dest: Bus<any>
   ) => {
-    if(typeof dest === 'function') {
-      this.subscriptions.unpipe(dest as PipeSink<TEventMap>);
-    } else {
-      this.downstream.unpipe(dest);
-    }
+    this.downstream.unpipe(dest);
   }) as SubscriptionSurfaceUnpipe<TEventMap>;
 
   /**
@@ -541,12 +550,50 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   private createDownstreamHost(): DownstreamHost<TEventMap> {
+    const {name, invalidateCombinedListenerCache} = this;
     return {
       is: (target) => target === (this as any),
+      get name() {
+        return name;
+      },
       getCombinedListenersMap: (target, includeIncognito) =>
         (target as Bus<TEventMap>).getCombinedListenersMap(includeIncognito),
-      invalidateCombinedListenerCache: this.invalidateCombinedListenerCache
+      invalidateCombinedListenerCache
     };
+  }
+
+  private createFilteredPipeHandle(
+    filter: PipePredicate<TEventMap>
+  ): FilteredPipeHandle<TEventMap> {
+    return {
+      pipe: ((downstream: Bus<any>, options?: SubscribeOptions) => {
+        return this.downstream.pipe(downstream, {...options, filter}) as Bus<any>;
+      }) as FilteredPipeHandle<TEventMap>['pipe'],
+      unpipe: (downstream: Bus<any>) => {
+        this.downstream.unpipe(downstream);
+      }
+    };
+  }
+
+  /**
+   * @internal Deliver an event received via an upstream pipe edge.
+   */
+  public deliverFromUpstream(event: any, payload?: any): boolean {
+    return this.dispatcher.dispatchEvent(event, payload, true);
+  }
+
+  /**
+   * @internal Called when another bus attaches an inbound pipe to this instance.
+   */
+  public noteInboundPipeAttached(): void {
+    this.downstream.noteInboundAttached();
+  }
+
+  /**
+   * @internal Called when an inbound pipe to this instance is removed.
+   */
+  public noteInboundPipeDetached(): void {
+    this.downstream.noteInboundDetached();
   }
 
   private getCombinedListenersMap(

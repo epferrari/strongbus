@@ -1,11 +1,10 @@
 import {type Subscription, type EventMap, WILDCARD} from './types/events';
-import type {EventSink, PipeSink, PipeMessage, PipeForward, GenericHandler} from './types/eventHandlers';
+import type {EventSink, TapHandler, PipeMessage, GenericHandler} from './types/eventHandlers';
 import type {MaterializedBusOptions} from './types/options';
 import type {SubscribeOptions} from './types/surfaces/subscriptionSurface';
 import type {EventKeys} from './types/utility';
 import type {LifecycleManager} from './lifecycleManager';
 import {StrongbusLogMessages, type StrongbusLogger} from './strongbusLogger';
-import type {Forwards} from './forwards';
 import {over} from './utils/over';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
 
@@ -29,7 +28,7 @@ type IntentFrameMeta = {
 /**
  * @ignore
  * Bus identity / callbacks {@link SubscriptionManager} needs.
- * Shared resources (`options`, `logger`, `forwards`, `lifecycle`) are constructor deps.
+ * Shared resources (`options`, `logger`, `lifecycle`) are constructor deps.
  */
 export type SubscriptionHost = {
   readonly name: string;
@@ -58,7 +57,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
       wrappers: Map<EventKeys<TEventMap>, GenericHandler>;
     }>
   >();
-  private readonly pipeIntents = new Map<
+  private readonly tapIntents = new Map<
     GenericHandler,
     Map<typeof WILDCARD, HandlerIntent>
   >();
@@ -77,20 +76,17 @@ export class SubscriptionManager<TEventMap extends EventMap> {
   private readonly host: SubscriptionHost;
   private readonly options: Pick<MaterializedBusOptions, 'duplicateSubscriptionStrategy'>;
   private readonly logger: StrongbusLogger<TEventMap>;
-  private readonly forwards: Forwards;
   private readonly lifecycle: LifecycleManager<TEventMap>;
 
   constructor(params: {
     host: SubscriptionHost;
     options: Pick<MaterializedBusOptions, 'duplicateSubscriptionStrategy'>;
     logger: StrongbusLogger<TEventMap>;
-    forwards: Forwards;
     lifecycle: LifecycleManager<TEventMap>;
   }) {
     this.host = params.host;
     this.options = params.options;
     this.logger = params.logger;
-    this.forwards = params.forwards;
     this.lifecycle = params.lifecycle;
   }
 
@@ -107,16 +103,6 @@ export class SubscriptionManager<TEventMap extends EventMap> {
       }
     } else {
       intent.frames[0]();
-    }
-  }
-
-  public unpipe(sink: PipeSink<TEventMap>): void {
-    const intent = this.pipeIntents.get(sink as GenericHandler)?.get(WILDCARD);
-    if(intent?.frames.length) {
-      const frames = intent.frames.slice();
-      for(const frame of frames) {
-        frame();
-      }
     }
   }
 
@@ -148,7 +134,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     collect(this.onIntents);
     collect(this.onceIntents);
     collect(this.anyIntents);
-    collect(this.pipeIntents);
+    collect(this.tapIntents);
     over(pending)();
     this.handlersByEvent.clear();
     this.incognitoByHandler.clear();
@@ -156,7 +142,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     this.onIntents.clear();
     this.onceIntents.clear();
     this.anyIntents.clear();
-    this.pipeIntents.clear();
+    this.tapIntents.clear();
   }
 
 
@@ -358,28 +344,25 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     }
   }
 
-  public pipe(
-    sink: PipeSink<TEventMap>,
+  public tap(
+    handler: TapHandler<TEventMap>,
     options?: SubscribeOptions
   ): Subscription {
-    const existing = this.pipeIntents.get(sink as GenericHandler)?.get(WILDCARD);
+    const existing = this.tapIntents.get(handler as GenericHandler)?.get(WILDCARD);
     const emitHandler: GenericHandler = existing?.emitHandler ?? ((event, payload) => {
-      const intent = this.pipeIntents.get(sink as GenericHandler)?.get(WILDCARD);
+      const intent = this.tapIntents.get(handler as GenericHandler)?.get(WILDCARD);
       const times = Math.max(intent?.invokeCount ?? 1, 1);
-      const forward = ((target: {emit: (event: any, payload: any) => boolean}) =>
-        this.forwards.enqueue(() => target.emit(event, payload))
-      ) as PipeForward<TEventMap>;
       for(let i = 0; i < times; i++) {
-        sink({event, payload} as PipeMessage<TEventMap>, forward);
+        handler({event, payload} as PipeMessage<TEventMap>);
       }
     });
 
     return this.registerHandlerIntent({
-      kind: 'pipe',
-      intents: this.pipeIntents,
+      kind: 'tap',
+      intents: this.tapIntents,
       listenableKey: WILDCARD,
       listenableLabel: '*',
-      userHandler: sink as GenericHandler,
+      userHandler: handler as GenericHandler,
       emitHandler,
       options,
       honorDisposalConfig: true

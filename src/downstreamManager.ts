@@ -4,8 +4,9 @@ import {
   type DownstreamSnapshot,
   type LifecycleManager
 } from './lifecycleManager';
+import {StrongbusLogMessages, type StrongbusLogger} from './strongbusLogger';
 import type {EventMap, WILDCARD} from './types/events';
-import type {GenericHandler} from './types/eventHandlers';
+import type {GenericHandler, PipeMessage, PipePredicate} from './types/eventHandlers';
 import {Lifecycle} from './types/lifecycle';
 import type {MonitoringHook} from './types/surfaces/monitoringSurface';
 import type {SubscribeOptions} from './types/surfaces/subscriptionSurface';
@@ -19,16 +20,24 @@ import {over} from './utils/over';
  */
 export type DownstreamTarget<TEventMap extends EventMap> = {
   hook: MonitoringHook<TEventMap>;
-  emit(event: any, payload?: any): boolean;
+  /** Deliver an upstream-sourced event into this bus's dispatcher. */
+  deliverFromUpstream(event: any, payload?: any): boolean;
+  noteInboundPipeAttached(): void;
+  noteInboundPipeDetached(): void;
+};
+
+export type DownstreamLinkOptions<TEventMap extends EventMap> = SubscribeOptions & {
+  filter?: PipePredicate<TEventMap>;
 };
 
 /**
  * Bus bookkeeping callbacks supplied to {@link DownstreamManager}.
- * Shared resources (`lifecycle`) are constructor deps, not host fields.
+ * Shared resources (`lifecycle`, `logger`) are constructor deps, not host fields.
  * @internal
  */
 export type DownstreamHost<TEventMap extends EventMap> = {
   is(target: DownstreamTarget<TEventMap>): boolean;
+  get name(): string;
   getCombinedListenersMap(
     target: DownstreamTarget<TEventMap>,
     includeIncognito: boolean
@@ -36,31 +45,51 @@ export type DownstreamHost<TEventMap extends EventMap> = {
   invalidateCombinedListenerCache(): void;
 };
 
+type LinkRecord<TEventMap extends EventMap> = {
+  unlink: VoidFunction;
+  incognito: boolean;
+  filter?: PipePredicate<TEventMap>;
+};
+
 /**
  * @ignore
- * Owns bus-to-bus pipe links, lifecycle bridging, and emit propagation.
+ * Owns bus-to-bus pipe links, lifecycle bridging, emit propagation, and multi-hop filters.
  */
 @autobind
 export class DownstreamManager<TEventMap extends EventMap = EventMap> {
-  private readonly links = new Map<DownstreamTarget<TEventMap>, {
-    unlink: VoidFunction;
-    incognito: boolean;
-  }>();
+  private readonly links = new Map<DownstreamTarget<TEventMap>, LinkRecord<TEventMap>>();
+  private inboundPipeCount: number = 0;
+  private warnedUnsoundPipeGraph: boolean = false;
 
   private readonly host: DownstreamHost<TEventMap>;
   private readonly lifecycle: LifecycleManager<TEventMap>;
+  private readonly logger: StrongbusLogger<TEventMap>;
 
   constructor(params: {
     host: DownstreamHost<TEventMap>;
     lifecycle: LifecycleManager<TEventMap>;
+    logger: StrongbusLogger<TEventMap>;
   }) {
     this.host = params.host;
     this.lifecycle = params.lifecycle;
+    this.logger = params.logger;
+  }
+
+  public get hasInbound(): boolean {
+    return this.inboundPipeCount > 0;
+  }
+
+  public noteInboundAttached(): void {
+    this.inboundPipeCount++;
+  }
+
+  public noteInboundDetached(): void {
+    this.inboundPipeCount = Math.max(0, this.inboundPipeCount - 1);
   }
 
   public pipe(
     downstream: DownstreamTarget<TEventMap>,
-    options?: SubscribeOptions
+    options?: DownstreamLinkOptions<TEventMap>
   ): DownstreamTarget<TEventMap> {
     if(this.host.is(downstream)) {
       return downstream;
@@ -69,11 +98,13 @@ export class DownstreamManager<TEventMap extends EventMap = EventMap> {
       return downstream;
     }
 
+    const filter = options?.filter;
     const incognito = options?.incognito === true;
     if(incognito) {
       this.links.set(downstream, {
         unlink: () => undefined,
-        incognito: true
+        incognito: true,
+        filter
       });
     } else {
       this.links.set(downstream, {
@@ -87,11 +118,14 @@ export class DownstreamManager<TEventMap extends EventMap = EventMap> {
           downstream.hook(Lifecycle.didRemoveListener, (event) =>
             this.lifecycle.onDownstreamDidRemove(event as EventKeys<TEventMap>|WILDCARD))
         ]),
-        incognito: false
+        incognito: false,
+        filter
       });
       this.lifecycle.onDownstreamAttached(this.buildSnapshot(downstream));
     }
+    downstream.noteInboundPipeAttached();
     this.host.invalidateCombinedListenerCache();
+    this.maybeWarnUnsoundEdge(filter);
     return downstream;
   }
 
@@ -105,23 +139,38 @@ export class DownstreamManager<TEventMap extends EventMap = EventMap> {
     }
     link.unlink();
     this.links.delete(downstream);
+    downstream.noteInboundPipeDetached();
     this.host.invalidateCombinedListenerCache();
   }
 
+  /**
+   * @param fromUpstream - true when *this* bus is dispatching an event it received via pipe
+   */
   public propagate<T extends EventKeys<TEventMap>>(
     event: T,
-    payload?: TEventMap[T]
+    payload: TEventMap[T] | undefined,
+    fromUpstream: boolean
   ): boolean {
     let handled = false;
-    for(const d of this.links.keys()) {
-      handled = d.emit(event as any, payload as any) || handled;
+    for(const [downstream, link] of this.links) {
+      if(fromUpstream) {
+        if(!link.filter) {
+          continue;
+        }
+        const message = {event, payload} as PipeMessage<TEventMap>;
+        if(!link.filter(message)) {
+          continue;
+        }
+      }
+      handled = downstream.deliverFromUpstream(event as any, payload as any) || handled;
     }
     return handled;
   }
 
   public releaseAll(): void {
-    for(const link of this.links.values()) {
+    for(const [downstream, link] of this.links) {
       link.unlink();
+      downstream.noteInboundPipeDetached();
     }
     this.links.clear();
   }
@@ -141,6 +190,14 @@ export class DownstreamManager<TEventMap extends EventMap = EventMap> {
         incognito: link.incognito
       });
     }
+  }
+
+  private maybeWarnUnsoundEdge(filter: PipePredicate<TEventMap> | undefined): void {
+    if(filter || this.warnedUnsoundPipeGraph || !this.hasInbound) {
+      return;
+    }
+    this.warnedUnsoundPipeGraph = true;
+    this.logger.warn(StrongbusLogMessages.unsoundPipeGraph(this.host.name));
   }
 
   private buildSnapshot(downstream: DownstreamTarget<TEventMap>): DownstreamSnapshot<TEventMap> {

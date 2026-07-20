@@ -198,4 +198,14 @@ export class StrongbusLogMessages {
   public static duplicateSubscription(name: string, kind: string, listenable: string): string {
     return `${name}: duplicate ${kind} subscription for "${listenable}" (same handler reference)`;
   }
+
+  public static unsoundPipeGraph(name: string): string {
+    return [
+      `${name} is both a pipe target and a pipe source without a call-site filter.`,
+      'Events can pass through this bus even when they are absent from its EventMap,',
+      'so TypeScript cannot prove multi-hop payload safety.',
+      'Use bus.pipe(predicate).pipe(dest) to allow or drop relayed events per edge,',
+      'or avoid using this bus as a bridge. See docs/pipe_limitations.md.'
+    ].join(' ');
+  }
 }

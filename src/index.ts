@@ -9,7 +9,8 @@ export type {
   EventSink,
   PipeSink,
   PipeMessage,
-  PipeForward
+  TapHandler,
+  PipePredicate
 } from './types/eventHandlers';
 export * from './types/lifecycle';
 export * from './types/options';
@@ -31,7 +32,8 @@ export type {
   SubscriptionSurface,
   ScanParams,
   ScanOptions,
-  SubscribeOptions
+  SubscribeOptions,
+  FilteredPipeHandle
 } from './types/surfaces/subscriptionSurface';
 export type {EventListenerMapKey, ListenerSet} from './types/listenerRegistry';
 export type {EventKeys, SubscribableEventKeys} from './types/utility';

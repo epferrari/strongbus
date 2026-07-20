@@ -6,7 +6,8 @@ import type {Subscription, EventMap, Listenable, SubscribableListenable} from '.
 import type {
   EventHandler,
   EventSink,
-  PipeSink,
+  TapHandler,
+  PipePredicate,
   InferPipeDownstreamMap,
   PipePayloadOverlap
 } from '../eventHandlers';
@@ -75,9 +76,32 @@ export type SubscriptionSurfaceAny<in out TEventMap extends EventMap> = {
   >(events: TEvents, handler: EventSink<TMap>, options?: SubscribeOptions): Subscription;
 }['bivarianceHack'];
 
+export type SubscriptionSurfaceTap<in out TEventMap extends EventMap> = {
+  bivarianceHack<TMap extends PipeEventMap<TEventMap>>(
+    handler: TapHandler<TMap>,
+    options?: SubscribeOptions
+  ): Subscription;
+}['bivarianceHack'];
+
+/**
+ * Handle returned by {@link SubscriptionSurface.pipe} when given a {@link PipePredicate}.
+ * Call {@link FilteredPipeHandle.pipe} to attach a filtered graph edge.
+ */
+export type FilteredPipeHandle<in out TEventMap extends EventMap> = {
+  pipe: {
+    bivarianceHack<TDownstream extends Bus<any>>(
+      downstream: TDownstream & PipePayloadOverlap<TEventMap, InferPipeDownstreamMap<TDownstream>>,
+      options?: SubscribeOptions
+    ): TDownstream;
+  }['bivarianceHack'];
+  unpipe(downstream: Bus<any>): void;
+};
+
 export type SubscriptionSurfacePipe<in out TEventMap extends EventMap> = {
   bivarianceHack: {
-    <TMap extends PipeEventMap<TEventMap>>(sink: PipeSink<TMap>, options?: SubscribeOptions): Subscription;
+    <TMap extends PipeEventMap<TEventMap>>(
+      predicate: PipePredicate<TMap>
+    ): FilteredPipeHandle<TMap>;
     <TDownstream extends Bus<any>>(
       downstream: TDownstream & PipePayloadOverlap<TEventMap, InferPipeDownstreamMap<TDownstream>>,
       options?: SubscribeOptions
@@ -118,10 +142,7 @@ export type SubscriptionSurfaceNext<in out TEventMap extends EventMap> = {
 }['bivarianceHack'];
 
 export type SubscriptionSurfaceUnpipe<in out TEventMap extends EventMap> = {
-  bivarianceHack: {
-    <TMap extends PipeEventMap<TEventMap>>(sink: PipeSink<TMap>): void;
-    <TDownstream extends Bus<any>>(downstream: TDownstream): void;
-  };
+  bivarianceHack<TDownstream extends Bus<any>>(downstream: TDownstream): void;
 }['bivarianceHack'];
 
 export type NextResult<TEventMap extends EventMap, T> =
@@ -149,7 +170,7 @@ export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMa
    * Remove a handler previously registered with {@link SubscriptionSurface.on}.
    * Uses the same handler reference; no-op if that handler is not registered for `event`.
    * Does not remove wrappers created by {@link SubscriptionSurface.once}, {@link SubscriptionSurface.any},
-   * or {@link SubscriptionSurface.pipe}.
+   * or {@link SubscriptionSurface.tap}.
    */
   off<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): void;
 
@@ -164,6 +185,12 @@ export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMa
   next: SubscriptionSurfaceNext<TEventMap>;
 
   scan: SubscriptionSurfaceScan<TEventMap>;
+
+  /**
+   * Observe every raised event as a correlated {@link import('../eventHandlers').PipeMessage}.
+   * Does not create a graph edge. Unsubscribe via the returned {@link Subscription}.
+   */
+  tap: SubscriptionSurfaceTap<TEventMap>;
 
   pipe: SubscriptionSurfacePipe<TEventMap>;
 
