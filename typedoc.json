@@ -7,6 +7,7 @@
   "validation": {
     "notExported": false
   },
+  "titleLink": "https://epferrari.github.io/strongbus",
   "exclude": [
     "**/*/utils/*",
     "**/*/utility.ts",
