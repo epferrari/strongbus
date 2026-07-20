@@ -292,8 +292,8 @@ await bus.next('connected', {incognito: true});
 
 `pipe(bus, {incognito: true})` still forwards events through the target (and any further chain that
 allows passthrough). It does not couple the target's listener tree into the source's monitoring; the
-target's own `active` / hooks are unchanged. A second `pipe` of the same bus is a no-op (first mode
-sticks), matching idempotent `on`.
+target's own `active` / hooks are unchanged. A second `pipe` of the same bus is a no-op (the first
+link's mode sticks), independent of `duplicateSubscriptionStrategy`.
 
 `off(event, handler)` still removes an incognito `on` registration by handler reference (no options).
 The same behavior applies when releasing the returned `Subscription` or `unpipe` for `once` / `any` /
