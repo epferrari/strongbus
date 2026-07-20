@@ -16,7 +16,8 @@ memory-leak detection.
 ## Features
 
 - **Type-safe by construction** — payloads are inferred from your event map; unknown events and mismatched
-  payloads are compile errors.
+  payloads are compile errors. See [Type safety](./docs/examples/type-safety.md) for subscribe / emit / pipe
+  examples of what TypeScript accepts and rejects.
 - **Disposable subscriptions** — every subscriber returns a `Subscription` you can release.
 - **[Lifecycle introspection](#lifecycle-hooks)** — hook into `active`/`idle` transitions, listener add/remove, and teardown.
 - **[Incognito subscriptions](#incognito-subscriptions)** — `{incognito: true}` receives/forwards events without activating monitoring.
@@ -86,9 +87,9 @@ bus.emit('connected');
 bus.emit('connected', null);
 ```
 
-By default, emitting an event with no listeners is a no-op. Set `allowUnhandledEvents: false` to instead route
-unhandled events through `handleUnexpectedEvent` (which throws by default; override it in a subclass to
-customize).
+By default, emitting an event with no listeners is a no-op (`onUnhandledEvent: 'ignore'`).
+Set `onUnhandledEvent: 'throw'` to throw, or pass a `(event, payload) => void` callback to handle
+unhandled events yourself.
 
 ## Subscriptions
 
@@ -148,14 +149,18 @@ bus.any(['message', 'count'], (event, payload) => {
 
 ## Piping
 
-`pipe` forwards every event from this bus into another `Bus` or into a function sink. Use `unpipe` to
-detach.
+`pipe` attaches a graph edge into another `Bus`. Use `tap` to observe every event without linking.
+Use `unpipe` to detach a bus edge. Multi-hop graphs need an explicit call-site filter — see
+[`docs/pipe_limitations.md`](./docs/pipe_limitations.md).
 
 ### `pipe(bus, options?)` — downstream piping
 
 Pipe into another `Bus`, counting the downstream's listeners as handlers on this bus (unless
 `{incognito: true}` — see [Incognito subscriptions](#incognito-subscriptions)). Returns the downstream bus
 (so pipes chain and subclasses are preserved). The downstream must be a real `Bus` instance.
+
+Shared events must be payload-compatible: identical types, or a one-way widen within the same primitive
+family (`'a'|'b' → string`, `true → boolean`, `1|2 → number`). Object payloads still require an exact match.
 
 ```typescript
 const producer = new Bus<Events>();
@@ -169,53 +174,46 @@ producer.emit('message', 'hi'); // `handle` is invoked
 producer.unpipe(leaf);       // detach
 ```
 
-### `pipe(sink, options?)` — function sink
+### `tap(handler, options?)` — observe without linking
 
-Pipe *every* event into a function sink. The sink receives the raised event as a single correlated
-`{event, payload}` message, plus a `forward` function bound to that message. This is the wildcard
-subscription; the returned `Subscription` removes it (duplicate `pipe(sameSink)` follows
+Observe every raised event as a correlated `{event, payload}` message. Does not create a graph edge.
+The returned `Subscription` removes it (duplicate `tap(sameHandler)` follows
 `duplicateSubscriptionStrategy`). Accepts the same `SubscribeOptions` as `on`.
 
 ```typescript
-const stop = bus.pipe((piped) => {
+const stop = bus.tap((piped) => {
   console.log(`${String(piped.event)}:`, piped.payload);
+  if (piped.event === 'didRemoveItem') {
+    cache.delete(piped.payload.id); // payload narrowed to this event's type
+  }
 });
 
 stop(); // stop receiving all events
 ```
 
-Keeping the pair as one value means narrowing `piped.event` correlatively narrows `piped.payload`. To send the
-event on to another bus, call `forward(dest)` rather than splitting the pair back into `(event, payload)` — this
-queues a re-emit of the whole message on `dest` without a downstream link (so none of the listener-lifecycle
-overhead `pipe(bus)` incurs). Queued emits run in the *delegation* phase after every own handler on the source
-has returned (capture semantics). `forward` is live for the duration of that source `emit` and returns a
-`Promise<boolean>` that resolves to `dest.emit`'s result, or `false` if `forward` is called after the emit
-has completed:
+### `pipe(pred).pipe(bus)` — filtered multi-hop
+
+When a bus is both a pipe target and a pipe source, unfiltered passthrough is blocked (with a
+warning per unique `source → bridge → dest` path). Allow selected relayed events with a predicate
+on the outbound edge:
 
 ```typescript
-bus.pipe((piped, forward) => {
-  if (piped.event === 'didRemoveItem') {
-    cache.delete(piped.payload.id); // payload narrowed to this event's type
-  }
-  forward(other); // queues re-emit after this bus's own handlers
-});
+a.pipe(b);
+b.pipe((msg) => msg.event === 'foo').pipe(c);
+// or, when you assert the path is sound:
+// b.pipe(ASSUMED_SOUND_EDGE).pipe(c);
 ```
 
-`forward`'s target is constrained exactly like `pipe(dest)`: every event `dest` declares must either
-be absent from the source or carry the same payload type. It's therefore impossible to land an event on `dest`
-with a payload type `dest` doesn't expect, and source-only events `dest` doesn't declare are simply dropped.
-Because the sink never hands you a bare `(event, payload)` pair to re-`emit`, a mismatched pair can't be
-fabricated — `emit` itself only accepts a correlated `(event, payload)`, never a `{event, payload}` object.
+Local raises on `b` still reach `c` without consulting the predicate; the filter gates **passthrough** only.
 
-### `pipe(bus)` vs. `pipe(sink)`
-
-There are two ways to aggregate events across buses, and they trade off differently.
+### Hubs and linear chains
 
 **`root.pipe(leaf)` — downstream piping.** Reach for this when you need `root` to know *when listeners for
 specific events are added or removed* through `leaf` — its `willAddListener` / `didAddListener` /
 `willRemoveListener` / `didRemoveListener` hooks fire for the downstream's listeners — or when you have a *linear
 chain* of buses. The downstream's listeners count toward `root`'s listener count, and pipes chain
-(`node1.pipe(node2).pipe(node3)`).
+(`node1.pipe(node2).pipe(node3)`). For multi-hop chains with **different** maps, filter on bridge edges
+(`mid.pipe(pred).pipe(leaf)`).
 
 ```typescript
 type Events = {foo: number};
@@ -244,12 +242,10 @@ produce(1);           // producing === false, nothing emitted
 producer.pipe(node1); // events flow producer -> node1; 'foo' now has a downstream listener
 produce(1);           // logs "node 1 received event=foo, payload=1"
 
-node1.pipe(node2);   // events flow producer -> node1 -> node2
-node2.pipe(node3);   // events flow producer -> node1 -> node2 -> node3
-produce(6);          // logs:
-// "node 1 received event=foo, payload=6"
-// "node 2 received event=foo, payload=6"
-// "node 3 received event=foo, payload=6"
+// same EventMap: allow passthrough with an explicit filter on bridge edges
+node1.pipe(() => true).pipe(node2);
+node2.pipe(() => true).pipe(node3);
+produce(6);          // logs on node1, node2, and node3
 
 node2.unpipe(node3);
 node1.unpipe(node2);
@@ -264,10 +260,7 @@ const produce = (payload: number) => {
 }
 ```
 
-**`feeder.pipe((msg, forward) => forward(hub))` — forwarding sink.** Reach for this when you *don't* care about
-listener add/remove bookkeeping, or when you have an *inverted tree* of many buses funneling into a single
-`hub` and you attach your listeners on `hub`. A forwarding sink registers no downstream link, so it skips the
-lifecycle-hook and listener-count overhead that `pipe(bus)` incurs.
+**Hubs — `feeder.pipe(hub)`.** Many feeders into one hub:
 
 ```typescript
 const hub = new Bus<Events>();
@@ -276,18 +269,16 @@ hub.on('foo', handleFoo);
 const feederA = new Bus<Events>();
 const feederB = new Bus<Events>();
 
-feederA.pipe((msg, forward) => forward(hub)); // events flow feederA -> hub
-feederB.pipe((msg, forward) => forward(hub)); // events flow feederB -> hub
+feederA.pipe(hub);
+feederB.pipe(hub);
 
 feederA.emit('foo', payload);  // handleFoo called
 feederB.emit('foo', payload);  // handleFoo called
 ```
 
-See [Migrating from v2: `pipe(bus)` vs. forwarding sink](./CHANGELOG.md#pipebus-vs-forwarding-sink).
-
 ## Incognito subscriptions
 
-Pass `{incognito: true}` as trailing `SubscribeOptions` on `on`, `once`, `any`, `pipe(sink)`,
+Pass `{incognito: true}` as trailing `SubscribeOptions` on `on`, `once`, `any`, `tap`,
 `pipe(bus)`, `next`, or `scan` when the registration should still receive or forward events but must
 **not** count toward this bus's monitoring subsystem:
 
@@ -297,17 +288,19 @@ Pass `{incognito: true}` as trailing `SubscribeOptions` on `on`, `once`, `any`, 
 
 ```typescript
 bus.on('message', logMessage, {incognito: true});
-bus.pipe(telemetrySink, {incognito: true});
+bus.tap(telemetrySink, {incognito: true});
 src.pipe(target, {incognito: true}); // forward events; target's listeners do not activate src
 await bus.next('connected', {incognito: true});
 ```
 
-`pipe(bus, {incognito: true})` still forwards events through the target (and any further chain). It does
-not couple the target's listener tree into the source's monitoring; the target's own `active` / hooks
-are unchanged. A second `pipe` of the same bus is a no-op (first mode sticks), matching idempotent `on`.
+`pipe(bus, {incognito: true})` still forwards events through the target (and any further chain that
+allows passthrough). It does not couple the target's listener tree into the source's monitoring; the
+target's own `active` / hooks are unchanged. A second `pipe` of the same bus is a no-op (the first
+link's mode sticks), independent of `duplicateSubscriptionStrategy`.
 
 `off(event, handler)` still removes an incognito `on` registration by handler reference (no options).
-The same behavior applies when releasing the returned `Subscription` or `unpipe` for `once` / `any` / `pipe`.
+The same behavior applies when releasing the returned `Subscription` or `unpipe` for `once` / `any` /
+`tap` / `pipe(bus)`.
 
 Memory-leak logger thresholds still count own incognito handlers (real retention). To include
 incognito interest in queries, pass `{includeIncognito: true}` to introspection methods — that never
@@ -460,7 +453,7 @@ hooks per listener; coalescing applies only to the initial `pipe()` / final
 | Surface | Methods | Use when |
 |---------|---------|----------|
 | **`ControlSurface`** | `emit`, `destroy` | Raising events or tearing down a bus |
-| **`SubscriptionSurface`** | `on`, `once`, `any`, `next`, `scan`, `pipe`, `unpipe` | Subscribing, awaiting, or forwarding events |
+| **`SubscriptionSurface`** | `on`, `once`, `any`, `next`, `scan`, `tap`, `pipe`, `unpipe` | Subscribing, awaiting, or forwarding events |
 | **`IntrospectionSurface`** | `hasListeners`, `getListeners`, `getListenerCount`, `hasListenersFor`, `getEventCount`, `getListenerCountFor`, `getListenersFor`, `forEach` | Inspecting listener state |
 | **`MonitoringSurface`** | `monitor`, `hook`, `active` | Observing lifecycle and active/idle state |
 
@@ -549,7 +542,7 @@ The introspection methods take optional `IntrospectionOptions`:
 
 `ListenerScope`:
 
-- `OWN` — registered directly on this bus (including function sinks from `pipe(handler)`)
+- `OWN` — registered directly on this bus (including `tap` handlers)
 - `DOWNSTREAM` — on buses attached with `pipe(bus)` only (monitored links by default;
   incognito-piped trees only when `includeIncognito: true`)
 - `ANY` — `OWN | DOWNSTREAM` (equivalent alias, the default)
@@ -585,14 +578,14 @@ bus.destroy();
 `new Bus<Events>(options)` accepts:
 
 - `name` — included in logs and unhandled-event errors.
-- `allowUnhandledEvents` — when `false`, unhandled events route to `handleUnexpectedEvent` instead of being a
-  no-op.
+- `onUnhandledEvent` — `'ignore'` (default), `'throw'`, or a `(event, payload) => void` callback
+  invoked when an event is emitted with no listeners.
 - `thresholds` — per-event listener-count thresholds (`info`/`warn`/`error`) for memory-leak logging.
 - `logger` — a `Logger`, or a `() => Logger` provider.
 - `verbose` — log on every listener past a threshold (`true`), or only at threshold boundaries
   (`false`, default).
 - `duplicateSubscriptionStrategy` — how duplicate listenable+handler registrations behave for
-  `on`, `any`, and `pipe(sink)` across four axes:
+  `on`, `any`, and `tap` across four axes:
 
   | Axis | `collapse` | `stack` |
   |---|---|---|
@@ -619,9 +612,9 @@ bus.destroy();
 ```typescript
 const bus = new Bus<Events>({
   name: 'MyBus',
-  allowUnhandledEvents: false,
+  onUnhandledEvent: 'throw',
   thresholds: {warn: 50},
-  logger: console,
+  // logger defaults to defaultConsoleLogger (record.message → console)
   duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy.SharedHandler
 });
 ```
@@ -634,7 +627,7 @@ Defaults for all instances can be set globally with `Bus.configure()`:
 
 ```typescript
 Bus.configure({
-  allowUnhandledEvents: false,
+  onUnhandledEvent: 'throw',
   thresholds: {warn: 50},
   logger: myLogger
 });

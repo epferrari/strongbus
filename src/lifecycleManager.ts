@@ -1,8 +1,8 @@
 import {autobind} from 'core-decorators';
 
-import {StrongbusLogger} from './strongbusLogger';
+import {type StrongbusLogger} from './strongbusLogger';
+import type {MaterializedBusOptions} from './types/options';
 import {Lifecycle} from './types/lifecycle';
-import type {LifecycleHost} from './types/lifecycleHost';
 import type {GenericHandler} from './types/eventHandlers';
 import type {EventMap, WILDCARD} from './types/events';
 import type {MonitoringHook} from './types/surfaces/monitoringSurface';
@@ -18,24 +18,41 @@ export type DownstreamSnapshotEntry<TEventMap extends EventMap> = {
 
 export type DownstreamSnapshot<TEventMap extends EventMap> = DownstreamSnapshotEntry<TEventMap>[];
 
+/**
+ * Bus bookkeeping callbacks supplied to {@link LifecycleManager}.
+ * Shared resources (`logger`, `options`) are constructor deps, not host fields.
+ * @internal
+ */
+export interface LifecycleHost<TEventMap extends EventMap> {
+  hasListeners(): boolean;
+  getListenerCount(): number;
+  getOwnListenerCount(): number;
+  getListenerCountFor(event: EventKeys<TEventMap>|WILDCARD): number;
+  accountForDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void;
+  accountForRemovedDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void;
+}
 
 @autobind
 export class LifecycleManager<TEventMap extends EventMap = EventMap> {
   private readonly handlers = new Map<Lifecycle, Set<GenericHandler>>();
   private readonly host: LifecycleHost<TEventMap>;
+  private readonly options: Pick<MaterializedBusOptions, 'coalesceDownstreamLifecycleEvents'>;
   private readonly logger: StrongbusLogger<TEventMap>;
-  private readonly coalesceDownstreamLifecycleEvents: boolean;
 
   private _active = false;
 
   constructor(params: {
     host: LifecycleHost<TEventMap>;
+    options: Pick<MaterializedBusOptions, 'coalesceDownstreamLifecycleEvents'>;
     logger: StrongbusLogger<TEventMap>;
-    coalesceDownstreamLifecycleEvents: boolean;
   }) {
     this.host = params.host;
+    this.options = params.options;
     this.logger = params.logger;
-    this.coalesceDownstreamLifecycleEvents = params.coalesceDownstreamLifecycleEvents;
+  }
+
+  private get coalesceDownstreamLifecycleEvents(): boolean {
+    return this.options.coalesceDownstreamLifecycleEvents;
   }
 
   public get active(): boolean {
@@ -207,7 +224,7 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
           (execution as Promise<any>)?.catch?.((e) => {
             if(event === Lifecycle.error) {
               const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
-              this.logger.error('Error thrown in async error handler', {
+              this.logger.onAsyncErrorHandlerFailed({
                   errorHandler: fn.name,
                   errorHandlerError: e,
                   originalEvent: errorPayload.event,
@@ -220,7 +237,7 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
         } catch(e) {
           if(event === Lifecycle.error) {
             const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
-            this.logger.error('Error thrown in error handler', {
+            this.logger.onErrorHandlerFailed({
                 errorHandler: fn.name,
                 errorHandlerError: e,
                 originalEvent: errorPayload.event,

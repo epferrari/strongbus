@@ -32,6 +32,11 @@ class DownstreamTestBus<T extends EventMap = TestEventMap> extends Strongbus.Bus
     super.emit(event as any, payload as any);
     return this.emulateListenerCount;
   }
+
+  protected acceptFromUpstream(event: any, payload?: any): boolean {
+    super.acceptFromUpstream(event, payload);
+    return this.emulateListenerCount;
+  }
 }
 
 describe('Strongbus.Bus', () => {
@@ -43,17 +48,16 @@ describe('Strongbus.Bus', () => {
     bus = new Strongbus.Bus<TestEventMap>();
     singleEventHandler = jasmine.createSpy('singleEventHandler');
     eventSink = jasmine.createSpy('eventSink');
-    spyOn(bus as any, 'handleUnexpectedEvent');
   });
 
   describe('#constructor', () => {
     it('overloads the instance\'s internal emitter\'s emit method to invoke * listeners on every event raised', () => {
       bus.on('foo', singleEventHandler);
-      bus.pipe(eventSink);
+      bus.tap(eventSink);
 
       bus.emit('foo', 'eagle');
       expect(singleEventHandler).toHaveBeenCalledWith('eagle');
-      expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'eagle'}, jasmine.any(Function));
+      expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'eagle'});
     });
 
     describe('thresholds', () => {
@@ -86,20 +90,24 @@ describe('Strongbus.Bus', () => {
     });
 
     describe('given an unhandled event is raised', () => {
-      describe('and given the `allowUnhandledEvent` option is false', () => {
-        it('invokes instance\'s #handleUnexpectedEvent method', () => {
-          bus = new Strongbus.Bus({allowUnhandledEvents: false});
-          spyOn(bus as any, 'handleUnexpectedEvent');
-          bus.emit('foo', 'oops');
-
-          expect((bus as any).handleUnexpectedEvent).toHaveBeenCalledWith('foo', 'oops');
+      describe('and given `options.onUnhandledEvent` is `\'throw\'`', () => {
+        it('throws', () => {
+          bus = new Strongbus.Bus({onUnhandledEvent: 'throw'});
+          expect(() => bus.emit('foo', 'oops')).toThrowError(/unexpected message type 'foo'/);
         });
       });
-      describe('and given the `allowUnhandledEvent` option is true (default)', () => {
-        it('does not invoke instance\'s #handleUnexpectedEvent method', () => {
+      describe('and given `options.onUnhandledEvent` is a function', () => {
+        it('invokes the callback with the event and payload', () => {
+          const onUnhandledEvent = jasmine.createSpy('onUnhandledEvent');
+          bus = new Strongbus.Bus({onUnhandledEvent});
           bus.emit('foo', 'oops');
 
-          expect((bus as any).handleUnexpectedEvent).not.toHaveBeenCalled();
+          expect(onUnhandledEvent).toHaveBeenCalledWith('foo', 'oops');
+        });
+      });
+      describe('and given `options.onUnhandledEvent` is `\'ignore\'` (default)', () => {
+        it('does not throw', () => {
+          expect(() => bus.emit('foo', 'oops')).not.toThrow();
         });
       });
     });
@@ -119,7 +127,7 @@ describe('Strongbus.Bus', () => {
 
     it('merges partial options onto static defaults for new instances', () => {
       Strongbus.Bus.configure({
-        allowUnhandledEvents: false,
+        onUnhandledEvent: 'throw',
         verbose: false,
         thresholds: {warn: 12}
       });
@@ -127,7 +135,7 @@ describe('Strongbus.Bus', () => {
       const configured = new Strongbus.Bus<TestEventMap>();
       const options: Strongbus.Options = (configured as any).options;
 
-      expect(options.allowUnhandledEvents).toBeFalse();
+      expect(options.onUnhandledEvent).toBe('throw');
       expect(options.verbose).toBeFalse();
       expect(options.thresholds.info).toBe(100);
       expect(options.thresholds.warn).toBe(12);
@@ -135,11 +143,11 @@ describe('Strongbus.Bus', () => {
     });
 
     it('accumulates successive configure calls', () => {
-      Strongbus.Bus.configure({allowUnhandledEvents: false});
+      Strongbus.Bus.configure({onUnhandledEvent: 'throw'});
       Strongbus.Bus.configure({verbose: false});
 
       const options: Strongbus.Options = (new Strongbus.Bus() as any).options;
-      expect(options.allowUnhandledEvents).toBeFalse();
+      expect(options.onUnhandledEvent).toBe('throw');
       expect(options.verbose).toBeFalse();
     });
 
@@ -181,9 +189,10 @@ describe('Strongbus.Bus', () => {
 
       beforeEach(() => {
         if(typeof p === 'function') {
-          provider = () => {
-            return (logger = p());
-          };
+          // resolve once up front so assertions can use `logger` even when a test
+          // emits no log lines (e.g. verbose mode at the exact info threshold).
+          logger = p();
+          provider = () => logger;
         } else {
           logger = provider = p;
         }
@@ -477,8 +486,8 @@ describe('Strongbus.Bus', () => {
         expect(bus.emit('foo', 'eagle')).toBeTrue();
       });
 
-      it('returns true when only a wildcard (piped sink) listener handles the event', () => {
-        bus.pipe(eventSink);
+      it('returns true when only a wildcard (tap) listener handles the event', () => {
+        bus.tap(eventSink);
         expect(bus.emit('foo', 'eagle')).toBeTrue();
       });
 
@@ -732,7 +741,7 @@ describe('Strongbus.Bus', () => {
 
         expect(sub1).toBe(sub2);
         expect(warn).toHaveBeenCalledTimes(1);
-        expect(warn.calls.mostRecent().args[0]).toContain('duplicate on');
+        expect(warn.calls.mostRecent().args[0].message).toContain('duplicate on');
 
         bus.emit('foo', 'x');
         expect(handleFoo).toHaveBeenCalledTimes(1);
@@ -1152,24 +1161,24 @@ describe('Strongbus.Bus', () => {
       });
 
       it('returns a Subscription', () => {
-        bus = new Strongbus.Bus({allowUnhandledEvents: false});
-        spyOn(bus as any, 'handleUnexpectedEvent');
+        const onUnhandledEvent = jasmine.createSpy('onUnhandledEvent');
+        bus = new Strongbus.Bus({onUnhandledEvent});
 
         const unsubFoo = bus.any(['foo', 'bar'], eventSink);
         bus.emit('foo', null);
         expect(eventSink).toHaveBeenCalledTimes(1);
-        expect((bus as any).handleUnexpectedEvent).not.toHaveBeenCalled();
+        expect(onUnhandledEvent).not.toHaveBeenCalled();
         eventSink.calls.reset();
 
         unsubFoo();
         bus.emit('bar', null);
         expect(eventSink).not.toHaveBeenCalled();
-        expect((bus as any).handleUnexpectedEvent).toHaveBeenCalledWith('bar', null);
-        (bus as any).handleUnexpectedEvent.calls.reset();
+        expect(onUnhandledEvent).toHaveBeenCalledWith('bar', null);
+        onUnhandledEvent.calls.reset();
 
         bus.emit('baz', null);
         expect(eventSink).not.toHaveBeenCalled();
-        expect((bus as any).handleUnexpectedEvent).toHaveBeenCalledWith('baz', null);
+        expect(onUnhandledEvent).toHaveBeenCalledWith('baz', null);
       });
     });
   });
@@ -1178,164 +1187,58 @@ describe('Strongbus.Bus', () => {
     let bus2: DownstreamTestBus;
     let bus3: DownstreamTestBus;
 
-    describe('#pipe', () => {
-      describe('piping into a function sink', () => {
-        describe('given any event is emitted', () => {
-          it('invokes the sink with a single {event, payload} message', () => {
-            bus.on('foo', singleEventHandler);
-            bus.pipe(eventSink);
-
-            bus.emit('foo', 'cat');
-            expect(singleEventHandler).toHaveBeenCalledWith('cat');
-            expect(eventSink).toHaveBeenCalledTimes(1);
-            expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'cat'}, jasmine.any(Function));
-          });
-        });
-
-        it('delivers each raised event as its own correlated message', () => {
-          const messages: {event: EventKeys<TestEventMap>; payload: unknown}[] = [];
-          bus.pipe((msg) => { messages.push(msg); });
+    describe('#tap', () => {
+      describe('given any event is emitted', () => {
+        it('invokes the handler with a single {event, payload} message', () => {
+          bus.on('foo', singleEventHandler);
+          bus.tap(eventSink);
 
           bus.emit('foo', 'cat');
-          bus.emit('baz', 7);
-
-          expect(messages).toEqual([
-            {event: 'foo', payload: 'cat'},
-            {event: 'baz', payload: 7}
-          ]);
-        });
-
-        it('forwards a whole message to another bus via forward(dst)', () => {
-          const dst = new Strongbus.Bus<TestEventMap>();
-          const received = jasmine.createSpy('received');
-          dst.on('foo', received);
-
-          bus.pipe((msg, forward) => { forward(dst); });
-          bus.emit('foo', 'relayed');
-
-          expect(received).toHaveBeenCalledWith('relayed');
-        });
-
-        it('defers forward(dst) until after this bus\'s own handlers (capture semantics)', async () => {
-          const order: string[] = [];
-          const dst = new Strongbus.Bus<TestEventMap>();
-          dst.on('foo', () => order.push('dst'));
-
-          let forwardResult: Promise<boolean> | undefined;
-          bus.on('foo', () => order.push('own-specific'));
-          bus.pipe((_msg, forward) => {
-            order.push('sink');
-            forwardResult = forward(dst);
-            order.push('sink-after-forward');
-          });
-          bus.pipe(() => order.push('other-sink'));
-
-          bus.emit('foo', 'relayed');
-
-          expect(order).toEqual([
-            'own-specific',
-            'sink',
-            'sink-after-forward',
-            'other-sink',
-            'dst'
-          ]);
-          // tslint:disable-next-line:no-non-null-assertion
-          await expectAsync(forwardResult!).toBeResolvedTo(true);
-        });
-
-        it('keeps forward live for later own handlers during the same emit', async () => {
-          const order: string[] = [];
-          const dst = new Strongbus.Bus<TestEventMap>();
-          dst.on('foo', () => order.push('dst'));
-
-          let stolen: ((target: Strongbus.Bus<TestEventMap>) => Promise<boolean>) | undefined;
-          let stolenResult: Promise<boolean> | undefined;
-          bus.pipe((_msg, forward) => {
-            stolen = forward;
-            order.push('sink');
-          });
-          bus.pipe(() => {
-            order.push('later-sink');
-            // original sink has returned, but this emit is still in progress
-            // tslint:disable-next-line:no-non-null-assertion
-            stolenResult = stolen!(dst);
-          });
-
-          bus.emit('foo', 'shared');
-
-          expect(order).toEqual(['sink', 'later-sink', 'dst']);
-          // tslint:disable-next-line:no-non-null-assertion
-          await expectAsync(stolenResult!).toBeResolvedTo(true);
-        });
-
-        it('expires forward after the emit completes', async () => {
-          const dst = new Strongbus.Bus<TestEventMap>();
-          const received = jasmine.createSpy('received');
-          dst.on('foo', received);
-
-          let stolen: ((target: Strongbus.Bus<TestEventMap>) => Promise<boolean>) | undefined;
-          let liveResult: Promise<boolean> | undefined;
-          bus.pipe((_msg, forward) => {
-            stolen = forward;
-            liveResult = forward(dst);
-          });
-
-          bus.emit('foo', 'once');
-          expect(received).toHaveBeenCalledTimes(1);
-          // tslint:disable-next-line:no-non-null-assertion
-          await expectAsync(liveResult!).toBeResolvedTo(true);
-          // tslint:disable-next-line:no-non-null-assertion
-          await expectAsync(stolen!(dst)).toBeResolvedTo(false);
-          expect(received).toHaveBeenCalledTimes(1);
-        });
-
-        it('resolves false when the forwarded emit is unhandled', async () => {
-          const dst = new Strongbus.Bus<TestEventMap>({allowUnhandledEvents: true});
-          let forwardResult: Promise<boolean> | undefined;
-          bus.pipe((_msg, forward) => {
-            forwardResult = forward(dst);
-          });
-
-          bus.emit('foo', 'nobody-home');
-          // tslint:disable-next-line:no-non-null-assertion
-          await expectAsync(forwardResult!).toBeResolvedTo(false);
-        });
-
-        it('expires forward by the time an async sink continuation runs', async () => {
-          const dst = new Strongbus.Bus<TestEventMap>();
-          const received = jasmine.createSpy('received');
-          dst.on('foo', received);
-
-          const done = new Promise<void>((resolve) => {
-            bus.pipe(async (_msg, forward) => {
-              await Promise.resolve();
-              // emit does not await sinks, so the emit has already completed
-              await expectAsync(forward(dst)).toBeResolvedTo(false);
-              resolve();
-            });
-          });
-
-          bus.emit('foo', 'late');
-          await done;
-          expect(received).not.toHaveBeenCalled();
-        });
-
-        it('runs deferred forwards before structural pipe(bus) delegation', () => {
-          const order: string[] = [];
-          const viaForward = new Strongbus.Bus<TestEventMap>();
-          const viaPipe = new Strongbus.Bus<TestEventMap>();
-          viaForward.on('foo', () => order.push('forward-dst'));
-          viaPipe.on('foo', () => order.push('pipe-dst'));
-
-          bus.pipe((_msg, forward) => { forward(viaForward); });
-          bus.pipe(viaPipe);
-
-          bus.emit('foo', 'x');
-
-          expect(order).toEqual(['forward-dst', 'pipe-dst']);
+          expect(singleEventHandler).toHaveBeenCalledWith('cat');
+          expect(eventSink).toHaveBeenCalledTimes(1);
+          expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'cat'});
         });
       });
 
+      it('delivers each raised event as its own correlated message', () => {
+        const messages: {event: EventKeys<TestEventMap>; payload: unknown}[] = [];
+        bus.tap((msg: Strongbus.PipedMessage<TestEventMap>) => { messages.push(msg); });
+
+        bus.emit('foo', 'cat');
+        bus.emit('baz', 7);
+
+        expect(messages).toEqual([
+          {event: 'foo', payload: 'cat'},
+          {event: 'baz', payload: 7}
+        ]);
+      });
+
+      describe('and given an event is raised', () => {
+        it('invokes the supplied handler with a correlated {event, payload} message', () => {
+          bus.tap(eventSink);
+          bus.emit('foo', 'raccoon');
+          expect(eventSink).toHaveBeenCalledTimes(1);
+          expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'raccoon'});
+          bus.emit('foo', 'squirrel');
+          expect(eventSink).toHaveBeenCalledTimes(2);
+          expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'squirrel'});
+          bus.emit('baz', 5);
+          expect(eventSink).toHaveBeenCalledTimes(3);
+          expect(eventSink).toHaveBeenCalledWith({event: 'baz', payload: 5});
+        });
+      });
+
+      it('returns a Subscription that stops delivery when disposed', () => {
+        const sub = bus.tap(eventSink);
+        bus.emit('foo', 'raccoon');
+        expect(eventSink).toHaveBeenCalledTimes(1);
+        sub();
+        bus.emit('foo', 'fox');
+        expect(eventSink).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('#pipe', () => {
       describe('piping into another bus', () => {
         beforeEach(() => {
           bus2 = new DownstreamTestBus({emulateListenerCount: true});
@@ -1343,101 +1246,188 @@ describe('Strongbus.Bus', () => {
 
         describe('given an event is raised from the parent bus', () => {
           it('handles the event on the parent bus AND the downstream bus', () => {
-            spyOn(bus2, 'emit');
+            spyOn(bus2 as any, 'acceptFromUpstream');
             bus.pipe(bus2);
 
             bus.on('foo', singleEventHandler);
             bus.emit('foo', 'wow!');
 
             expect(singleEventHandler).toHaveBeenCalledWith('wow!');
-            expect(bus2.emit).toHaveBeenCalledWith('foo', 'wow!');
+            expect((bus2 as any).acceptFromUpstream).toHaveBeenCalledWith('foo', 'wow!');
           });
         });
 
+        it('feeder.pipe(hub) delivers events on the first hop', () => {
+          const hub = new DownstreamTestBus({});
+          const received = jasmine.createSpy('received');
+          hub.on('foo', received);
+
+          bus.pipe(hub);
+          bus.emit('foo', 'relay');
+
+          expect(received).toHaveBeenCalledWith('relay');
+        });
+
         it('counts piped listeners as handlers when events are raised', () => {
-          bus = new Strongbus.Bus({allowUnhandledEvents: false});
-          spyOn(bus as any, 'handleUnexpectedEvent');
+          const onUnhandledEvent = jasmine.createSpy('onUnhandledEvent');
+          bus = new Strongbus.Bus({onUnhandledEvent});
           bus.emit('foo', null);
-          expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
-          (bus as any).handleUnexpectedEvent.calls.reset();
+          expect(onUnhandledEvent).toHaveBeenCalled();
+          onUnhandledEvent.calls.reset();
 
           bus.pipe(bus2);
           bus.emit('foo', null);
-          expect((bus as any).handleUnexpectedEvent).not.toHaveBeenCalled();
+          expect(onUnhandledEvent).not.toHaveBeenCalled();
           bus.unpipe(bus2);
 
           // removed the downstream, bus has no listeners again
           bus.emit('foo', null);
-          expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
-          (bus as any).handleUnexpectedEvent.calls.reset();
+          expect(onUnhandledEvent).toHaveBeenCalled();
+          onUnhandledEvent.calls.reset();
 
           // emulate a downstream bus with no listeners attached
           bus3 = new DownstreamTestBus({emulateListenerCount: false});
           bus.pipe(bus3);
 
           bus.emit('foo', null);
-          expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
+          expect(onUnhandledEvent).toHaveBeenCalled();
         });
 
-        it('bubbles unhandled events to the parent regardless of whether the downstream allows them', () => {
-          bus = new Strongbus.Bus({allowUnhandledEvents: false});
-          bus2 = new DownstreamTestBus({allowUnhandledEvents: true});
-          bus3 = new DownstreamTestBus({allowUnhandledEvents: false, emulateListenerCount: false});
-          spyOn(bus as any, 'handleUnexpectedEvent');
-          spyOn(bus2 as any, 'handleUnexpectedEvent');
-          spyOn(bus3 as any, 'handleUnexpectedEvent');
+        it('bubbles unhandled events to the parent regardless of whether the downstream ignores them', () => {
+          const onUnhandledBus = jasmine.createSpy('onUnhandledBus');
+          const onUnhandledBus3 = jasmine.createSpy('onUnhandledBus3');
+          bus = new Strongbus.Bus({onUnhandledEvent: onUnhandledBus});
+          bus2 = new DownstreamTestBus({onUnhandledEvent: 'ignore'});
+          bus3 = new DownstreamTestBus({onUnhandledEvent: onUnhandledBus3, emulateListenerCount: false});
 
           bus.pipe(bus2);
           bus.pipe(bus3);
           bus.emit('foo', null);
-          expect((bus3 as any).handleUnexpectedEvent).toHaveBeenCalled();
-          expect((bus2 as any).handleUnexpectedEvent).not.toHaveBeenCalled();
-          expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
+          expect(onUnhandledBus3).toHaveBeenCalled();
+          expect(onUnhandledBus).toHaveBeenCalled();
         });
 
-        it('can be chained', () => {
-          bus2 = new DownstreamTestBus({});
-          bus3 = new DownstreamTestBus({});
+        it('blocks unfiltered multi-hop passthrough and warns per unique unsound path', () => {
+          const logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+          bus = new Strongbus.Bus({name: 'A'});
+          bus2 = new DownstreamTestBus({name: 'B', logger: () => logger});
+          bus3 = new DownstreamTestBus({name: 'C'});
+          const bus4 = new DownstreamTestBus({name: 'D'});
+          const receivedOn3 = jasmine.createSpy('receivedOn3');
+          bus3.on('foo', receivedOn3);
 
-          spyOn(bus, 'emit').and.callThrough();
-          spyOn(bus2, 'emit').and.callThrough();
-          spyOn(bus3, 'emit');
-
-          bus.pipe(bus2).pipe(bus3);
+          spyOn(bus2 as any, 'acceptFromUpstream').and.callThrough();
+          bus.pipe(bus2);
+          bus2.pipe(bus3);
 
           bus.emit('foo', 'woot');
-          expect(bus2.emit).toHaveBeenCalledWith('foo', 'woot');
-          expect(bus3.emit).toHaveBeenCalledWith('foo', 'woot');
+          expect((bus2 as any).acceptFromUpstream).toHaveBeenCalledWith('foo', 'woot');
+          expect(receivedOn3).not.toHaveBeenCalled();
+          expect(logger.warn).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeGraph(bus2.name, bus.name, bus3.name)
+          );
+
+          logger.warn.calls.reset();
+          bus2.pipe(bus4);
+          expect(logger.warn).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeGraph(bus2.name, bus.name, bus4.name)
+          );
+
+          logger.warn.calls.reset();
+          const feeder2 = new Strongbus.Bus({name: 'A2'});
+          feeder2.pipe(bus2);
+          expect(logger.warn).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeGraph(bus2.name, feeder2.name, bus3.name)
+          );
+          expect(logger.warn).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeGraph(bus2.name, feeder2.name, bus4.name)
+          );
+        });
+
+        it('infos when a previously unsound path is removed', () => {
+          const logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+          bus = new Strongbus.Bus({name: 'A'});
+          bus2 = new DownstreamTestBus({name: 'B', logger: () => logger});
+          bus3 = new DownstreamTestBus({name: 'C'});
+
+          bus.pipe(bus2);
+          bus2.pipe(bus3);
+          expect(logger.warn).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeGraph(bus2.name, bus.name, bus3.name)
+          );
+
+          logger.info.calls.reset();
+          bus2.unpipe(bus3);
+          expect(logger.info).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeGraphResolved(bus2.name, bus.name, bus3.name)
+          );
+
+          bus2.pipe(bus3);
+          expect(logger.warn).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeGraph(bus2.name, bus.name, bus3.name)
+          );
+
+          logger.info.calls.reset();
+          bus.unpipe(bus2);
+          expect(logger.info).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeGraphResolved(bus2.name, bus.name, bus3.name)
+          );
+        });
+
+        it('warns when trying to add a filter to an existing unfiltered edge', () => {
+          const logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+          bus = new Strongbus.Bus({name: 'A'});
+          bus2 = new DownstreamTestBus({name: 'B', logger: () => logger});
+          bus3 = new DownstreamTestBus({name: 'C'});
+          const received = jasmine.createSpy('received');
+          bus3.on('foo', received);
+
+          bus.pipe(bus2);
+          bus2.pipe(bus3);
+          logger.warn.calls.reset();
+
+          bus2.pipe(Strongbus.ASSUMED_SOUND_EDGE).pipe(bus3);
+          expect(logger.warn).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeEdgeFilterUpgrade(bus2.name, bus3.name)
+          );
+
+          bus.emit('foo', 'still-blocked');
+          expect(received).not.toHaveBeenCalled();
+        });
+
+        it('allows filtered multi-hop relay for matching events', () => {
+          bus2 = new DownstreamTestBus({});
+          bus3 = new DownstreamTestBus({});
+          const fooOn3 = jasmine.createSpy('fooOn3');
+          const barOn3 = jasmine.createSpy('barOn3');
+          bus3.on('foo', fooOn3);
+          bus3.on('bar', barOn3);
+
+          bus.pipe(bus2);
+          bus2.pipe((msg: Strongbus.PipedMessage<TestEventMap>) => msg.event === 'foo').pipe(bus3);
+
+          bus.emit('foo', 'through');
+          bus.emit('bar', true);
+
+          expect(fooOn3).toHaveBeenCalledWith('through');
+          expect(barOn3).not.toHaveBeenCalled();
+        });
+
+        it('delivers local emit on a bridge bus to unfiltered downstream even when inbound pipes exist', () => {
+          bus2 = new DownstreamTestBus({});
+          bus3 = new DownstreamTestBus({});
+          const received = jasmine.createSpy('received');
+          bus3.on('bar', received);
+
+          bus.pipe(bus2);
+          bus2.pipe(bus3);
 
           bus2.emit('bar', false);
-          expect((bus.emit as jasmine.Spy)).not.toHaveBeenCalledWith('bar', false);
-          expect(bus3.emit).toHaveBeenCalledWith('bar', false);
-        });
-      });
+          expect(received).toHaveBeenCalledWith(false);
 
-      describe('piping into a function sink', () => {
-        describe('and given an event is raised', () => {
-          it('invokes the supplied handler with a correlated {event, payload} message', () => {
-            bus.pipe(eventSink);
-            bus.emit('foo', 'raccoon');
-            expect(eventSink).toHaveBeenCalledTimes(1);
-            expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'raccoon'}, jasmine.any(Function));
-            bus.emit('foo', 'squirrel');
-            expect(eventSink).toHaveBeenCalledTimes(2);
-            expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'squirrel'}, jasmine.any(Function));
-            bus.emit('baz', 5);
-            expect(eventSink).toHaveBeenCalledTimes(3);
-            expect(eventSink).toHaveBeenCalledWith({event: 'baz', payload: 5}, jasmine.any(Function));
-          });
-        });
-
-        it('returns an unsubscribe function', () => {
-          const sub = bus.pipe(eventSink);
-          bus.emit('foo', 'raccoon');
-          expect(eventSink).toHaveBeenCalledTimes(1);
-          sub();
-          bus.emit('foo', 'fox');
-          expect(eventSink).toHaveBeenCalledTimes(1);
+          received.calls.reset();
+          bus.emit('foo', 'nope');
+          expect(received).not.toHaveBeenCalled();
         });
       });
     });
@@ -1449,41 +1439,43 @@ describe('Strongbus.Bus', () => {
         });
 
         it('removes a piped msg bus', () => {
-          spyOn(bus2, 'emit');
+          spyOn(bus2 as any, 'acceptFromUpstream');
           bus.pipe(bus2);
 
           bus.emit('foo', 'wow!');
 
-          expect(bus2.emit).toHaveBeenCalledWith('foo', 'wow!');
-          (bus2.emit as any).calls.reset();
+          expect((bus2 as any).acceptFromUpstream).toHaveBeenCalledWith('foo', 'wow!');
+          ((bus2 as any).acceptFromUpstream as jasmine.Spy).calls.reset();
 
           bus.unpipe(bus2);
 
           bus.emit('foo', 'wow!');
-          expect(bus2.emit).not.toHaveBeenCalled();
+          expect((bus2 as any).acceptFromUpstream).not.toHaveBeenCalled();
         });
 
         it('breaks the a chain of piped buses', () => {
           bus3 = new DownstreamTestBus({});
-          spyOn(bus2, 'emit').and.callThrough();
-          spyOn(bus3, 'emit').and.callThrough();
+          spyOn(bus2 as any, 'acceptFromUpstream').and.callThrough();
+          spyOn(bus3 as any, 'acceptFromUpstream').and.callThrough();
+          const receivedOn3 = jasmine.createSpy('receivedOn3');
+          bus3.on('foo', receivedOn3);
 
           bus.pipe(bus2).pipe(bus3);
           bus.emit('foo', null);
 
-          expect(bus2.emit).toHaveBeenCalledWith('foo', null);
-          expect(bus3.emit).toHaveBeenCalledWith('foo', null);
-          (bus2.emit as jasmine.Spy).calls.reset();
-          (bus3.emit as jasmine.Spy).calls.reset();
+          expect((bus2 as any).acceptFromUpstream).toHaveBeenCalledWith('foo', null);
+          expect(receivedOn3).not.toHaveBeenCalled();
+          ((bus2 as any).acceptFromUpstream as jasmine.Spy).calls.reset();
+          receivedOn3.calls.reset();
 
           bus.unpipe(bus2);
           bus.emit('foo', null);
-          expect(bus2.emit).not.toHaveBeenCalled();
-          expect(bus3.emit).not.toHaveBeenCalled();
+          expect((bus2 as any).acceptFromUpstream).not.toHaveBeenCalled();
+          expect(receivedOn3).not.toHaveBeenCalled();
 
-          // bus2 is still delegating to bus3 via the chain
+          // bus2 is still delegating to bus3 via the chain for local emits
           bus2.emit('foo', null);
-          expect(bus3.emit).toHaveBeenCalledWith('foo', null);
+          expect(receivedOn3).toHaveBeenCalledWith(null);
         });
       });
     });
@@ -1739,11 +1731,17 @@ describe('Strongbus.Bus', () => {
           loggingBus.emit('bar', true);
 
           expect(logger.error).toHaveBeenCalledWith(
-            'Error thrown in error handler',
             jasmine.objectContaining({
-              errorHandlerError: handlerError,
-              originalEvent: 'bar',
-              eventHandlerError: originalError
+              ...StrongbusLogMessages.errorHandlerFailed({
+                errorHandlerError: handlerError,
+                originalEvent: 'bar',
+                eventHandlerError: originalError
+              }),
+              context: jasmine.objectContaining({
+                errorHandlerError: handlerError,
+                originalEvent: 'bar',
+                eventHandlerError: originalError
+              })
             })
           );
         });
@@ -1758,11 +1756,17 @@ describe('Strongbus.Bus', () => {
           await sleep(1);
 
           expect(logger.error).toHaveBeenCalledWith(
-            'Error thrown in async error handler',
             jasmine.objectContaining({
-              errorHandlerError: handlerError,
-              originalEvent: 'bar',
-              eventHandlerError: originalError
+              ...StrongbusLogMessages.asyncErrorHandlerFailed({
+                errorHandlerError: handlerError,
+                originalEvent: 'bar',
+                eventHandlerError: originalError
+              }),
+              context: jasmine.objectContaining({
+                errorHandlerError: handlerError,
+                originalEvent: 'bar',
+                eventHandlerError: originalError
+              })
             })
           );
         });
@@ -2117,7 +2121,7 @@ describe('Strongbus.Bus', () => {
   describe('#hasListeners', () => {
     describe('given there are any event listeners on the instance', () => {
       it('returns true', () => {
-        bus.pipe(eventSink);
+        bus.tap(eventSink);
         expect(bus.hasListeners()).toBeTruthy();
       });
     });
@@ -2285,14 +2289,14 @@ describe('Strongbus.Bus', () => {
         expect(bus.active).toBeTrue(); // still active from foo
       });
 
-      it('supports once, any, and pipe(sink) with {incognito: true}', () => {
+      it('supports once, any, and tap with {incognito: true}', () => {
         const handleOnce = jasmine.createSpy('handleOnce') as (payload: string) => void;
         const handleAny = jasmine.createSpy('handleAny');
         const handlePipe = jasmine.createSpy('handlePipe');
 
         bus.once('foo', handleOnce, {incognito: true});
         bus.any(['bar', 'baz'], handleAny, {incognito: true});
-        bus.pipe(handlePipe, {incognito: true});
+        bus.tap(handlePipe, {incognito: true});
 
         expectNoMonitoringNoise();
 
@@ -2349,7 +2353,8 @@ describe('Strongbus.Bus', () => {
         const handleFoo = jasmine.createSpy('handleFoo') as (payload: string) => void;
 
         bus.pipe(mid, {incognito: true});
-        mid.pipe(leaf);
+        // explicit filter required for passthrough across mid (inbound + outbound bridge).
+        mid.pipe(Strongbus.ASSUMED_SOUND_EDGE).pipe(leaf);
         leaf.on('foo', handleFoo);
 
         expect(bus.active).toBeFalse();
@@ -2481,7 +2486,7 @@ describe('Strongbus.Bus', () => {
           expect(combinedListenersToMap(bus)).toEqual(new Map([[
             'foo', new Set([singleEventHandler])
           ]]));
-          bus.pipe(eventSink);
+          bus.tap(eventSink);
           expect(bus.getListenersFor('foo')).toEqual(new Set([singleEventHandler]));
           expect(bus.getListenersFor('*').size).toEqual(1); // will be an anonymous wrapper around `onEveryEvent`
         });
@@ -2588,7 +2593,7 @@ describe('Strongbus.Bus', () => {
           expect(ownListenersToMap(bus)).toEqual(new Map([[
             'foo', new Set([singleEventHandler])
           ]]));
-          bus.pipe(eventSink);
+          bus.tap(eventSink);
           expect(bus.getListenersFor('foo', {scope: Strongbus.ListenerScope.OWN})).toEqual(new Set([singleEventHandler]));
           expect(bus.getListenersFor('*', {scope: Strongbus.ListenerScope.OWN}).size).toEqual(1); // will be an anonymous wrapper around `onEveryEvent`
         });
@@ -2830,14 +2835,14 @@ describe('Strongbus.Bus', () => {
 
   describe('#destroy', () => {
     it('removes all event listeners, triggering proper lifecycle events', () => {
-      bus = new Strongbus.Bus({allowUnhandledEvents: false});
-      spyOn(bus as any, 'handleUnexpectedEvent');
+      const onUnhandledEvent = jasmine.createSpy('onUnhandledEvent');
+      bus = new Strongbus.Bus({onUnhandledEvent});
       const willRemoveListenerSpy = jasmine.createSpy('willRemoveListener');
       const didRemoveListenerSpy = jasmine.createSpy('didRemoveListener');
       bus.on('foo', singleEventHandler);
       bus.hook('willRemoveListener', willRemoveListenerSpy);
       bus.hook('didRemoveListener', didRemoveListenerSpy);
-      bus.pipe(eventSink);
+      bus.tap(eventSink);
 
       bus.emit('foo', null);
       expect(singleEventHandler).toHaveBeenCalled();
@@ -2852,7 +2857,7 @@ describe('Strongbus.Bus', () => {
       bus.emit('foo', null);
       expect(singleEventHandler).not.toHaveBeenCalled();
       expect(eventSink).not.toHaveBeenCalled();
-      expect((bus as any).handleUnexpectedEvent).toHaveBeenCalled();
+      expect(onUnhandledEvent).toHaveBeenCalled();
     });
 
     it('removes all hooks', () => {
@@ -2870,7 +2875,7 @@ describe('Strongbus.Bus', () => {
     it('clears all downstreams', () => {
       const bus2 = new DownstreamTestBus({});
       bus2.on('foo', singleEventHandler);
-      bus2.pipe(eventSink);
+      bus2.tap(eventSink);
 
       bus.pipe(bus2);
 
@@ -2890,7 +2895,7 @@ describe('Strongbus.Bus', () => {
   describe('Reserved events', () => {
     describe('given the wildcard (*) event is manually raised', () => {
       it('raises an error', () => {
-        bus.pipe(eventSink);
+        bus.tap(eventSink);
         const shouldThrow = () => bus.emit('*' as any, 'eagle');
 
         expect(shouldThrow).toThrow();

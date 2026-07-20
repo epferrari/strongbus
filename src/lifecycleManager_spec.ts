@@ -1,6 +1,5 @@
-import {LifecycleManager} from './lifecycleManager';
+import {LifecycleManager, type LifecycleHost} from './lifecycleManager';
 import {StrongbusLogger} from './strongbusLogger';
-import type {LifecycleHost} from './types/lifecycleHost';
 
 type TestEventMap = {
   foo: string;
@@ -10,9 +9,18 @@ describe('LifecycleManager', () => {
   let host: jasmine.SpyObj<LifecycleHost<TestEventMap>>;
   let manager: LifecycleManager<TestEventMap>;
   let order: string[];
+  let logger: StrongbusLogger<TestEventMap>;
+  let lifecycleOptions: {coalesceDownstreamLifecycleEvents: boolean};
 
   beforeEach(() => {
     order = [];
+    logger = new StrongbusLogger<TestEventMap>({
+      name: 'test',
+      provider: console,
+      thresholds: {info: 100, warn: 500, error: Infinity},
+      verbose: false
+    });
+    lifecycleOptions = {coalesceDownstreamLifecycleEvents: false};
     host = jasmine.createSpyObj('host', [
       'hasListeners',
       'getListenerCount',
@@ -28,13 +36,8 @@ describe('LifecycleManager', () => {
 
     manager = new LifecycleManager<TestEventMap>({
       host,
-      logger: new StrongbusLogger<TestEventMap>({
-        name: 'test',
-        provider: console,
-        thresholds: {info: 100, warn: 500, error: Infinity},
-        verbose: false
-      }),
-      coalesceDownstreamLifecycleEvents: false
+      options: lifecycleOptions,
+      logger
     });
 
     manager.hook('willAddListener', (event) => order.push(`willAdd:${event}`));
@@ -84,13 +87,8 @@ describe('LifecycleManager', () => {
   it('coalesces downstream attach hooks when configured', () => {
     const coalescing = new LifecycleManager<TestEventMap>({
       host,
-      logger: new StrongbusLogger<TestEventMap>({
-        name: 'test',
-        provider: console,
-        thresholds: {info: 100, warn: 500, error: Infinity},
-        verbose: false
-      }),
-      coalesceDownstreamLifecycleEvents: true
+      options: {coalesceDownstreamLifecycleEvents: true},
+      logger
     });
     coalescing.hook('willAddListener', (event) => order.push(`willAdd:${event}`));
     coalescing.hook('didAddListener', (event) => order.push(`didAdd:${event}`));

@@ -5,7 +5,7 @@
  * bus plus handlers on buses attached with `pipe(bus)`.
  *
  * `DOWNSTREAM` covers listeners on piped {@link Bus} instances only. It does **not**
- * include function sinks from `pipe(handler)`; those are registered as `OWN`
+ * include `tap` handlers; those are registered as `OWN`
  * wildcard handlers on this bus.
  */
 export enum ListenerScope {
