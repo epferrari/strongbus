@@ -574,9 +574,9 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   /**
-   * @internal Deliver an event received via an upstream pipe edge.
+   * @internal Accept an event received via an upstream pipe edge.
    */
-  public deliverFromUpstream(event: any, payload?: any): boolean {
+  public acceptFromUpstream(event: any, payload?: any): boolean {
     return this.dispatcher.dispatchEvent(event, payload, true);
   }
 

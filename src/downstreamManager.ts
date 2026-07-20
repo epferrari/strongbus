@@ -21,8 +21,8 @@ import {over} from './utils/over';
 export type DownstreamTarget<TEventMap extends EventMap> = {
   readonly name: string;
   hook: MonitoringHook<TEventMap>;
-  /** Deliver an upstream-sourced event into this bus's dispatcher. */
-  deliverFromUpstream(event: any, payload?: any): boolean;
+  /** Accept an upstream-sourced event into this bus's dispatcher. */
+  acceptFromUpstream(event: any, payload?: any): boolean;
   noteInboundPipeAttached(source: DownstreamTarget<TEventMap>): void;
   noteInboundPipeDetached(source: DownstreamTarget<TEventMap>): void;
 };
@@ -183,7 +183,7 @@ export class DownstreamManager<TEventMap extends EventMap = EventMap> {
           continue;
         }
       }
-      handled = downstream.deliverFromUpstream(event as any, payload as any) || handled;
+      handled = downstream.acceptFromUpstream(event as any, payload as any) || handled;
     }
     return handled;
   }
