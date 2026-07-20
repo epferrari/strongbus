@@ -6,7 +6,7 @@ import {
 } from './lifecycleManager';
 import {StrongbusLogMessages, type StrongbusLogger} from './strongbusLogger';
 import type {EventMap, WILDCARD} from './types/events';
-import type {GenericHandler, PipeMessage, PipePredicate} from './types/eventHandlers';
+import type {GenericHandler, PipedMessage, PipePredicate} from './types/eventHandlers';
 import {Lifecycle} from './types/lifecycle';
 import type {MonitoringHook} from './types/surfaces/monitoringSurface';
 import type {SubscribeOptions} from './types/surfaces/subscriptionSurface';
@@ -157,7 +157,7 @@ export class DownstreamManager<TEventMap extends EventMap = EventMap> {
         if(!link.filter) {
           continue;
         }
-        const message = {event, payload} as PipeMessage<TEventMap>;
+        const message = {event, payload} as PipedMessage<TEventMap>;
         if(!link.filter(message)) {
           continue;
         }

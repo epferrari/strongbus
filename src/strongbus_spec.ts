@@ -1201,7 +1201,7 @@ describe('Strongbus.Bus', () => {
 
       it('delivers each raised event as its own correlated message', () => {
         const messages: {event: EventKeys<TestEventMap>; payload: unknown}[] = [];
-        bus.tap((msg: Strongbus.PipeMessage<TestEventMap>) => { messages.push(msg); });
+        bus.tap((msg: Strongbus.PipedMessage<TestEventMap>) => { messages.push(msg); });
 
         bus.emit('foo', 'cat');
         bus.emit('baz', 7);
@@ -1338,7 +1338,7 @@ describe('Strongbus.Bus', () => {
           bus3.on('bar', barOn3);
 
           bus.pipe(bus2);
-          bus2.pipe((msg: Strongbus.PipeMessage<TestEventMap>) => msg.event === 'foo').pipe(bus3);
+          bus2.pipe((msg: Strongbus.PipedMessage<TestEventMap>) => msg.event === 'foo').pipe(bus3);
 
           bus.emit('foo', 'through');
           bus.emit('bar', true);

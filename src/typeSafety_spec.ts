@@ -3,7 +3,7 @@ import {Scanner} from './scanner';
 import {WILDCARD, type EventMap, type Subscription} from './types/events';
 import {Lifecycle, type LifecycleSubjectEvent} from './types/lifecycle';
 import {ListenerScope} from './types/listenerScope';
-import type {EventHandler, TapHandler, PipeMessage} from './types/eventHandlers';
+import type {EventHandler, TapHandler, PipedMessage} from './types/eventHandlers';
 import type {ListenerSet} from './types/listenerRegistry';
 import type {ControlSurface} from './types/surfaces/controlSurface';
 import type {IntrospectionSurface} from './types/surfaces/introspectionSurface';
@@ -400,7 +400,7 @@ describe('type safety', () => {
 
     it('narrows payload by discriminating on message.event', () => {
       const bus = new Bus<Narrow>();
-      bus.tap((msg: PipeMessage<Narrow>) => {
+      bus.tap((msg: PipedMessage<Narrow>) => {
         if (msg.event === 'foo') {
           expectType<number>(msg.payload);
         } else if (msg.event === 'bar') {
@@ -412,7 +412,7 @@ describe('type safety', () => {
     it('allows split emit from a tap message via a concrete bus reference', () => {
       const src = new Bus<Narrow & {goose: number}>();
       const dst = new Bus<Narrow>();
-      src.tap((msg: PipeMessage<Narrow & {goose: number}>) => {
+      src.tap((msg: PipedMessage<Narrow & {goose: number}>) => {
         // @ts-expect-error uncorrelated union event/payload pair
         dst.emit(msg.event, msg.payload);
         // ok if we descriminate first
@@ -422,10 +422,10 @@ describe('type safety', () => {
       });
     });
 
-    it('pipe(predicate).pipe(dest) accepts a predicate over PipeMessage', () => {
+    it('pipe(predicate).pipe(dest) accepts a predicate over PipedMessage', () => {
       const src = new Bus<Narrow>();
       const dst = new Bus<Narrow>();
-      src.pipe((msg: PipeMessage<Narrow>) => msg.event === 'foo').pipe(dst);
+      src.pipe((msg: PipedMessage<Narrow>) => msg.event === 'foo').pipe(dst);
     });
 
   });
@@ -859,7 +859,7 @@ describe('type safety', () => {
     it('narrows payload by discriminating event in a function sink', () => {
       const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
 
-      narrow.tap((message: PipeMessage<Narrow>) => {
+      narrow.tap((message: PipedMessage<Narrow>) => {
         expectType<keyof Narrow>(message.event);
         if (message.event === 'foo') {
           expectType<number>(message.payload);
@@ -878,7 +878,7 @@ describe('type safety', () => {
 
       // attaching a foo|bar-only sink to a wider bus is the same wide->narrow
       // bivariance the read surfaces rely on; payloads stay correlated per branch.
-      bus.tap((message: PipeMessage<Narrow>) => {
+      bus.tap((message: PipedMessage<Narrow>) => {
         if (message.event === 'foo') {
           expectType<number>(message.payload);
         } else if (message.event === 'bar') {
@@ -889,7 +889,7 @@ describe('type safety', () => {
 
     it('supports the documented discriminated pipe sink', () => {
       const bus = new Bus<{foo: string; bar: number}>();
-      bus.tap((message: PipeMessage<{foo: string; bar: number}>) => {
+      bus.tap((message: PipedMessage<{foo: string; bar: number}>) => {
         if (message.event === 'foo') {
           message.payload.toUpperCase();
         } else if (message.event === 'bar') {
@@ -903,7 +903,7 @@ describe('type safety', () => {
     it('types payload as the correlated union until the event is discriminated', () => {
       const bus = new Bus<{foo: string; bar: number}>();
 
-      bus.tap((message: PipeMessage<{foo: string; bar: number}>) => {
+      bus.tap((message: PipedMessage<{foo: string; bar: number}>) => {
         expectType<string | number>(message.payload);
         // @ts-expect-error a string-only method can't be called on string | number
         message.payload.toUpperCase();
@@ -917,7 +917,7 @@ describe('type safety', () => {
       const wide = new Bus<{foo: string, bar: string, baz: number}>();
       const narrow = new Bus<{foo: string, bar: string}>();
 
-      type NarrowMessage = PipeMessage<{foo: string; bar: string}>;
+      type NarrowMessage = PipedMessage<{foo: string; bar: string}>;
       const downstream = wide.pipe(narrow);
       expectType<Bus<{foo: string; bar: string}>>(downstream);
 
@@ -969,14 +969,14 @@ describe('type safety', () => {
         qux: number;
       }
       // @ts-expect-error a Disjoint sink shares no events with Wide
-      bus.tap((message: PipeMessage<Disjoint>) => {
+      bus.tap((message: PipedMessage<Disjoint>) => {
         expectType<'qux'>(message.event);
       });
     });
 
     it('narrows payload across every event of the source map', () => {
       const bus = new Bus<Wide>();
-      bus.tap((message: PipeMessage<Wide>) => {
+      bus.tap((message: PipedMessage<Wide>) => {
         expectType<keyof Wide>(message.event);
         expectType<number | string | boolean>(message.payload);
         switch (message.event) {
@@ -1076,7 +1076,7 @@ describe('type safety', () => {
       const instance = new Test<'change' | 'reset', {value: number}>();
       instance.on('change', payload => expectType<{value: number}>(payload));
       instance.emit('reset', {value: 2});
-      instance.tap((message: PipeMessage<{change: {value: number}; reset: {value: number}}>) => {
+      instance.tap((message: PipedMessage<{change: {value: number}; reset: {value: number}}>) => {
         expectType<'change' | 'reset'>(message.event);
         expectType<{value: number}>(message.payload);
       });
@@ -1116,7 +1116,7 @@ describe('type safety', () => {
       bus.on('anything', payload => expectType<any>(payload));
       bus.emit('anything', 42);
       bus.emit('whatever', {a: 1});
-      bus.tap((message: PipeMessage<{foo: string; bar: number}>) => {
+      bus.tap((message: PipedMessage<{foo: string; bar: number}>) => {
         expectType<string | number>(message.event);
         expectType<any>(message.payload);
       });
@@ -1151,7 +1151,7 @@ describe('type safety', () => {
       const instance = new Test<Wide>();
 
       instance.tap((): void => undefined);
-      instance.tap((message: PipeMessage<Wide>) => {
+      instance.tap((message: PipedMessage<Wide>) => {
         expectType<keyof Wide>(message.event);
         expectType<number | string | boolean>(message.payload);
       });
@@ -1253,7 +1253,7 @@ describe('type safety', () => {
       const base: Base<ExtensionEvents & LeafEvents> = conn;
       base.on('baseMsg', payload => expectType<string>(payload));
       base.on('leafData', payload => expectType<number>(payload));
-      conn.tap((message: PipeMessage<BaseEvents & ExtensionEvents & LeafEvents>) => {
+      conn.tap((message: PipedMessage<BaseEvents & ExtensionEvents & LeafEvents>) => {
         if (message.event === 'baseMsg') {
           expectType<string>(message.payload);
         }

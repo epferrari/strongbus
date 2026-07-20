@@ -1,5 +1,5 @@
 import {type Subscription, type EventMap, WILDCARD} from './types/events';
-import type {EventSink, TapHandler, PipeMessage, GenericHandler} from './types/eventHandlers';
+import type {EventSink, TapHandler, PipedMessage, GenericHandler} from './types/eventHandlers';
 import type {MaterializedBusOptions} from './types/options';
 import type {SubscribeOptions} from './types/surfaces/subscriptionSurface';
 import type {EventKeys} from './types/utility';
@@ -353,7 +353,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
       const intent = this.tapIntents.get(handler as GenericHandler)?.get(WILDCARD);
       const times = Math.max(intent?.invokeCount ?? 1, 1);
       for(let i = 0; i < times; i++) {
-        handler({event, payload} as PipeMessage<TEventMap>);
+        handler({event, payload} as PipedMessage<TEventMap>);
       }
     });
 

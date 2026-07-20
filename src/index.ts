@@ -7,8 +7,7 @@ export type {
   EventHandler,
   SingleEventHandler,
   EventSink,
-  PipeSink,
-  PipeMessage,
+  PipedMessage,
   TapHandler,
   PipePredicate
 } from './types/eventHandlers';

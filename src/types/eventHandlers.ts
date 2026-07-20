@@ -39,7 +39,7 @@ export type EventSink<in out TEventMap extends EventMap> = {
  * member), narrowing `event` narrows `payload`. Handed to {@link TapHandler}
  * and {@link PipePredicate}.
  */
-export type PipeMessage<TEventMap extends EventMap> = {
+export type PipedMessage<TEventMap extends EventMap> = {
   [K in EventKeys<TEventMap>]: {event: K; payload: TEventMap[K]}
 }[EventKeys<TEventMap>];
 
@@ -92,10 +92,10 @@ export type PipePayloadOverlap<TSource extends EventMap, TDownstream extends Eve
 
 /**
  * Observer for {@link Bus.tap}. Receives each raised event as a correlated
- * {@link PipeMessage}. Does not create a graph edge.
+ * {@link PipedMessage}. Does not create a graph edge.
  */
 export type TapHandler<in out TEventMap extends EventMap> = {
-  bivarianceHack(message: PipeMessage<TEventMap>): void;
+  bivarianceHack(message: PipedMessage<TEventMap>): void;
 }['bivarianceHack'];
 
 /**
@@ -103,13 +103,8 @@ export type TapHandler<in out TEventMap extends EventMap> = {
  * Return `true` to deliver the passthrough event to the next hop; `false` to drop it.
  */
 export type PipePredicate<in out TEventMap extends EventMap> = {
-  bivarianceHack(message: PipeMessage<TEventMap>): boolean;
+  bivarianceHack(message: PipedMessage<TEventMap>): boolean;
 }['bivarianceHack'];
-
-/**
- * @deprecated Use {@link TapHandler}.
- */
-export type PipeSink<in out TEventMap extends EventMap> = TapHandler<TEventMap>;
 
 /**
  * Internal, untyped handler shape used for the {@link Bus}'s listener bookkeeping.

@@ -48,8 +48,8 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **`tap(handler)`** — observe every raised event as a correlated `{event, payload}`
   message without creating a graph edge. Replaces the old `pipe(sink)` observer role
   (and removes `forward`). Discriminating on `message.event` correlatively narrows
-  `message.payload`. `TapHandler` / deprecated `PipeSink` are the exported handler
-  types. Duplicate `tap` follows `duplicateSubscriptionStrategy`.
+  `message.payload`. `TapHandler` / `PipedMessage` are the exported types.
+  Duplicate `tap` follows `duplicateSubscriptionStrategy`.
 
   ```ts
   bus.tap((piped) => {
@@ -177,7 +177,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **`on('*', handler)` and `on([...], handler)`** overloads — use
   `pipe(handler)` and `any([...], handler)` respectively.
 - **Handler types `MultiEventHandler`, `WildcardEventHandler`**
-  — use `EventSink` (for `any`) or `PipeSink` (for `pipe` function sinks).
+  — use `EventSink` (for `any`) or `TapHandler` (for `tap`).
 - **`GenericHandler` is no longer exported** — it was an internal type.
 - **Per-event listener helpers (v2)** — `hasListenersFor`, `getListenerCountFor`,
   etc. without a scope parameter.
@@ -232,7 +232,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | `generateSubscription(dispose)` | `subscriptionWrapper(dispose)` |
 | `EventHandler<Map, 'foo'>` | `EventHandler<Map, 'foo'>` (unchanged) |
 | `MultiEventHandler<Map>` | `EventSink<Map>` |
-| `WildcardEventHandler<Map>` | `PipeSink<Map>` |
+| `WildcardEventHandler<Map>` | `TapHandler<Map>` |
 | `GenericHandler` (exported) | *(internal; not part of the public API)* |
 | `bus.listeners` | `bus.forEach((event, handlers) => ...)` or `bus.forEach((event, handlers) => ..., {scope: ListenerScope.ANY})` |
 | `bus.listeners.get('foo')` | `bus.getListenersFor('foo')` or `bus.getListenersFor('foo', {scope: ListenerScope.ANY})` |
@@ -375,13 +375,13 @@ const ready = await bus.scan('foo', myEvaluator);
 // v2
 import type {EventHandler, MultiEventHandler, WildcardEventHandler} from 'strongbus';
 
-// v3 — single-event handlers, any sinks, and the pipe message sink
-import type {EventHandler, EventSink, PipeSink} from 'strongbus';
+// v3 — single-event handlers, any sinks, and tap observers
+import type {EventHandler, EventSink, TapHandler, PipedMessage} from 'strongbus';
 ```
 
 `MultiEventHandler` maps to `EventSink` (the `(event, payload)` handler used by
-`any`). `WildcardEventHandler` maps to `PipeSink`, whose sink now receives a
-single correlated `{event, payload}` message (`pipe((message) => …)`). A
+`any`). `WildcardEventHandler` maps to `TapHandler`, which receives a single
+correlated `{event, payload}` `PipedMessage` (`tap((message) => …)`). A
 single-event handler that was typed via `EventHandler<Map, 'foo'>` in v2 is still
 `EventHandler<Map, 'foo'>` in v3.
 

@@ -187,7 +187,7 @@ export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMa
   scan: SubscriptionSurfaceScan<TEventMap>;
 
   /**
-   * Observe every raised event as a correlated {@link import('../eventHandlers').PipeMessage}.
+   * Observe every raised event as a correlated {@link import('../eventHandlers').PipedMessage}.
    * Does not create a graph edge. Unsubscribe via the returned {@link Subscription}.
    */
   tap: SubscriptionSurfaceTap<TEventMap>;
