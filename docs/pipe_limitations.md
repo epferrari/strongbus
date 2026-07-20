@@ -83,6 +83,8 @@ b.pipe(d); // warn again for a → b → d
 e.pipe(b); // warn for e → b → c and e → b → d
 b.unpipe(c); // info: a → b → c and e → b → c removed
 b.pipe((msg) => msg.event === 'foo').pipe(c); // allow selected passthrough (no warn)
+// or, if you assert the whole path is sound:
+b.pipe(ASSUMED_SOUND_EDGE).pipe(c);
 ```
 
 Replacing an unfiltered edge with a filtered one requires `unpipe` first (`pipe` is
@@ -95,9 +97,10 @@ on a successful `unpipe`; the subsequent `pipe(predicate).pipe(dest)` does not w
 | Pattern | Safe? |
 | --- | --- |
 | Single hop `a.pipe(b)` | Yes (pairwise types apply) |
-| Linear chain where every hop uses the **same** map | Yes in practice; filter optional |
+| Linear chain where every hop uses the **same** map | Yes in practice; filter optional, or `ASSUMED_SOUND_EDGE` to document intent |
 | Narrow middle bus between wider/disagreeing maps | Use `b.pipe(predicate).pipe(c)` |
 | Many feeders `pipe` into one hub (hub has no outbound pipe) | Yes — hub is not a bridge |
+| Bridge with disagreeing maps, no filter | No — use a selective predicate or `ASSUMED_SOUND_EDGE` only if you truly assume soundness |
 
 Prefer keeping bridges on a single shared `EventMap`, or filter explicitly on the
 bridge edge when maps differ.

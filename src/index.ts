@@ -10,13 +10,14 @@ export {
 } from './types/logger';
 
 export * from './types/events';
-export type {
-  EventHandler,
-  SingleEventHandler,
-  EventSink,
-  PipedMessage,
-  TapHandler,
-  PipePredicate
+export {
+  ASSUMED_SOUND_EDGE,
+  type EventHandler,
+  type SingleEventHandler,
+  type EventSink,
+  type PipedMessage,
+  type TapHandler,
+  type PipePredicate
 } from './types/eventHandlers';
 export * from './types/lifecycle';
 export * from './types/options';

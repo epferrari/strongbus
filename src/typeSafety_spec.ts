@@ -4,6 +4,7 @@ import {WILDCARD, type EventMap, type Subscription} from './types/events';
 import {Lifecycle, type LifecycleSubjectEvent} from './types/lifecycle';
 import {ListenerScope} from './types/listenerScope';
 import type {EventHandler, TapHandler, PipedMessage} from './types/eventHandlers';
+import {ASSUMED_SOUND_EDGE} from './types/eventHandlers';
 import type {ListenerSet} from './types/listenerRegistry';
 import type {ControlSurface} from './types/surfaces/controlSurface';
 import type {IntrospectionSurface} from './types/surfaces/introspectionSurface';
@@ -426,6 +427,12 @@ describe('type safety', () => {
       const src = new Bus<Narrow>();
       const dst = new Bus<Narrow>();
       src.pipe((msg: PipedMessage<Narrow>) => msg.event === 'foo').pipe(dst);
+    });
+
+    it('pipe(ASSUMED_SOUND_EDGE).pipe(dest) accepts the exported allow-all predicate', () => {
+      const src = new Bus<Narrow>();
+      const dst = new Bus<Narrow>();
+      src.pipe(ASSUMED_SOUND_EDGE).pipe(dst);
     });
 
   });

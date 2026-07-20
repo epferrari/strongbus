@@ -200,6 +200,8 @@ on the outbound edge:
 ```typescript
 a.pipe(b);
 b.pipe((msg) => msg.event === 'foo').pipe(c);
+// or, when you assert the path is sound:
+// b.pipe(ASSUMED_SOUND_EDGE).pipe(c);
 ```
 
 Local raises on `b` still reach `c` without consulting the predicate; the filter gates **passthrough** only.

@@ -107,6 +107,18 @@ export type PipePredicate<in out TEventMap extends EventMap> = {
 }['bivarianceHack'];
 
 /**
+ * Allows all passthrough events on a filtered pipe edge.
+ *
+ * Use this as an explicit call-site signal that you are assuming the multi-hop
+ * path is sound (`bus.pipe(ASSUMED_SOUND_EDGE).pipe(dest)`). Strongbus cannot
+ * prove multi-hop payload safety from pairwise {@link EventMap}s alone; this
+ * predicate opts into unrestricted relay without an ad-hoc `() => true`.
+ *
+ * @see https://epferrari.github.io/strongbus/docs/pipe_limitations.md
+ */
+export const ASSUMED_SOUND_EDGE: PipePredicate<EventMap> = () => true;
+
+/**
  * Internal, untyped handler shape used for the {@link Bus}'s listener bookkeeping.
  * Not part of the public API.
  * @internal

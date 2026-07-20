@@ -1386,7 +1386,7 @@ describe('Strongbus.Bus', () => {
           bus2.pipe(bus3);
           logger.warn.calls.reset();
 
-          bus2.pipe(() => true).pipe(bus3);
+          bus2.pipe(Strongbus.ASSUMED_SOUND_EDGE).pipe(bus3);
           expect(logger.warn).toHaveBeenCalledWith(
             StrongbusLogMessages.unsoundPipeEdgeFilterUpgrade(bus2.name, bus3.name)
           );
@@ -2354,7 +2354,7 @@ describe('Strongbus.Bus', () => {
 
         bus.pipe(mid, {incognito: true});
         // explicit filter required for passthrough across mid (inbound + outbound bridge).
-        mid.pipe(() => true).pipe(leaf);
+        mid.pipe(Strongbus.ASSUMED_SOUND_EDGE).pipe(leaf);
         leaf.on('foo', handleFoo);
 
         expect(bus.active).toBeFalse();
