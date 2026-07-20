@@ -209,4 +209,16 @@ export class StrongbusLogMessages {
       'or avoid using this bus as a bridge. See https://epferrari.github.io/strongbus/docs/pipe_limitations.md.'
     ].join(' ');
   }
+
+  public static unsoundPipeGraphResolved(bridge: string, source: string, dest: string): string {
+    return `Unsound pipe path ${source} → ${bridge} → ${dest} was removed.`;
+  }
+
+  public static unsoundPipeEdgeFilterUpgrade(bridge: string, dest: string): string {
+    return [
+      `${bridge} → ${dest}: cannot add a call-site filter to an existing unfiltered pipe edge.`,
+      `Call unpipe(${dest}) first, then pipe(predicate).pipe(${dest}).`,
+      'See https://epferrari.github.io/strongbus/docs/pipe_limitations.md.'
+    ].join(' ');
+  }
 }

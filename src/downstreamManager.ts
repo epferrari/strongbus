@@ -62,10 +62,10 @@ type LinkRecord<TEventMap extends EventMap> = {
 export class DownstreamManager<TEventMap extends EventMap = EventMap> {
   private readonly links = new Map<DownstreamTarget<TEventMap>, LinkRecord<TEventMap>>();
   private readonly inboundPeers = new Set<DownstreamTarget<TEventMap>>();
-  /** Dedupes warnings for live `source → this → dest` paths (object identity). */
-  private readonly warnedUnsoundPaths = new WeakMap<
+  /** Live unsound `source → this → dest` paths that have already been warned. */
+  private readonly warnedUnsoundPaths = new Map<
     DownstreamTarget<TEventMap>,
-    WeakSet<DownstreamTarget<TEventMap>>
+    Set<DownstreamTarget<TEventMap>>
   >();
 
   private readonly host: DownstreamHost<TEventMap>;
@@ -99,8 +99,17 @@ export class DownstreamManager<TEventMap extends EventMap = EventMap> {
   }
 
   public noteInboundDetached(source: DownstreamTarget<TEventMap>): void {
+    if(!this.inboundPeers.has(source)) {
+      return;
+    }
+    const warnedDests = this.warnedUnsoundPaths.get(source);
+    if(warnedDests) {
+      for(const dest of warnedDests) {
+        this.infoResolvedUnsoundPath(source, dest);
+      }
+      this.warnedUnsoundPaths.delete(source);
+    }
     this.inboundPeers.delete(source);
-    this.warnedUnsoundPaths.delete(source);
   }
 
   public pipe(
@@ -111,6 +120,13 @@ export class DownstreamManager<TEventMap extends EventMap = EventMap> {
       return downstream;
     }
     if(this.links.has(downstream)) {
+      const existing = this.links.get(downstream);
+      if(existing && !existing.filter && options?.filter) {
+        this.logger.warn(StrongbusLogMessages.unsoundPipeEdgeFilterUpgrade(
+          this.host.name,
+          downstream.name
+        ));
+      }
       return downstream;
     }
 
@@ -160,7 +176,7 @@ export class DownstreamManager<TEventMap extends EventMap = EventMap> {
     link.unlink();
     this.links.delete(downstream);
     downstream.noteInboundPipeDetached(this.host.asTarget());
-    this.clearWarnedPathsTo(downstream);
+    this.resolveWarnedPathsTo(downstream);
     this.host.invalidateCombinedListenerCache();
   }
 
@@ -193,6 +209,7 @@ export class DownstreamManager<TEventMap extends EventMap = EventMap> {
     for(const [downstream, link] of this.links) {
       link.unlink();
       downstream.noteInboundPipeDetached(self);
+      this.resolveWarnedPathsTo(downstream);
     }
     this.links.clear();
   }
@@ -220,7 +237,7 @@ export class DownstreamManager<TEventMap extends EventMap = EventMap> {
   ): void {
     let warnedDests = this.warnedUnsoundPaths.get(source);
     if(!warnedDests) {
-      warnedDests = new WeakSet();
+      warnedDests = new Set();
       this.warnedUnsoundPaths.set(source, warnedDests);
     }
     if(warnedDests.has(dest)) {
@@ -234,10 +251,29 @@ export class DownstreamManager<TEventMap extends EventMap = EventMap> {
     ));
   }
 
-  private clearWarnedPathsTo(dest: DownstreamTarget<TEventMap>): void {
+  private resolveWarnedPathsTo(dest: DownstreamTarget<TEventMap>): void {
     for(const source of this.inboundPeers) {
-      this.warnedUnsoundPaths.get(source)?.delete(dest);
+      const warnedDests = this.warnedUnsoundPaths.get(source);
+      if(!warnedDests?.has(dest)) {
+        continue;
+      }
+      warnedDests.delete(dest);
+      if(!warnedDests.size) {
+        this.warnedUnsoundPaths.delete(source);
+      }
+      this.infoResolvedUnsoundPath(source, dest);
     }
+  }
+
+  private infoResolvedUnsoundPath(
+    source: DownstreamTarget<TEventMap>,
+    dest: DownstreamTarget<TEventMap>
+  ): void {
+    this.logger.info(StrongbusLogMessages.unsoundPipeGraphResolved(
+      this.host.name,
+      source.name,
+      dest.name
+    ));
   }
 
   private buildSnapshot(downstream: DownstreamTarget<TEventMap>): DownstreamSnapshot<TEventMap> {

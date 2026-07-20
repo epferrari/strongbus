@@ -73,16 +73,22 @@ unfiltered outbound edges already exist — Strongbus:
 1. Logs a warning for **each unique** `source → bridge → dest` path and pointing here.
 2. **Blocks passthrough** on that outbound edge (upstream-sourced events are not relayed).
    Local `emit` on the bridge still delivers to the dest.
+3. Logs an **info** when that path is later removed (`bridge.unpipe(dest)` or
+   `source.unpipe(bridge)`).
 
 ```typescript
 a.pipe(b);
 b.pipe(c); // warn for a → b → c; passthrough blocked
 b.pipe(d); // warn again for a → b → d
 e.pipe(b); // warn for e → b → c and e → b → d
-b.pipe((msg) => msg.event === 'foo').pipe(c); // allow selected passthrough
+b.unpipe(c); // info: a → b → c and e → b → c removed
+b.pipe((msg) => msg.event === 'foo').pipe(c); // allow selected passthrough (no warn)
 ```
 
-One-hop graphs (`a.pipe(b)` with no further outbound from `b`) do not warn.
+Replacing an unfiltered edge with a filtered one requires `unpipe` first (`pipe` is
+idempotent per dest). Calling `pipe(predicate).pipe(dest)` while an unfiltered edge
+to `dest` already exists logs a warning and leaves the edge unchanged. The info fires
+on a successful `unpipe`; the subsequent `pipe(predicate).pipe(dest)` does not warn.
 
 ## Practical guidance
 

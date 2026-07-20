@@ -1343,6 +1343,57 @@ describe('Strongbus.Bus', () => {
           );
         });
 
+        it('infos when a previously unsound path is removed', () => {
+          const logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+          bus = new Strongbus.Bus({name: 'A'});
+          bus2 = new DownstreamTestBus({name: 'B', logger: () => logger});
+          bus3 = new DownstreamTestBus({name: 'C'});
+
+          bus.pipe(bus2);
+          bus2.pipe(bus3);
+          expect(logger.warn).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeGraph(bus2.name, bus.name, bus3.name)
+          );
+
+          logger.info.calls.reset();
+          bus2.unpipe(bus3);
+          expect(logger.info).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeGraphResolved(bus2.name, bus.name, bus3.name)
+          );
+
+          bus2.pipe(bus3);
+          expect(logger.warn).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeGraph(bus2.name, bus.name, bus3.name)
+          );
+
+          logger.info.calls.reset();
+          bus.unpipe(bus2);
+          expect(logger.info).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeGraphResolved(bus2.name, bus.name, bus3.name)
+          );
+        });
+
+        it('warns when trying to add a filter to an existing unfiltered edge', () => {
+          const logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+          bus = new Strongbus.Bus({name: 'A'});
+          bus2 = new DownstreamTestBus({name: 'B', logger: () => logger});
+          bus3 = new DownstreamTestBus({name: 'C'});
+          const received = jasmine.createSpy('received');
+          bus3.on('foo', received);
+
+          bus.pipe(bus2);
+          bus2.pipe(bus3);
+          logger.warn.calls.reset();
+
+          bus2.pipe(() => true).pipe(bus3);
+          expect(logger.warn).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeEdgeFilterUpgrade(bus2.name, bus3.name)
+          );
+
+          bus.emit('foo', 'still-blocked');
+          expect(received).not.toHaveBeenCalled();
+        });
+
         it('allows filtered multi-hop relay for matching events', () => {
           bus2 = new DownstreamTestBus({});
           bus3 = new DownstreamTestBus({});
