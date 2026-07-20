@@ -20,7 +20,9 @@ import {
   type Options,
   type MaterializedBusOptions,
   type ListenerThresholds,
-  type ConfigurableBusOptions
+  type ConfigurableBusOptions,
+  DEFAULT_NAME,
+  uniqueName
 } from './types/options';
 import {ListenerScope, type IntrospectionOptions} from './types/listenerScope';
 import type {
@@ -69,7 +71,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   MonitoringSurface<TEventMap> {
 
   private static defaultOptions: MaterializedBusOptions = {
-    name: 'Anonymous',
+    name: DEFAULT_NAME,
     thresholds: {
       info: 100,
       warn: 500,
@@ -147,12 +149,11 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   protected readonly introspection!: IntrospectionManager<TEventMap>;
   private readonly subscriptions!: SubscriptionManager<TEventMap>;
   private readonly scanners!: ScannerPools<TEventMap>;
-  
 
   constructor(options?: Options) {
     super();
-    this.name = `${this.options.name} ${this.constructor.name}`
     this.options = Bus.mergeOptions(Bus.defaultOptions, options);
+    this.name = `${uniqueName(this.options.name)} ${this.constructor.name}`;
     this.logger = new StrongbusLogger<TEventMap>({
       ...this.options,
       provider: this.options.logger,

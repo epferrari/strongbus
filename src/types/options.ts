@@ -60,3 +60,13 @@ export function resolveDuplicateSubscriptionStrategy(
     ...partial
   };
 }
+
+export const DEFAULT_NAME = 'Anonymous';
+
+let i = 0;
+export function uniqueName(name: string): string {
+  if(name === DEFAULT_NAME) {
+    return `${name}<${i++}>`;
+  }
+  return name;
+}
