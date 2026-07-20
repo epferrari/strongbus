@@ -94,7 +94,6 @@ export type FilteredPipeHandle<in out TEventMap extends EventMap> = {
       options?: SubscribeOptions
     ): TDownstream;
   }['bivarianceHack'];
-  unpipe(downstream: Bus<any>): void;
 };
 
 export type SubscriptionSurfacePipe<in out TEventMap extends EventMap> = {

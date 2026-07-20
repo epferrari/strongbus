@@ -568,10 +568,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     return {
       pipe: ((downstream: Bus<any>, options?: SubscribeOptions) => {
         return this.downstream.pipe(downstream, {...options, filter}) as Bus<any>;
-      }) as FilteredPipeHandle<TEventMap>['pipe'],
-      unpipe: (downstream: Bus<any>) => {
-        this.downstream.unpipe(downstream);
-      }
+      }) as FilteredPipeHandle<TEventMap>['pipe']
     };
   }
 

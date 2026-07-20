@@ -173,9 +173,9 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   `'throw'` | callback).
 - **`Bus#handleUnexpectedEvent`** — override path removed; use `onUnhandledEvent: 'throw'` or
   a callback.
-- **`proxy(handler)` and `every(handler)`** — use `pipe(handler)`.
+- **`proxy(handler)` and `every(handler)`** — use `tap(handler)`.
 - **`on('*', handler)` and `on([...], handler)`** overloads — use
-  `pipe(handler)` and `any([...], handler)` respectively.
+  `tap(handler)` and `any([...], handler)` respectively.
 - **Handler types `MultiEventHandler`, `WildcardEventHandler`**
   — use `EventSink` (for `any`) or `TapHandler` (for `tap`).
 - **`GenericHandler` is no longer exported** — it was an internal type.
@@ -216,14 +216,14 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 | v2 (removed or changed) | v3 equivalent |
 | --- | --- |
-| `bus.on('*', handler)` | `bus.pipe(handler)` |
+| `bus.on('*', handler)` | `bus.tap(handler)` |
 | `allowUnhandledEvents: false` | `onUnhandledEvent: 'throw'` |
 | `allowUnhandledEvents: true` (default) | `onUnhandledEvent: 'ignore'` (default) or omit |
 | subclass `handleUnexpectedEvent` | `onUnhandledEvent: (event, payload) => { ... }` |
 | `feeder.on('*', hub.emit)` | `feeder.pipe(hub)` |
 | `bus.on([...events], handler)` | `bus.any([...events], handler)` |
-| `bus.proxy(handler)` | `bus.pipe(handler)` |
-| `bus.every(handler)` | `bus.pipe(handler)` |
+| `bus.proxy(handler)` | `bus.tap(handler)` |
+| `bus.every(handler)` | `bus.tap(handler)` |
 | `await bus.next('foo')` → payload | `const {payload} = await bus.next('foo')` |
 | `await bus.next([...])` → `undefined` | `const {event, payload} = await bus.next([...])` |
 | `bus.next('*', ...)` | `bus.next([...events])` or `bus.scan('*', evaluator, options?)` — see [Wildcard (`'*'`) triggers on `next`](#wildcard--triggers-on-next) |
@@ -261,7 +261,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | `bus.forEachDownstreamListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., {scope: ListenerScope.DOWNSTREAM})` |
 | custom `Logger` with only `info`/`warn`/`error` | add required `debug(...args)` |
 
-Import `ListenerScope` from `'strongbus'` wherever the v3 column uses it. `ListenerScope.ANY` is equivalent to `ListenerScope.OWN | ListenerScope.DOWNSTREAM`. `ListenerScope.DOWNSTREAM` covers listeners on buses attached with `pipe(bus)` only, not function sinks from `pipe(handler)` (those are `ListenerScope.OWN`).
+Import `ListenerScope` from `'strongbus'` wherever the v3 column uses it. `ListenerScope.ANY` is equivalent to `ListenerScope.OWN | ListenerScope.DOWNSTREAM`. `ListenerScope.DOWNSTREAM` covers listeners on buses attached with `pipe(bus)` only, not `tap` handlers (those are `ListenerScope.OWN`).
 
 ### Custom `Logger` must implement `debug`
 
@@ -272,7 +272,7 @@ Strongbus calls it when `duplicateSubscriptionStrategy.logLevel` is `'debug'`.
 ### `on` with arrays or the wildcard
 
 `on` is now single-event only. Move array and wildcard subscriptions to `any`
-and `pipe`.
+and `tap`.
 
 ```typescript
 // v2
@@ -283,20 +283,20 @@ bus.on('*', (event, payload) => { /* ... */ });
 // v3
 bus.on('foo', onFoo);                                       // unchanged
 bus.any(['foo', 'bar'], (event, payload) => { /* ... */ }); // arrays -> any
-bus.pipe(({event, payload}) => { /* ... */ });                       // '*' -> pipe
+bus.tap(({event, payload}) => { /* ... */ });               // '*' -> tap
 ```
 
-### `proxy` / `every` → `pipe`
+### `proxy` / `every` → `tap`
 
-Both are removed; `pipe` with a function sink covers them.
+Both are removed; `tap` covers them.
 
 ```typescript
 // v2
 const sub = bus.proxy((event, payload) => { /* ... */ });
 const sub2 = bus.every((event, payload) => { /* ... */ });
 
-// v3 — the sink receives one correlated { event, payload } message
-const sub = bus.pipe(({event, payload}) => { /* ... */ });
+// v3 — the handler receives one correlated { event, payload } message
+const sub = bus.tap(({event, payload}) => { /* ... */ });
 ```
 
 ### Hubs: `feeder.pipe(hub)`

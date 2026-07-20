@@ -539,7 +539,7 @@ The introspection methods take optional `IntrospectionOptions`:
 
 `ListenerScope`:
 
-- `OWN` — registered directly on this bus (including function sinks from `pipe(handler)`)
+- `OWN` — registered directly on this bus (including `tap` handlers)
 - `DOWNSTREAM` — on buses attached with `pipe(bus)` only (monitored links by default;
   incognito-piped trees only when `includeIncognito: true`)
 - `ANY` — `OWN | DOWNSTREAM` (equivalent alias, the default)

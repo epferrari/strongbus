@@ -53,7 +53,7 @@ bus.on('mesage', () => {});
 // wrong payload type in the handler
 bus.on('count', (n: string) => {});
 
-// wildcard is reserved (use pipe(sink) for “all events”)
+// wildcard is reserved (use tap for “all events”)
 bus.on('*', () => {});
 ```
 
