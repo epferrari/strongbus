@@ -1,6 +1,6 @@
 import {type EventMap, type Subscription, WILDCARD, type Listenable} from '../types/events';
-import type {EventHandler, EventSink, PipeSink} from '../types/eventHandlers';
-import type {SubscribeOptions, SubscriptionSurfacePipe} from '../types/surfaces/subscriptionSurface';
+import type {EventHandler, EventSink, TapHandler} from '../types/eventHandlers';
+import type {SubscribeOptions, SubscriptionSurfacePipe, SubscriptionSurfaceTap} from '../types/surfaces/subscriptionSurface';
 import type {EventKeys, SubscribableEventKeys} from '../types/utility';
 
 export interface ListenableSubscriber<TEventMap extends EventMap> {
@@ -15,6 +15,7 @@ export interface ListenableSubscriber<TEventMap extends EventMap> {
     options?: SubscribeOptions
   ): Subscription;
   pipe: SubscriptionSurfacePipe<TEventMap>;
+  tap: SubscriptionSurfaceTap<TEventMap>;
 }
 
 export function subscribeListenable<TEventMap extends EventMap>(
@@ -27,8 +28,8 @@ export function subscribeListenable<TEventMap extends EventMap>(
     return target.any(listenable as SubscribableEventKeys<TEventMap>[], handler, options);
   }
   if(listenable === WILDCARD) {
-    const sink: PipeSink<TEventMap> = (message) => handler(message.event, message.payload);
-    return target.pipe(sink, options);
+    const sink: TapHandler<TEventMap> = (message) => handler(message.event, message.payload);
+    return target.tap(sink, options);
   }
   return target.on(
     listenable as SubscribableEventKeys<TEventMap>,

@@ -36,15 +36,14 @@ export type EventSink<in out TEventMap extends EventMap> = {
 /**
  * A correlated event message: a discriminated union of `{event, payload}` objects,
  * one per key of `TEventMap`. Because each pair is a single value (a union
- * member), narrowing `event` narrows `payload`. This is the first argument handed
- * to a {@link PipeSink}; to forward it onward, call the sink's second argument
- * (`forward`) rather than splitting it back into `(event, payload)`.
+ * member), narrowing `event` narrows `payload`. Handed to {@link TapHandler}
+ * and {@link PipePredicate}.
  */
-export type PipeMessage<TEventMap extends EventMap> = {
+export type PipedMessage<TEventMap extends EventMap> = {
   [K in EventKeys<TEventMap>]: {event: K; payload: TEventMap[K]}
 }[EventKeys<TEventMap>];
 
-/** @internal Event map carried by a downstream {@link Bus} passed to {@link Bus.pipe} or {@link PipeForward}. */
+/** @internal Event map carried by a downstream {@link Bus} passed to {@link Bus.pipe}. */
 export type InferPipeDownstreamMap<TDownstream> =
   TDownstream extends Bus<infer M extends EventMap> ? M : never;
 
@@ -67,7 +66,7 @@ type SamePrimitiveFamily<S, D> =
   : false;
 
 /**
- * Shared-key payload compatibility for {@link Bus.pipe} / {@link PipeForward}.
+ * Shared-key payload compatibility for {@link Bus.pipe}.
  *
  * Compatible when payloads are identical, or when the source is assignable to
  * the dest and both are in the same primitive family (`string` / `boolean` /
@@ -92,59 +91,32 @@ export type PipePayloadOverlap<TSource extends EventMap, TDownstream extends Eve
         : never;
 
 /**
- * The `forward` function handed to a {@link PipeSink} as its second argument,
- * bound to the current {@link PipeMessage}. Calling `forward(dst)` queues a
- * re-emit of that message on `dst` — like `src.pipe(dst)` but per-message and
- * without registering a downstream link (so none of the listener-lifecycle
- * overhead `pipe(bus)` incurs).
- *
- * Queued emits run in the *delegation* phase of the source `emit`, after every
- * own handler on the source has returned (capture semantics). `forward` is live
- * for the duration of that source `emit`; once the emit completes, further calls
- * resolve to `false` without emitting. The returned promise resolves to
- * `target.emit`'s boolean result when the queued emit runs, or `false` if the
- * forward expired.
- *
- * `dst` must be a {@link Bus} whose map is *payload-compatible* with the source:
- * every event `dst` declares must either be absent from the source or carry a
- * compatible payload on every event key they share (exact match, or a one-way
- * primitive-family widen — see {@link PipePayloadOverlap}). This makes it
- * impossible to land an event on `dst` with a payload type `dst` doesn't expect.
- * Source events `dst` doesn't declare are simply dropped by `dst` at runtime.
+ * Observer for {@link Bus.tap}. Receives each raised event as a correlated
+ * {@link PipedMessage}. Does not create a graph edge.
  */
-export type PipeForward<in out TEventMap extends EventMap> = {
-  bivarianceHack: <TDownstream extends Bus<any>>(
-    dest: TDownstream & PipePayloadOverlap<TEventMap, InferPipeDownstreamMap<TDownstream>>
-  ) => Promise<boolean>;
+export type TapHandler<in out TEventMap extends EventMap> = {
+  bivarianceHack(message: PipedMessage<TEventMap>): void;
 }['bivarianceHack'];
 
 /**
- * Handler for the function-sink form of {@link Bus.pipe} and {@link Bus.unpipe}.
- * Receives the raised event as a single correlated {@link PipeMessage} (so
- * narrowing `message.event` via `if`/`switch` narrows `message.payload` to that
- * event's type), plus a {@link PipeForward} bound to that message for forwarding
- * it onward to another bus:
- *
- * ```ts
- * bus.pipe((message, forward) => {
- *   if (message.event === 'didRemoveItem') {
- *     cache.delete(message.payload.id); // payload narrowed to this event's type
- *   }
- *   forward(otherBus); // queues re-emit after this bus's own handlers
- * });
- * ```
- *
- * Because the message is never split back into `(event, payload)`, a mismatched
- * pair can't be fabricated, and `forward`'s target constraint keeps the payload
- * sound end-to-end. See {@link PipeForward} for deferral, expiry, and the
- * `Promise<boolean>` result.
- *
- * Declared via the `bivarianceHack` indirection so the parameters are bivariant;
- * this lets a `Bus` over a wider event map satisfy a view over a narrower one.
+ * Predicate for a gated multi-hop pipe edge (`bus.pipe(pred).pipe(dest)`).
+ * Return `true` to deliver the passthrough event to the next hop; `false` to drop it.
  */
-export type PipeSink<in out TEventMap extends EventMap> = {
-  bivarianceHack(message: PipeMessage<TEventMap>, forward: PipeForward<TEventMap>): void;
+export type PipePredicate<in out TEventMap extends EventMap> = {
+  bivarianceHack(message: PipedMessage<TEventMap>): boolean;
 }['bivarianceHack'];
+
+/**
+ * Allows all passthrough events on a filtered pipe edge.
+ *
+ * Use this as an explicit call-site signal that you are assuming the multi-hop
+ * path is sound (`bus.pipe(ASSUMED_SOUND_EDGE).pipe(dest)`). Strongbus cannot
+ * prove multi-hop payload safety from pairwise {@link EventMap}s alone; this
+ * predicate opts into unrestricted relay without an ad-hoc `() => true`.
+ *
+ * @see https://epferrari.github.io/strongbus/docs/pipe_limitations.md
+ */
+export const ASSUMED_SOUND_EDGE: PipePredicate<EventMap> = () => true;
 
 /**
  * Internal, untyped handler shape used for the {@link Bus}'s listener bookkeeping.

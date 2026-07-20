@@ -8,4 +8,4 @@ import type {SubscriptionSurface} from './surfaces/subscriptionSurface';
  */
 export type Scannable<TEventMap extends EventMap = EventMap> =
   { readonly name: string; hook: MonitoringHook<TEventMap> } &
-  Pick<SubscriptionSurface<TEventMap>, 'on' | 'any' | 'pipe'>;
+  Pick<SubscriptionSurface<TEventMap>, 'on' | 'any' | 'pipe' | 'tap'>;

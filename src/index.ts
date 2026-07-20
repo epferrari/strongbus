@@ -1,19 +1,26 @@
 export {Bus} from './strongbus';
 export {Scanner} from './scanner';
 export {subscriptionWrapper} from './utils/subscriptionWrapper';
+export {
+  StrongbusLogCode,
+  defaultConsoleLogger,
+  type StrongbusLogRecord,
+  type Logger,
+  type LoggerProvider
+} from './types/logger';
 
 export * from './types/events';
-export type {
-  EventHandler,
-  SingleEventHandler,
-  EventSink,
-  PipeSink,
-  PipeMessage,
-  PipeForward
+export {
+  ASSUMED_SOUND_EDGE,
+  type EventHandler,
+  type SingleEventHandler,
+  type EventSink,
+  type PipedMessage,
+  type TapHandler,
+  type PipePredicate
 } from './types/eventHandlers';
 export * from './types/lifecycle';
 export * from './types/options';
-export type {Logger, LoggerProvider} from './types/logger';
 export {ListenerScope} from './types/listenerScope';
 export type {IntrospectionOptions} from './types/listenerScope';
 export type {
@@ -31,7 +38,8 @@ export type {
   SubscriptionSurface,
   ScanParams,
   ScanOptions,
-  SubscribeOptions
+  SubscribeOptions,
+  FilteredPipeHandle
 } from './types/surfaces/subscriptionSurface';
 export type {EventListenerMapKey, ListenerSet} from './types/listenerRegistry';
 export type {EventKeys, SubscribableEventKeys} from './types/utility';

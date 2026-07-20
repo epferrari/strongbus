@@ -21,7 +21,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   registrations along four axes (`observability`, `invocation`, `disposal`, `logLevel`), each
   `collapse` | `stack` except `logLevel` (`never` | `debug` | `info` | `warn` | `error`).
   Defaults are all `collapse` with `logLevel: 'warn'` (warns on duplicates; emit/count still
-  collapsed). Applies fully to `on`, `any`, and `pipe(sink)`. `once` honors observability,
+  collapsed). Applies fully to `on`, `any`, and `tap`. `once` honors observability,
   invocation, and logLevel with kind-isolated disposal (`off` / disposing `on` never clears
   `once` for the same handler, and vice versa). Named presets:
   `DuplicateSubscriptionStrategy.EventEmitter`, `.EventTarget`, `.SharedHandler`.
@@ -32,9 +32,9 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 - **`off(event, handler)`** — remove a handler previously registered with `on` by
   the same function reference. Returns `void` (not the bus). Prefer the
   `Subscription` from `on` when available; `off` does not remove wrappers from
-  `once`, `any`, or `pipe`.
+  `once`, `any`, or `tap`.
 - **`SubscribeOptions` / `{incognito: true}`** — optional trailing options on
-  `on`, `once`, `any`, `pipe(sink)`, `pipe(bus)`, `next`, and `scan`. An
+  `on`, `once`, `any`, `tap`, `pipe(bus)`, `next`, and `scan`. An
   incognito registration still receives or forwards events but does not count
   toward this bus's monitoring (`active` / `idle`, `monitor`, listener lifecycle
   hooks, or default introspection). `pipe(bus, {incognito: true})` forwards
@@ -45,64 +45,47 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   still count own incognito handlers. `ScanOptions` extends `SubscribeOptions`;
   pooled scans never share a scanner across different `incognito` modes. See
   [Incognito subscriptions](./README.md#incognito-subscriptions).
-- **`pipe(sink)` accepts a function sink** in addition to a `Bus`. The sink
-  receives the raised event as a single correlated `{event, payload}` message plus
-  a `forward` function bound to that message; the returned `Subscription` removes
-  it. This replaces the removed `proxy`/`every` methods. Because `event` and
-  `payload` travel as one value, discriminating on `message.event` correlatively
-  narrows `message.payload`:
+- **`tap(handler)`** — observe every raised event as a correlated `{event, payload}`
+  message without creating a graph edge. Replaces the old `pipe(sink)` observer role
+  (and removes `forward`). Discriminating on `message.event` correlatively narrows
+  `message.payload`. `TapHandler` / `PipedMessage` are the exported types.
+  Duplicate `tap` follows `duplicateSubscriptionStrategy`.
 
   ```ts
-  bus.pipe((piped) => {
+  bus.tap((piped) => {
     if (piped.event === 'foo') {
-      piped.payload.toUpperCase(); // narrowed to the 'foo' payload type
-    } else if (piped.event === 'bar') {
-      piped.payload.toString(2);   // narrowed to the 'bar' payload type
+      piped.payload.toUpperCase();
     }
   });
   ```
 
-  To send the event on to another bus, call `forward(dest)` rather than splitting
-  the pair back into `(event, payload)`. This queues a re-emit of the whole
-  message on `dest` without a downstream link (avoiding the listener-lifecycle
-  overhead `pipe(bus)` incurs). Queued emits run in the *delegation* phase after
-  every own handler on the source has returned (capture semantics). `forward` is
-  live for the duration of that source `emit` and returns a `Promise<boolean>`
-  that resolves to `dest.emit`'s result, or `false` if `forward` is called after
-  the emit has completed:
-
-  ```ts
-  bus.pipe((piped, forward) => {
-    if (piped.event === 'didRemoveItem') {
-      cache.delete(piped.payload.id);
-    }
-    forward(other); // queues re-emit after this bus's own handlers
-  });
-  ```
-
-  `forward`'s target is constrained exactly like `pipe(dest)`: every
-  event `dest` declares must either be absent from the source or carry a
-  compatible payload (exact match, or a one-way widen within the same
-  primitive family — see `PipePayloadOverlap`), so it's impossible to
-  land an event on `dest` with a payload it doesn't expect (source-only events
-  are dropped). `PipeSink<TEventMap>` and `PipeForward<TEventMap>` are the
-  exported types for this handler. `emit` itself stays strictly
-  `(event, payload)` — it never accepts a `{event, payload}` object — so a
-  mismatched pair can't be fabricated and re-emitted.
+- **`pipe(pred).pipe(dest)`** — call-site filter for multi-hop relay. Unfiltered
+  outbound edges from a bus that already has inbound pipes warn once per unique unsound path and
+  block passthrough; local raises still deliver. See [`docs/pipe_limitations.md`](./docs/pipe_limitations.md).
+- **`ASSUMED_SOUND_EDGE`** — exported `() => true` pipe predicate for
+  `bus.pipe(ASSUMED_SOUND_EDGE).pipe(dest)`, signaling that the author of the calling code trusts the multi-hop path is sound.
 - **`EventSink<TEventMap>`** handler type — the `(event, payload)` handler shape
   used by `any`.
-- **`Logger` and `LoggerProvider`** types are now exported, for typing a custom
+- **`StrongbusLogRecord`** / **`StrongbusLogCode`** — Strongbus-authored log lines
+  are `{code, message, context?}` records with stable numeric codes. Custom
+  `options.logger` implementations receive `level(record)` and can discriminate on
+  `record.code`; structured extras (e.g. error-handler failure details) live on
+  optional `record.context`. Both are exported from the package root.
+- **`Logger` and `LoggerProvider`** — `Logger` methods are typed as
+  `(record: StrongbusLogRecord) => void`. Exported for typing a custom
   `options.logger`.
+- **`defaultConsoleLogger`** — default `options.logger`; writes `record.message`
+  (and `record.context` when present) to `console`.
 - **`ControlSurface<TEventMap>`** — `emit` and `destroy`.
 - **`SubscriptionSurface<TEventMap>`** — subscribe, await, scan, and pipe (`on`, `once`, `off`, `any`,
-  `next`, `scan`, `pipe`, `unpipe`), including optional `SubscribeOptions` on subscribe/pipe/await
+  `next`, `scan`, `tap`, `pipe`, `unpipe`), including optional `SubscribeOptions` on subscribe/pipe/await
   methods. Use when a component should listen but must not raise events.
 - **`IntrospectionSurface<TEventMap>`** — scoped listener introspection (`hasListeners`, `getListenerCount`, `getListeners`, `getEventCount`, `hasListenersFor`, `getListenerCountFor`, `getListenersFor`, `forEach`).
 - **`MonitoringSurface<TEventMap>`** — lifecycle observation (`monitor`, `hook`, `active`).
 - **`ListenerScope`** — selects own, downstream (piped bus), or combined (`ANY`)
   handlers for listener introspection. `ANY` is equivalent to
   `ListenerScope.OWN | ListenerScope.DOWNSTREAM`. `DOWNSTREAM` covers listeners on
-  buses attached with `pipe(bus)` only, not function sinks from `pipe(handler)`.
+  buses attached with `pipe(bus)` only, not `tap` handlers.
 - **`IntrospectionOptions`** — `{scope?: ListenerScope; includeIncognito?: boolean}`
   accepted by the listener-introspection methods. `includeIncognito` defaults to
   `false` (incognito own handlers and incognito-piped trees are omitted).
@@ -154,7 +137,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   typeable) are gone. Generic-key forwarding (`emit<K extends keyof M>(event: K, payload: M[K])`)
   works over concrete maps. `ControlSurface.emit` adopts the same correlated shape. A
   correlated-tuple overload remains for call sites that discriminated on `event` first.
-  Pipe sinks receive `{event, payload}` as one value and should use `forward(dest)` rather
+  Observers use `tap` and receive `{event, payload}` as one value; graph edges use `pipe(bus)` rather
   than splitting the pair.
 - **`options.onUnhandledEvent`** replaces **`allowUnhandledEvents`** — `'ignore'` (default),
   `'throw'`, or a `(event, payload) => void` callback. Subclassing `handleUnexpectedEvent` is
@@ -168,13 +151,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   `'a'|'b' → string` or `1|2 → number`); object and other structured payloads
   still require an exact match. The unsafe reverse (`string → 'a'|'b'`) remains
   a type error.
-- **`pipe(sink)` `forward(dest)` is deferred and expiring** — calling `forward`
-  during a sink queues the re-emit until after every own handler on the source has
-  returned (capture → delegation), before structural `pipe(bus)` links. `forward`
-  is live for the duration of that source `emit` and returns `Promise<boolean>`:
-  it resolves to `dest.emit`'s result when the queued emit runs, or `false` if
-  called after the emit has completed (including after an `await` in an async sink,
-  since `emit` does not await sinks).
+
 - **`pipe(bus)` returns the concrete downstream type** (`TDownstream`), preserving
   subclasses for chaining (e.g. `head.pipe(mid).pipe(tail)`).
 - **`on(event, handler)` only accepts a single event key.** It no longer
@@ -206,11 +183,11 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   `'throw'` | callback).
 - **`Bus#handleUnexpectedEvent`** — override path removed; use `onUnhandledEvent: 'throw'` or
   a callback.
-- **`proxy(handler)` and `every(handler)`** — use `pipe(handler)`.
+- **`proxy(handler)` and `every(handler)`** — use `tap(handler)`.
 - **`on('*', handler)` and `on([...], handler)`** overloads — use
-  `pipe(handler)` and `any([...], handler)` respectively.
+  `tap(handler)` and `any([...], handler)` respectively.
 - **Handler types `MultiEventHandler`, `WildcardEventHandler`**
-  — use `EventSink` (for `any`) or `PipeSink` (for `pipe` function sinks).
+  — use `EventSink` (for `any`) or `TapHandler` (for `tap`).
 - **`GenericHandler` is no longer exported** — it was an internal type.
 - **Per-event listener helpers (v2)** — `hasListenersFor`, `getListenerCountFor`,
   etc. without a scope parameter.
@@ -249,14 +226,14 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 | v2 (removed or changed) | v3 equivalent |
 | --- | --- |
-| `bus.on('*', handler)` | `bus.pipe(handler)` |
+| `bus.on('*', handler)` | `bus.tap(handler)` |
 | `allowUnhandledEvents: false` | `onUnhandledEvent: 'throw'` |
 | `allowUnhandledEvents: true` (default) | `onUnhandledEvent: 'ignore'` (default) or omit |
 | subclass `handleUnexpectedEvent` | `onUnhandledEvent: (event, payload) => { ... }` |
-| `feeder.on('*', hub.emit)` | `feeder.pipe((msg, forward) => forward(hub))` — see [`pipe(bus)` vs. forwarding sink](#pipebus-vs-forwarding-sink) |
+| `feeder.on('*', hub.emit)` | `feeder.pipe(hub)` |
 | `bus.on([...events], handler)` | `bus.any([...events], handler)` |
-| `bus.proxy(handler)` | `bus.pipe(handler)` |
-| `bus.every(handler)` | `bus.pipe(handler)` |
+| `bus.proxy(handler)` | `bus.tap(handler)` |
+| `bus.every(handler)` | `bus.tap(handler)` |
 | `await bus.next('foo')` → payload | `const {payload} = await bus.next('foo')` |
 | `await bus.next([...])` → `undefined` | `const {event, payload} = await bus.next([...])` |
 | `bus.next('*', ...)` | `bus.next([...events])` or `bus.scan('*', evaluator, options?)` — see [Wildcard (`'*'`) triggers on `next`](#wildcard--triggers-on-next) |
@@ -265,7 +242,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | `generateSubscription(dispose)` | `subscriptionWrapper(dispose)` |
 | `EventHandler<Map, 'foo'>` | `EventHandler<Map, 'foo'>` (unchanged) |
 | `MultiEventHandler<Map>` | `EventSink<Map>` |
-| `WildcardEventHandler<Map>` | `PipeSink<Map>` |
+| `WildcardEventHandler<Map>` | `TapHandler<Map>` |
 | `GenericHandler` (exported) | *(internal; not part of the public API)* |
 | `bus.listeners` | `bus.forEach((event, handlers) => ...)` or `bus.forEach((event, handlers) => ..., {scope: ListenerScope.ANY})` |
 | `bus.listeners.get('foo')` | `bus.getListenersFor('foo')` or `bus.getListenersFor('foo', {scope: ListenerScope.ANY})` |
@@ -294,7 +271,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | `bus.forEachDownstreamListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., {scope: ListenerScope.DOWNSTREAM})` |
 | custom `Logger` with only `info`/`warn`/`error` | add required `debug(...args)` |
 
-Import `ListenerScope` from `'strongbus'` wherever the v3 column uses it. `ListenerScope.ANY` is equivalent to `ListenerScope.OWN | ListenerScope.DOWNSTREAM`. `ListenerScope.DOWNSTREAM` covers listeners on buses attached with `pipe(bus)` only, not function sinks from `pipe(handler)` (those are `ListenerScope.OWN`).
+Import `ListenerScope` from `'strongbus'` wherever the v3 column uses it. `ListenerScope.ANY` is equivalent to `ListenerScope.OWN | ListenerScope.DOWNSTREAM`. `ListenerScope.DOWNSTREAM` covers listeners on buses attached with `pipe(bus)` only, not `tap` handlers (those are `ListenerScope.OWN`).
 
 ### Custom `Logger` must implement `debug`
 
@@ -305,7 +282,7 @@ Strongbus calls it when `duplicateSubscriptionStrategy.logLevel` is `'debug'`.
 ### `on` with arrays or the wildcard
 
 `on` is now single-event only. Move array and wildcard subscriptions to `any`
-and `pipe`.
+and `tap`.
 
 ```typescript
 // v2
@@ -316,39 +293,33 @@ bus.on('*', (event, payload) => { /* ... */ });
 // v3
 bus.on('foo', onFoo);                                       // unchanged
 bus.any(['foo', 'bar'], (event, payload) => { /* ... */ }); // arrays -> any
-bus.pipe(({event, payload}) => { /* ... */ });                       // '*' -> pipe
+bus.tap(({event, payload}) => { /* ... */ });               // '*' -> tap
 ```
 
-### `proxy` / `every` → `pipe`
+### `proxy` / `every` → `tap`
 
-Both are removed; `pipe` with a function sink covers them.
+Both are removed; `tap` covers them.
 
 ```typescript
 // v2
 const sub = bus.proxy((event, payload) => { /* ... */ });
 const sub2 = bus.every((event, payload) => { /* ... */ });
 
-// v3 — the sink receives one correlated { event, payload } message
-const sub = bus.pipe(({event, payload}) => { /* ... */ });
+// v3 — the handler receives one correlated { event, payload } message
+const sub = bus.tap(({event, payload}) => { /* ... */ });
 ```
 
-### `pipe(bus)` vs. forwarding sink
+### Hubs: `feeder.pipe(hub)`
 
-The README's [`pipe(bus)` vs. a forwarding sink](./README.md#pipebus-vs-a-forwarding-sink) section
-documents when to use downstream piping versus a forwarding sink. For migration from v2:
+v2 often used `feeder.on('*', hub.emit)`. v3 removes the `'*'` subscription; pipe feeders
+into the hub directly:
 
-In v2, funneling events from a feeder bus into a hub was often spelled
-`feeder.on('*', hub.emit)`. v3 removes the `'*'` subscription, so a `pipe` sink with `forward` is the
-replacement — and unlike passing a bare `emit`, `forward`'s target is payload-checked (see
-[`pipe(sink)` in the README](./README.md#pipesink--function-sink)).
-
-```typescript
-// v2
-feeder.on('*', hub.emit);
-
-// v3
-feeder.pipe((msg, forward) => forward(hub));
+```ts
+feeder.pipe(hub);
 ```
+
+For multi-hop bridges with disagreeing maps, use `mid.pipe(pred).pipe(leaf)` — see
+[`docs/pipe_limitations.md`](./docs/pipe_limitations.md).
 
 ### `next` resolves with `{event, payload}`
 
@@ -414,13 +385,13 @@ const ready = await bus.scan('foo', myEvaluator);
 // v2
 import type {EventHandler, MultiEventHandler, WildcardEventHandler} from 'strongbus';
 
-// v3 — single-event handlers, any sinks, and the pipe message sink
-import type {EventHandler, EventSink, PipeSink} from 'strongbus';
+// v3 — single-event handlers, any sinks, and tap observers
+import type {EventHandler, EventSink, TapHandler, PipedMessage} from 'strongbus';
 ```
 
 `MultiEventHandler` maps to `EventSink` (the `(event, payload)` handler used by
-`any`). `WildcardEventHandler` maps to `PipeSink`, whose sink now receives a
-single correlated `{event, payload}` message (`pipe((message) => …)`). A
+`any`). `WildcardEventHandler` maps to `TapHandler`, which receives a single
+correlated `{event, payload}` `PipedMessage` (`tap((message) => …)`). A
 single-event handler that was typed via `EventHandler<Map, 'foo'>` in v2 is still
 `EventHandler<Map, 'foo'>` in v3.
 

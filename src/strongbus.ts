@@ -7,14 +7,22 @@ import {normalizeScanParams, ScannerPools, type ScanParams} from './scannerPools
 import {StrongbusLogger} from './strongbusLogger';
 import {LifecycleManager, type LifecycleHost} from './lifecycleManager';
 import {type Subscription, type EventMap, WILDCARD} from './types/events';
-import type {EventHandler, EventSink, PipeSink, GenericHandler} from './types/eventHandlers';
-import type {Logger} from './types/logger';
+import type {
+  EventHandler,
+  EventSink,
+  TapHandler,
+  PipePredicate,
+  GenericHandler
+} from './types/eventHandlers';
+import {defaultConsoleLogger, type Logger} from './types/logger';
 import {
   resolveDuplicateSubscriptionStrategy,
   type Options,
   type MaterializedBusOptions,
   type ListenerThresholds,
-  type ConfigurableBusOptions
+  type ConfigurableBusOptions,
+  DEFAULT_NAME,
+  uniqueName
 } from './types/options';
 import {ListenerScope, type IntrospectionOptions} from './types/listenerScope';
 import type {
@@ -23,7 +31,9 @@ import type {
   SubscriptionSurfaceNext,
   SubscriptionSurfacePipe,
   SubscriptionSurfaceScan,
+  SubscriptionSurfaceTap,
   SubscriptionSurfaceUnpipe,
+  FilteredPipeHandle,
   NextResult,
   SubscribeOptions
 } from './types/surfaces/subscriptionSurface';
@@ -40,11 +50,10 @@ import type {EventKeys, SubscribableEventKeys, VoidEventKeys} from './types/util
 import {subscribeListenable} from './utils/subscribeListenable';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import {isSubscribeOptions} from './utils/isSubscribeOptions';
-import {Forwards} from './forwards';
-import {DownstreamManager, type DownstreamHost} from './downstreamManager';
+import {BusGraphNode} from './busGraphNode';
 import {IntrospectionManager} from './introspectionManager';
 import {SubscriptionManager, type SubscriptionHost} from './subscriptionManager';
-import { EventDispatcher } from './eventDispatcher';
+import {EventDispatcher} from './eventDispatcher';
 
 
 
@@ -55,20 +64,20 @@ export interface Bus<TEventMap extends EventMap = EventMap> extends
   MonitoringSurface<TEventMap> {}
 
 @autobind
-export class Bus<TEventMap extends EventMap = EventMap> implements
+export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEventMap> implements
   ControlSurface<TEventMap>,
   SubscriptionSurface<TEventMap>,
   IntrospectionSurface<TEventMap>,
   MonitoringSurface<TEventMap> {
 
   private static defaultOptions: MaterializedBusOptions = {
-    name: 'Anonymous',
+    name: DEFAULT_NAME,
     thresholds: {
       info: 100,
       warn: 500,
       error: Infinity
     },
-    logger: console,
+    logger: defaultConsoleLogger,
     verbose: false,
     coalesceDownstreamLifecycleEvents: true,
     duplicateSubscriptionStrategy: resolveDuplicateSubscriptionStrategy(),
@@ -130,23 +139,21 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       })
     };
   }
-
-  private readonly options!: MaterializedBusOptions;
-  private readonly logger!: StrongbusLogger<TEventMap>;
-  private readonly lifecycle!: LifecycleManager<TEventMap>;
-  private readonly forwards!: Forwards;
-  private readonly subscriptions!: SubscriptionManager<TEventMap>;
-  private readonly downstream!: DownstreamManager<TEventMap>;
-  private readonly introspection!: IntrospectionManager<TEventMap>;
-  private readonly scanners!: ScannerPools<TEventMap>;
-  private readonly dispatcher!: EventDispatcher<TEventMap>;
-  /**
-   * Subscribe to meta changes to the {@link Bus} with {@link Lifecycle} events
-   */
+  public readonly name!: string;
   public readonly hook!: MonitoringHook<TEventMap>;
 
+  protected readonly options!: MaterializedBusOptions;
+  protected readonly logger!: StrongbusLogger<TEventMap>;
+  protected readonly lifecycle!: LifecycleManager<TEventMap>;
+  protected readonly dispatcher!: EventDispatcher<TEventMap>;
+  protected readonly introspection!: IntrospectionManager<TEventMap>;
+  private readonly subscriptions!: SubscriptionManager<TEventMap>;
+  private readonly scanners!: ScannerPools<TEventMap>;
+
   constructor(options?: Options) {
+    super();
     this.options = Bus.mergeOptions(Bus.defaultOptions, options);
+    this.name = `${uniqueName(this.options.name)} ${this.constructor.name}`;
     this.logger = new StrongbusLogger<TEventMap>({
       ...this.options,
       provider: this.options.logger,
@@ -158,27 +165,25 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       logger: this.logger
     });
     this.hook = this.lifecycle.hook;
-    this.forwards = new Forwards();
     this.subscriptions = new SubscriptionManager({
       host: this.createSubscriptionHost(),
       options: this.options,
       logger: this.logger,
-      forwards: this.forwards,
-      lifecycle: this.lifecycle
-    });
-    this.downstream = new DownstreamManager({
-      host: this.createDownstreamHost(),
       lifecycle: this.lifecycle
     });
     this.introspection = new IntrospectionManager({
       subscriptions: this.subscriptions,
-      downstream: this.downstream
+      graph: {
+        forEachDownstream: (fn) => this.forEachDownstream(fn)
+      }
     });
     this.scanners = new ScannerPools<TEventMap>();
     this.dispatcher = new EventDispatcher<TEventMap>({
-      forwards: this.forwards,
       subscriptions: this.subscriptions,
-      downstream: this.downstream,
+      graph: {
+        propagate: (event, payload, fromUpstream) =>
+          this.propagate(event, payload, fromUpstream)
+      },
       options: this.options
     });
   }
@@ -212,7 +217,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    * Pass the same function reference; no-op if that handler is not registered for `event`.
    * Honors `duplicateSubscriptionStrategy.disposal` (`collapse` clears all stacked `on` intent;
    * `stack` pops the oldest frame — head of the stack). Does not remove {@link Bus.once} /
-   * {@link Bus.any} / {@link Bus.pipe} intent.
+   * {@link Bus.any} / {@link Bus.tap} intent.
    */
   public off<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): void {
     this.subscriptions.off(event, handler);
@@ -250,39 +255,44 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }) as SubscriptionSurfaceAny<TEventMap>;
 
   /**
-   * Pipe events into another {@link Bus}, or into a function sink.
-   * Function sinks must satisfy {@link PipeSink}: they receive the raised event as
-   * a single correlated `{event, payload}` {@link PipeMessage}, plus a `forward`
-   * function bound to that message. `forward(dst)` queues a re-emit on a
-   * payload-compatible bus (no downstream link) for the delegation phase after
-   * this bus's own handlers, and returns a promise that resolves to
-   * `dst.emit`'s result — or `false` if `forward` expired after this emit completed.
+   * Observe every raised event as a correlated `{event, payload}` message.
+   * Does not create a graph edge. Unsubscribe via the returned {@link Subscription}.
+   */
+  public tap: SubscriptionSurfaceTap<TEventMap> = ((
+    handler: TapHandler<TEventMap>,
+    options?: SubscribeOptions
+  ) => {
+    return this.subscriptions.tap(handler, options);
+  }) as SubscriptionSurfaceTap<TEventMap>;
+
+  /**
+   * Attach a graph edge to another {@link Bus}, or return a {@link FilteredPipeHandle}
+   * when given a {@link PipePredicate} for gated multi-hop relay.
    *
-   * Bus-to-bus piping returns the downstream bus (for chaining), and requires a real
-   * {@link Bus} instance — not a hand-rolled surface duck type.
+   * - `pipe(dest)` — first-hop / local raises always deliver to `dest`.
+   * - `pipe(predicate).pipe(dest)` — stores `predicate` on the edge; passthrough (upstream-sourced)
+   *   events are delivered only when `predicate` returns true. Unfiltered outbound edges from
+   *   a bus that already has inbound pipes warn once per unique unsound path and block passthrough.
+   *
+   * Requires a real {@link Bus} instance — not a hand-rolled surface duck type.
    */
   public pipe: SubscriptionSurfacePipe<TEventMap> = ((
-    dest: PipeSink<TEventMap> | Bus<any>,
+    dest: PipePredicate<TEventMap> | Bus<any>,
     options?: SubscribeOptions
-  ): Subscription | Bus<any> => {
+  ): FilteredPipeHandle<TEventMap> | Bus<any> => {
     if(typeof dest === 'function') {
-      return this.subscriptions.pipe(dest as PipeSink<TEventMap>, options);
+      return this.createFilteredPipeHandle(dest as PipePredicate<TEventMap>);
     }
-    return this.downstream.pipe(dest, options) as Bus<any>;
+    return this.connectDownstreamNode(dest, options) as Bus<any>;
   }) as SubscriptionSurfacePipe<TEventMap>;
 
   /**
-   * Stop piping events into a bus downstream or function sink previously passed to
-   * {@link Bus.pipe}. Function sinks must satisfy {@link PipeSink}.
+   * Stop piping events into a bus previously passed to {@link Bus.pipe}.
    */
   public unpipe: SubscriptionSurfaceUnpipe<TEventMap> = ((
-    dest: PipeSink<TEventMap> | Bus<any>
+    dest: Bus<any>
   ) => {
-    if(typeof dest === 'function') {
-      this.subscriptions.unpipe(dest as PipeSink<TEventMap>);
-    } else {
-      this.downstream.unpipe(dest);
-    }
+    this.disconnectDownstreamNode(dest);
   }) as SubscriptionSurfaceUnpipe<TEventMap>;
 
   /**
@@ -445,13 +455,6 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   }
 
   /**
-   * The bus's name, combining the configured `options.name` with the constructor name.
-   */
-  public get name(): string {
-    return `${this.options.name} ${this.constructor.name}`;
-  }
-
-  /**
    * Whether the bus has any listeners in `options.scope` (defaults to `ListenerScope.ANY`).
    */
   public hasListeners(options: IntrospectionOptions = {}): boolean {
@@ -511,19 +514,15 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   public destroy() {
     this.subscriptions.releaseAll();
     this.lifecycle.destroy();
-    this.downstream.releaseAll();
+    this.releaseAllDownstreamEdges();
   }
 
   private createSubscriptionHost(): SubscriptionHost {
     const {
-      name,
       invalidateOwnListenerCache,
       invalidateCombinedListenerCache
     } = this;
     return {
-      get name() {
-        return name;
-      },
       invalidateOwnListenerCache,
       invalidateCombinedListenerCache
     };
@@ -540,19 +539,14 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     };
   }
 
-  private createDownstreamHost(): DownstreamHost<TEventMap> {
+  private createFilteredPipeHandle(
+    filter: PipePredicate<TEventMap>
+  ): FilteredPipeHandle<TEventMap> {
     return {
-      is: (target) => target === (this as any),
-      getCombinedListenersMap: (target, includeIncognito) =>
-        (target as Bus<TEventMap>).getCombinedListenersMap(includeIncognito),
-      invalidateCombinedListenerCache: this.invalidateCombinedListenerCache
+      pipe: ((downstream: Bus<any>, options?: SubscribeOptions) => {
+        return this.connectDownstreamNode(downstream, {...options, filter}) as Bus<any>;
+      }) as FilteredPipeHandle<TEventMap>['pipe']
     };
-  }
-
-  private getCombinedListenersMap(
-    includeIncognito = false
-  ): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>> {
-    return this.introspection.getCombinedListenersMap(includeIncognito);
   }
 
   private accountForDownstreamListeners(_event: EventKeys<TEventMap>|WILDCARD, _count: number): void {
