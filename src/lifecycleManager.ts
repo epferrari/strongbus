@@ -1,6 +1,6 @@
 import {autobind} from 'core-decorators';
 
-import type {StrongbusLogger} from './strongbusLogger';
+import {type StrongbusLogger} from './strongbusLogger';
 import type {MaterializedBusOptions} from './types/options';
 import {Lifecycle} from './types/lifecycle';
 import type {GenericHandler} from './types/eventHandlers';
@@ -224,7 +224,7 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
           (execution as Promise<any>)?.catch?.((e) => {
             if(event === Lifecycle.error) {
               const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
-              this.logger.error('Error thrown in async error handler', {
+              this.logger.onAsyncErrorHandlerFailed({
                   errorHandler: fn.name,
                   errorHandlerError: e,
                   originalEvent: errorPayload.event,
@@ -237,7 +237,7 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
         } catch(e) {
           if(event === Lifecycle.error) {
             const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
-            this.logger.error('Error thrown in error handler', {
+            this.logger.onErrorHandlerFailed({
                 errorHandler: fn.name,
                 errorHandlerError: e,
                 originalEvent: errorPayload.event,

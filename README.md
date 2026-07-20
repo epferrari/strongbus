@@ -612,7 +612,7 @@ const bus = new Bus<Events>({
   name: 'MyBus',
   onUnhandledEvent: 'throw',
   thresholds: {warn: 50},
-  logger: console,
+  // logger defaults to defaultConsoleLogger (record.message → console)
   duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy.SharedHandler
 });
 ```

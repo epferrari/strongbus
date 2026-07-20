@@ -14,7 +14,7 @@ import type {
   PipePredicate,
   GenericHandler
 } from './types/eventHandlers';
-import type {Logger} from './types/logger';
+import {defaultConsoleLogger, type Logger} from './types/logger';
 import {
   resolveDuplicateSubscriptionStrategy,
   type Options,
@@ -75,7 +75,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
       warn: 500,
       error: Infinity
     },
-    logger: console,
+    logger: defaultConsoleLogger,
     verbose: false,
     coalesceDownstreamLifecycleEvents: true,
     duplicateSubscriptionStrategy: resolveDuplicateSubscriptionStrategy(),

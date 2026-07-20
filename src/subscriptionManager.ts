@@ -4,7 +4,7 @@ import type {MaterializedBusOptions} from './types/options';
 import type {SubscribeOptions} from './types/surfaces/subscriptionSurface';
 import type {EventKeys} from './types/utility';
 import type {LifecycleManager} from './lifecycleManager';
-import {StrongbusLogMessages, type StrongbusLogger} from './strongbusLogger';
+import {type StrongbusLogger} from './strongbusLogger';
 import {over} from './utils/over';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
 
@@ -645,7 +645,8 @@ export class SubscriptionManager<TEventMap extends EventMap> {
 
   private logDuplicate(kind: string, listenable: string): void {
     this.logger.onDuplicateSubscription(
-      StrongbusLogMessages.duplicateSubscription(this.host.name, kind, listenable),
+      kind,
+      listenable,
       this.options.duplicateSubscriptionStrategy.logLevel
     );
   }

@@ -64,8 +64,16 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   block passthrough; local raises still deliver. See [`docs/pipe_limitations.md`](./docs/pipe_limitations.md).
 - **`EventSink<TEventMap>`** handler type — the `(event, payload)` handler shape
   used by `any`.
-- **`Logger` and `LoggerProvider`** types are now exported, for typing a custom
+- **`StrongbusLogRecord`** / **`StrongbusLogCode`** — Strongbus-authored log lines
+  are `{code, message, context?}` records with stable numeric codes. Custom
+  `options.logger` implementations receive `level(record)` and can discriminate on
+  `record.code`; structured extras (e.g. error-handler failure details) live on
+  optional `record.context`. Both are exported from the package root.
+- **`Logger` and `LoggerProvider`** — `Logger` methods are typed as
+  `(record: StrongbusLogRecord) => void`. Exported for typing a custom
   `options.logger`.
+- **`defaultConsoleLogger`** — default `options.logger`; writes `record.message`
+  (and `record.context` when present) to `console`.
 - **`ControlSurface<TEventMap>`** — `emit` and `destroy`.
 - **`SubscriptionSurface<TEventMap>`** — subscribe, await, scan, and pipe (`on`, `once`, `off`, `any`,
   `next`, `scan`, `tap`, `pipe`, `unpipe`), including optional `SubscribeOptions` on subscribe/pipe/await

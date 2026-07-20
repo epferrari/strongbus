@@ -1,6 +1,13 @@
 export {Bus} from './strongbus';
 export {Scanner} from './scanner';
 export {subscriptionWrapper} from './utils/subscriptionWrapper';
+export {
+  StrongbusLogCode,
+  defaultConsoleLogger,
+  type StrongbusLogRecord,
+  type Logger,
+  type LoggerProvider
+} from './types/logger';
 
 export * from './types/events';
 export type {
@@ -13,7 +20,6 @@ export type {
 } from './types/eventHandlers';
 export * from './types/lifecycle';
 export * from './types/options';
-export type {Logger, LoggerProvider} from './types/logger';
 export {ListenerScope} from './types/listenerScope';
 export type {IntrospectionOptions} from './types/listenerScope';
 export type {

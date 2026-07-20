@@ -24,7 +24,7 @@ export interface ListenerThresholds {
  * `'ignore'` (default no-op), `'throw'`, or a custom `(event, payload) => void` callback
  * @prop name `"Anonymous"` - A name for the bus. Included in warn/info/error potential memory leak messages and unhandled event errors thrown
  * @prop thresholds {@link ListenerThresholds}
- * @prop logger {@link Logger | () => Logger} [`console`] - How to log potential memory leaks, if thresholds are < Infinity
+ * @prop logger {@link Logger | () => Logger} [`defaultConsoleLogger`] - How to log potential memory leaks, if thresholds are < Infinity
  * @prop verbose [false] - should memory leak warnings be output on every listener added above the thresholds, or only at intervals
  * @prop coalesceDownstreamLifecycleEvents [true] - when true, coalesce will/did add/remove hooks to one
  * emission per event key during `pipe()` / `unpipe()` reconcile of a heavily-subscribed downstream bus

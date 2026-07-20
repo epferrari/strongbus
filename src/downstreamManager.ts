@@ -4,7 +4,7 @@ import {
   type DownstreamSnapshot,
   type LifecycleManager
 } from './lifecycleManager';
-import {StrongbusLogMessages, type StrongbusLogger} from './strongbusLogger';
+import {type StrongbusLogger} from './strongbusLogger';
 import type {EventMap, WILDCARD} from './types/events';
 import type {GenericHandler, PipedMessage, PipePredicate} from './types/eventHandlers';
 import {Lifecycle} from './types/lifecycle';
@@ -122,10 +122,7 @@ export class DownstreamManager<TEventMap extends EventMap = EventMap> {
     if(this.links.has(downstream)) {
       const existing = this.links.get(downstream);
       if(existing && !existing.filter && options?.filter) {
-        this.logger.warn(StrongbusLogMessages.unsoundPipeEdgeFilterUpgrade(
-          this.host.name,
-          downstream.name
-        ));
+        this.logger.onUnsoundPipeEdgeFilterUpgrade(downstream.name);
       }
       return downstream;
     }
@@ -244,11 +241,7 @@ export class DownstreamManager<TEventMap extends EventMap = EventMap> {
       return;
     }
     warnedDests.add(dest);
-    this.logger.warn(StrongbusLogMessages.unsoundPipeGraph(
-      this.host.name,
-      source.name,
-      dest.name
-    ));
+    this.logger.onUnsoundPipeGraph(source.name, dest.name);
   }
 
   private resolveWarnedPathsTo(dest: DownstreamTarget<TEventMap>): void {
@@ -269,11 +262,7 @@ export class DownstreamManager<TEventMap extends EventMap = EventMap> {
     source: DownstreamTarget<TEventMap>,
     dest: DownstreamTarget<TEventMap>
   ): void {
-    this.logger.info(StrongbusLogMessages.unsoundPipeGraphResolved(
-      this.host.name,
-      source.name,
-      dest.name
-    ));
+    this.logger.onUnsoundPipeGraphResolved(source.name, dest.name);
   }
 
   private buildSnapshot(downstream: DownstreamTarget<TEventMap>): DownstreamSnapshot<TEventMap> {

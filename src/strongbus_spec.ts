@@ -189,9 +189,10 @@ describe('Strongbus.Bus', () => {
 
       beforeEach(() => {
         if(typeof p === 'function') {
-          provider = () => {
-            return (logger = p());
-          };
+          // resolve once up front so assertions can use `logger` even when a test
+          // emits no log lines (e.g. verbose mode at the exact info threshold).
+          logger = p();
+          provider = () => logger;
         } else {
           logger = provider = p;
         }
@@ -740,7 +741,7 @@ describe('Strongbus.Bus', () => {
 
         expect(sub1).toBe(sub2);
         expect(warn).toHaveBeenCalledTimes(1);
-        expect(warn.calls.mostRecent().args[0]).toContain('duplicate on');
+        expect(warn.calls.mostRecent().args[0].message).toContain('duplicate on');
 
         bus.emit('foo', 'x');
         expect(handleFoo).toHaveBeenCalledTimes(1);
@@ -1730,11 +1731,17 @@ describe('Strongbus.Bus', () => {
           loggingBus.emit('bar', true);
 
           expect(logger.error).toHaveBeenCalledWith(
-            'Error thrown in error handler',
             jasmine.objectContaining({
-              errorHandlerError: handlerError,
-              originalEvent: 'bar',
-              eventHandlerError: originalError
+              ...StrongbusLogMessages.errorHandlerFailed({
+                errorHandlerError: handlerError,
+                originalEvent: 'bar',
+                eventHandlerError: originalError
+              }),
+              context: jasmine.objectContaining({
+                errorHandlerError: handlerError,
+                originalEvent: 'bar',
+                eventHandlerError: originalError
+              })
             })
           );
         });
@@ -1749,11 +1756,17 @@ describe('Strongbus.Bus', () => {
           await sleep(1);
 
           expect(logger.error).toHaveBeenCalledWith(
-            'Error thrown in async error handler',
             jasmine.objectContaining({
-              errorHandlerError: handlerError,
-              originalEvent: 'bar',
-              eventHandlerError: originalError
+              ...StrongbusLogMessages.asyncErrorHandlerFailed({
+                errorHandlerError: handlerError,
+                originalEvent: 'bar',
+                eventHandlerError: originalError
+              }),
+              context: jasmine.objectContaining({
+                errorHandlerError: handlerError,
+                originalEvent: 'bar',
+                eventHandlerError: originalError
+              })
             })
           );
         });
