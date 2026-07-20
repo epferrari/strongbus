@@ -271,7 +271,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
    * - `pipe(dest)` — first-hop / local raises always deliver to `dest`.
    * - `pipe(predicate).pipe(dest)` — stores `predicate` on the edge; passthrough (upstream-sourced)
    *   events are delivered only when `predicate` returns true. Unfiltered outbound edges from
-   *   a bus that already has inbound pipes warn once and block passthrough.
+   *   a bus that already has inbound pipes warn once per unique unsound path and block passthrough.
    *
    * Requires a real {@link Bus} instance — not a hand-rolled surface duck type.
    */
@@ -553,6 +553,7 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
     const {name, invalidateCombinedListenerCache} = this;
     return {
       is: (target) => target === (this as any),
+      asTarget: () => this as any,
       get name() {
         return name;
       },
@@ -582,15 +583,15 @@ export class Bus<TEventMap extends EventMap = EventMap> implements
   /**
    * @internal Called when another bus attaches an inbound pipe to this instance.
    */
-  public noteInboundPipeAttached(): void {
-    this.downstream.noteInboundAttached();
+  public noteInboundPipeAttached(source: Bus<any>): void {
+    this.downstream.noteInboundAttached(source);
   }
 
   /**
    * @internal Called when an inbound pipe to this instance is removed.
    */
-  public noteInboundPipeDetached(): void {
-    this.downstream.noteInboundDetached();
+  public noteInboundPipeDetached(source: Bus<any>): void {
+    this.downstream.noteInboundDetached(source);
   }
 
   private getCombinedListenersMap(

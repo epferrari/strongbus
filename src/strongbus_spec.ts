@@ -1306,10 +1306,12 @@ describe('Strongbus.Bus', () => {
           expect(onUnhandledBus).toHaveBeenCalled();
         });
 
-        it('blocks unfiltered multi-hop passthrough and warns once', () => {
+        it('blocks unfiltered multi-hop passthrough and warns per unique unsound path', () => {
           const logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
-          bus2 = new DownstreamTestBus({logger: () => logger});
-          bus3 = new DownstreamTestBus({});
+          bus = new Strongbus.Bus({name: 'A'});
+          bus2 = new DownstreamTestBus({name: 'B', logger: () => logger});
+          bus3 = new DownstreamTestBus({name: 'C'});
+          const bus4 = new DownstreamTestBus({name: 'D'});
           const receivedOn3 = jasmine.createSpy('receivedOn3');
           bus3.on('foo', receivedOn3);
 
@@ -1321,12 +1323,24 @@ describe('Strongbus.Bus', () => {
           expect(bus2.deliverFromUpstream).toHaveBeenCalledWith('foo', 'woot');
           expect(receivedOn3).not.toHaveBeenCalled();
           expect(logger.warn).toHaveBeenCalledWith(
-            StrongbusLogMessages.unsoundPipeGraph(bus2.name)
+            StrongbusLogMessages.unsoundPipeGraph(bus2.name, bus.name, bus3.name)
           );
 
           logger.warn.calls.reset();
-          bus2.pipe(new DownstreamTestBus({}));
-          expect(logger.warn).not.toHaveBeenCalled();
+          bus2.pipe(bus4);
+          expect(logger.warn).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeGraph(bus2.name, bus.name, bus4.name)
+          );
+
+          logger.warn.calls.reset();
+          const feeder2 = new Strongbus.Bus({name: 'A2'});
+          feeder2.pipe(bus2);
+          expect(logger.warn).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeGraph(bus2.name, feeder2.name, bus3.name)
+          );
+          expect(logger.warn).toHaveBeenCalledWith(
+            StrongbusLogMessages.unsoundPipeGraph(bus2.name, feeder2.name, bus4.name)
+          );
         });
 
         it('allows filtered multi-hop relay for matching events', () => {

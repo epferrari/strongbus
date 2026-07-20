@@ -60,8 +60,8 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   ```
 
 - **`pipe(pred).pipe(dest)`** — call-site filter for multi-hop relay. Unfiltered
-  outbound edges from a bus that already has inbound pipes warn once and block
-  passthrough; local raises still deliver. See [`docs/pipe_limitations.md`](./docs/pipe_limitations.md).
+  outbound edges from a bus that already has inbound pipes warn once per unique unsound path and
+  block passthrough; local raises still deliver. See [`docs/pipe_limitations.md`](./docs/pipe_limitations.md).
 - **`EventSink<TEventMap>`** handler type — the `(event, payload)` handler shape
   used by `any`.
 - **`Logger` and `LoggerProvider`** types are now exported, for typing a custom

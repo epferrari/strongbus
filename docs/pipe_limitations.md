@@ -67,15 +67,18 @@ a.emit('bar', 42);   // dropped on the b→c edge; never reaches c
 ### Setup warning + blocked passthrough
 
 When a bus is already a **pipe target** (inbound) and you attach an **unfiltered**
-`pipe(dest)` outbound edge, Strongbus:
+`pipe(dest)` outbound edge — or the reverse order, attaching inbound while
+unfiltered outbound edges already exist — Strongbus:
 
-1. Logs a **one-time warning** naming the vulnerable bus and pointing here.
-2. **Blocks passthrough** on that edge (upstream-sourced events are not relayed).
+1. Logs a warning for **each unique** `source → bridge → dest` path and pointing here.
+2. **Blocks passthrough** on that outbound edge (upstream-sourced events are not relayed).
    Local `emit` on the bridge still delivers to the dest.
 
 ```typescript
 a.pipe(b);
-b.pipe(c); // warn once; a→b→c passthrough blocked
+b.pipe(c); // warn for a → b → c; passthrough blocked
+b.pipe(d); // warn again for a → b → d
+e.pipe(b); // warn for e → b → c and e → b → d
 b.pipe((msg) => msg.event === 'foo').pipe(c); // allow selected passthrough
 ```
 

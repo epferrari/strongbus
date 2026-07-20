@@ -193,8 +193,9 @@ stop(); // stop receiving all events
 
 ### `pipe(pred).pipe(bus)` — filtered multi-hop
 
-When a bus is both a pipe target and a pipe source, unfiltered passthrough is blocked (with a one-time
-warning). Allow selected relayed events with a predicate on the outbound edge:
+When a bus is both a pipe target and a pipe source, unfiltered passthrough is blocked (with a
+warning per unique `source → bridge → dest` path). Allow selected relayed events with a predicate
+on the outbound edge:
 
 ```typescript
 a.pipe(b);
