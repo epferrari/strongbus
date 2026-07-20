@@ -61,7 +61,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 - **`pipe(pred).pipe(dest)`** — call-site filter for multi-hop relay. Unfiltered
   outbound edges from a bus that already has inbound pipes warn once per unique unsound path and
-  block passthrough; local raises still deliver. See [`docs/pipe_limitations.md`](./docs/pipe_limitations.md).
+  block passthrough; local raises still deliver. See [docs/pipe_limitations.md](./docs/pipe_limitations.md).
 - **`ASSUMED_SOUND_EDGE`** — exported `() => true` pipe predicate for
   `bus.pipe(ASSUMED_SOUND_EDGE).pipe(dest)`, signaling that the author of the calling code trusts the multi-hop path is sound.
 - **`EventSink<TEventMap>`** handler type — the `(event, payload)` handler shape
@@ -319,7 +319,7 @@ feeder.pipe(hub);
 ```
 
 For multi-hop bridges with disagreeing maps, use `mid.pipe(pred).pipe(leaf)` — see
-[`docs/pipe_limitations.md`](./docs/pipe_limitations.md).
+[docs/pipe_limitations.md](./docs/pipe_limitations.md).
 
 ### `next` resolves with `{event, payload}`
 

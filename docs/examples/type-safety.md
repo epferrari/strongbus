@@ -5,7 +5,7 @@ Illegal combinations are **compile errors** — not runtime surprises.
 
 This guide shows what TypeScript accepts and rejects for the three call sites you
 use most. The repo’s exhaustive suite lives in
-[`src/typeSafety_spec.ts`](../../src/typeSafety_spec.ts) (`// @ts-expect-error`
+[src/typeSafety_spec.ts](../../src/typeSafety_spec.ts) (`// @ts-expect-error`
 lines fail the build if they ever become valid).
 
 ```typescript
@@ -169,7 +169,7 @@ bus.tap((message: {event: 'other'; payload: boolean}) => {});
 ### Filtered multi-hop — `pipe(pred).pipe(dest)`
 
 When a bus is both a pipe target and a pipe source, allow passthrough with an
-explicit predicate on the outbound edge (see [`docs/pipe_limitations.md`](../pipe_limitations.md)):
+explicit predicate on the outbound edge (see [docs/pipe_limitations.md](../pipe_limitations.md)):
 
 ```typescript
 const mid = new Bus<{message: string}>();
@@ -239,4 +239,4 @@ d.on('baz', () => {}); // 'baz' is not on Narrow
 
 For variance (`Bus<Wide>` as `SubscriptionSurface<Narrow>`), generics, `next` /
 `scan` triggers, and lifecycle hooks, see
-[`src/typeSafety_spec.ts`](../../src/typeSafety_spec.ts).
+[src/typeSafety_spec.ts](../../src/typeSafety_spec.ts).

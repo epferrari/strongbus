@@ -116,7 +116,7 @@ It only removes handlers registered with `on` — not wrappers from `once`, `any
 
 Subscribe a handler to a single event. The handler receives the event's payload.
 Duplicate registrations for the same event and handler reference are governed by the bus's
-[`duplicateSubscriptionStrategy`](#options) (default: collapse — same `Subscription`,
+[duplicateSubscriptionStrategy](#options) (default: collapse — same `Subscription`,
 one invoke, warn on duplicate). Optional `SubscribeOptions` (see
 [Incognito subscriptions](#incognito-subscriptions)).
 
@@ -151,7 +151,7 @@ bus.any(['message', 'count'], (event, payload) => {
 
 `pipe` attaches a graph edge into another `Bus`. Use `tap` to observe every event without linking.
 Use `unpipe` to detach a bus edge. Multi-hop graphs need an explicit call-site filter — see
-[`docs/pipe_limitations.md`](./docs/pipe_limitations.md).
+[docs/pipe_limitations.md](./docs/pipe_limitations.md).
 
 ### `pipe(bus, options?)` — downstream piping
 
@@ -619,8 +619,8 @@ const bus = new Bus<Events>({
 });
 ```
 
-See the [`Options`](https://epferrari.github.io/strongbus/interfaces/Options.html) and
-[`ListenerThresholds`](https://epferrari.github.io/strongbus/interfaces/ListenerThresholds.html) API docs for the
+See the [Options](https://epferrari.github.io/strongbus/interfaces/Options.html) and
+[ListenerThresholds](https://epferrari.github.io/strongbus/interfaces/ListenerThresholds.html) API docs for the
 canonical defaults and types.
 
 Defaults for all instances can be set globally with `Bus.configure()`:
