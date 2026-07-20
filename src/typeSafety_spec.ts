@@ -938,7 +938,7 @@ describe('type safety', () => {
       });
     });
 
-    it('TapHandler<Narrow> rejects incompatible downstream', () => {
+    it('pipe rejects downstream with incompatible shared payloads', () => {
       const narrow: SubscriptionSurface<Narrow> = new Bus<Wide>();
 
       interface Incompatible {
@@ -946,7 +946,7 @@ describe('type safety', () => {
         bar: string;
       }
 
-      // @ts-expect-error downstream emit must accept Narrow payloads for shared events
+      // @ts-expect-error Narrow.foo is number; Incompatible.foo is string
       narrow.pipe(new Bus<Incompatible>());
     });
 
