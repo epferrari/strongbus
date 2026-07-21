@@ -1,4 +1,4 @@
-# Mapping Strongbus `pipe`s onto a familiar mental model - DOM Event propagation
+# Mapping Strongbus onto a familiar mental model - DOM Event propagation
 
 DOM event propagation — **capture → target → bubble** along an ancestor path —
 is a familiar mental model for directed, multi-hop delivery. Strongbus `pipe`
