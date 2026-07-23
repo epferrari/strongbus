@@ -63,6 +63,50 @@ describe('StrongbusLogger', () => {
         StrongbusLogMessages.duplicateSubscription(name, 'on', 'c')
       );
     });
+
+    describe('given no provider', () => {
+      beforeEach(() => {
+        spyOn(console, 'info');
+        spyOn(console, 'warn');
+        spyOn(console, 'error');
+        spyOn(console, 'debug');
+      });
+
+      it('logs record.message alone when context is undefined', () => {
+        const subject = new StrongbusLogger<TestEventMap>({
+          name,
+          thresholds,
+          verbose: false
+        });
+        const entry = StrongbusLogMessages.duplicateSubscription(name, 'on', 'foo');
+
+        subject.onDuplicateSubscription('on', 'foo', 'info');
+        subject.onDuplicateSubscription('on', 'foo', 'warn');
+        subject.onDuplicateSubscription('on', 'foo', 'debug');
+
+        expect(console.info).toHaveBeenCalledWith(entry.message);
+        expect(console.warn).toHaveBeenCalledWith(entry.message);
+        expect(console.debug).toHaveBeenCalledWith(entry.message);
+      });
+
+      it('logs record.message and record.context when context is present', () => {
+        const subject = new StrongbusLogger<TestEventMap>({
+          name,
+          thresholds,
+          verbose: false
+        });
+        const details = {
+          errorHandlerError: new Error('boom'),
+          originalEvent: 'foo',
+          eventHandlerError: new Error('original')
+        };
+        const withContext = StrongbusLogMessages.errorHandlerFailed(details);
+
+        subject.onErrorHandlerFailed(details);
+
+        expect(console.error).toHaveBeenCalledWith(withContext.message, withContext.context);
+      });
+    });
   });
 
   describe('#onDuplicateSubscription', () => {

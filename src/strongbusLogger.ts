@@ -22,16 +22,22 @@ export type ErrorHandlerFailureDetails = {
   eventHandlerError: unknown;
 };
 
-export type DuplicateLogLevel = 'never' | 'debug' | 'info' | 'warn' | 'error';
+export type LogLevel = 'never' | 'debug' | 'info' | 'warn' | 'error';
+
 
 @autobind
 export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
   private readonly name: string;
-  private readonly provider: LoggerProvider;
+  private readonly provider: LoggerProvider|undefined;
   private readonly thresholds: Required<ListenerThresholds>;
   private readonly verbose: boolean;
 
-  constructor(params: {name: string, provider: LoggerProvider, thresholds: Required<ListenerThresholds>, verbose: boolean}) {
+  constructor(params: {
+    name: string;
+    provider?: LoggerProvider;
+    thresholds: Required<ListenerThresholds>;
+    verbose: boolean;
+  }) {
     Object.assign(this, params);
   }
 
@@ -56,7 +62,7 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
   public onDuplicateSubscription(
     kind: string,
     listenable: string,
-    level: DuplicateLogLevel
+    level: LogLevel
   ): void {
     if(level === 'never') {
       return;
@@ -157,7 +163,8 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
   private _impl: Logger;
   private get impl(): Logger {
     if(!this._impl) {
-      this._impl = typeof this.provider === 'function' ? this.provider() : this.provider;
+      const provider = this.provider ?? defaultLogger;
+      this._impl = typeof provider === 'function' ? provider() : provider;
     }
     return this._impl;
   }
@@ -313,3 +320,39 @@ export class StrongbusLogMessages {
   public static errorHandlerFailed = buildErrorHandlerFailed;
   public static asyncErrorHandlerFailed = buildAsyncErrorHandlerFailed;
 }
+
+/**
+ * @internal
+ * Fallback {@link Logger} when `options.logger` / constructor `provider` is omitted:
+ * writes `record.message` (and `record.context` when present) to `console`.
+ */
+const defaultLogger: Logger = {
+  info(record) {
+    if(record.context === undefined) {
+      console.info(record.message);
+    } else {
+      console.info(record.message, record.context);
+    }
+  },
+  warn(record) {
+    if(record.context === undefined) {
+      console.warn(record.message);
+    } else {
+      console.warn(record.message, record.context);
+    }
+  },
+  error(record) {
+    if(record.context === undefined) {
+      console.error(record.message);
+    } else {
+      console.error(record.message, record.context);
+    }
+  },
+  debug(record) {
+    if(record.context === undefined) {
+      console.debug(record.message);
+    } else {
+      console.debug(record.message, record.context);
+    }
+  }
+};

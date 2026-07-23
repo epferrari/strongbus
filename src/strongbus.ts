@@ -14,7 +14,7 @@ import type {
   PipePredicate,
   GenericHandler
 } from './types/eventHandlers';
-import {defaultLogger, type Logger} from './types/logger';
+import type {Logger} from './types/logger';
 import {
   resolveDuplicateSubscriptionStrategy,
   type Options,
@@ -77,7 +77,6 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
       warn: 500,
       error: Infinity
     },
-    logger: defaultLogger,
     verbose: false,
     coalesceDownstreamLifecycleEvents: true,
     duplicateSubscriptionStrategy: resolveDuplicateSubscriptionStrategy(),

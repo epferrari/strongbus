@@ -24,7 +24,7 @@ export interface ListenerThresholds {
  * `'ignore'` (default no-op), `'throw'`, or a custom `(event, payload) => void` callback
  * @prop name `"Anonymous"` - A name for the bus. Included in warn/info/error potential memory leak messages and unhandled event errors thrown
  * @prop thresholds {@link ListenerThresholds}
- * @prop logger {@link Logger | () => Logger} - How to log potential memory leaks, if thresholds are < Infinity. When omitted, Strongbus uses a built-in console adapter.
+ * @prop logger {@link Logger | () => Logger} - How to log potential memory leaks, if thresholds are < Infinity. When omitted, a built-in console adapter is used.
  * @prop verbose [false] - should memory leak warnings be output on every listener added above the thresholds, or only at intervals
  * @prop coalesceDownstreamLifecycleEvents [true] - when true, coalesce will/did add/remove hooks to one
  * emission per event key during `pipe()` / `unpipe()` reconcile of a heavily-subscribed downstream bus
@@ -46,10 +46,15 @@ export type ConfigurableBusOptions = Omit<Partial<Options>, 'name'>;
 /**
  * Bus options after defaults are applied — every field is present and nested
  * shapes (`thresholds`, `duplicateSubscriptionStrategy`) are fully filled in.
+ * `logger` stays optional; when omitted, logging falls back to a built-in console adapter.
  */
-export type MaterializedBusOptions = Omit<Required<Options>, 'duplicateSubscriptionStrategy' | 'thresholds'> & {
+export type MaterializedBusOptions = Omit<
+  Required<Options>,
+  'duplicateSubscriptionStrategy' | 'thresholds' | 'logger'
+> & {
   thresholds: Required<ListenerThresholds>;
   duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy;
+  logger?: LoggerProvider;
 };
 
 export function resolveDuplicateSubscriptionStrategy(

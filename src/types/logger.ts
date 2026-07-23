@@ -44,39 +44,3 @@ export interface Logger {
 }
 
 export type LoggerProvider = Logger|(() => Logger);
-
-/**
- * @internal
- * Default {@link Logger}: writes `record.message` (and `record.context` when
- * present) to `console`. Used when `options.logger` is omitted.
- */
-export const defaultLogger: Logger = {
-  info(record) {
-    if(record.context === undefined) {
-      console.info(record.message);
-    } else {
-      console.info(record.message, record.context);
-    }
-  },
-  warn(record) {
-    if(record.context === undefined) {
-      console.warn(record.message);
-    } else {
-      console.warn(record.message, record.context);
-    }
-  },
-  error(record) {
-    if(record.context === undefined) {
-      console.error(record.message);
-    } else {
-      console.error(record.message, record.context);
-    }
-  },
-  debug(record) {
-    if(record.context === undefined) {
-      console.debug(record.message);
-    } else {
-      console.debug(record.message, record.context);
-    }
-  }
-};
