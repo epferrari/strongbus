@@ -227,14 +227,14 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | v2 (removed or changed) | v3 equivalent |
 | --- | --- |
 | `bus.on('*', handler)` | `bus.tap(handler)` |
-| `allowUnhandledEvents: false` | `onUnhandledEvent: 'throw'` |
-| `allowUnhandledEvents: true` (default) | `onUnhandledEvent: 'ignore'` (default) or omit |
-| subclass `handleUnexpectedEvent` | `onUnhandledEvent: (event, payload) => { ... }` |
+| `allowUnhandledEvents: false` | `options.onUnhandledEvent: 'throw'` |
+| `allowUnhandledEvents: true` (default) | `options.onUnhandledEvent: 'ignore'` (default) or omit |
+| subclass `handleUnexpectedEvent` | `options.onUnhandledEvent: (event, payload) => { ... }` |
 | `feeder.on('*', hub.emit)` | `feeder.pipe(hub)` |
 | `bus.on([...events], handler)` | `bus.any([...events], handler)` |
 | `bus.proxy(handler)` | `bus.tap(handler)` |
 | `bus.every(handler)` | `bus.tap(handler)` |
-| `await bus.next('foo')` → payload | `const {payload} = await bus.next('foo')` |
+| `const payload = await bus.next('foo')` → payload | `const {payload} = await bus.next('foo')` |
 | `await bus.next([...])` → `undefined` | `const {event, payload} = await bus.next([...])` |
 | `bus.next('*', ...)` | `bus.next([...events])` or `bus.scan('*', evaluator, options?)` — see [Wildcard (`'*'`) triggers on `next`](#wildcard--triggers-on-next) |
 | `bus.scan({evaluator, trigger, ...})` | `bus.scan(trigger, evaluator, options?)` — object form deprecated |
@@ -276,7 +276,7 @@ Import `ListenerScope` from `'strongbus'` wherever the v3 column uses it. `Liste
 ### Custom `Logger` must implement `debug`
 
 `Logger` now requires `debug(...args: any[]): void` alongside `info` / `warn` / `error`.
-Strongbus calls it when `duplicateSubscriptionStrategy.logLevel` is `'debug'`.
+Strongbus calls it when `options.duplicateSubscriptionStrategy.logLevel` is `'debug'`.
 `console` already implements `debug`; custom loggers need an explicit method (even a no-op).
 
 ### `on` with arrays or the wildcard
