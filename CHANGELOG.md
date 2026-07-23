@@ -70,12 +70,11 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   are `{code, message, context?}` records with stable numeric codes. Custom
   `options.logger` implementations receive `level(record)` and can discriminate on
   `record.code`; structured extras (e.g. error-handler failure details) live on
-  optional `record.context`. Both are exported from the package root.
-- **`Logger` and `LoggerProvider`** — `Logger` methods are typed as
-  `(record: StrongbusLogRecord) => void`. Exported for typing a custom
-  `options.logger`.
+  optional `record.context`. Both are exported from the package root. See
+  **Changed** / migration for the `Logger` method signature break.
 - **`defaultConsoleLogger`** — default `options.logger`; writes `record.message`
-  (and `record.context` when present) to `console`.
+  (and `record.context` when present) to `console`. Prefer this over passing
+  `console` itself as `options.logger`.
 - **`ControlSurface<TEventMap>`** — `emit` and `destroy`.
 - **`SubscriptionSurface<TEventMap>`** — subscribe, await, scan, and pipe (`on`, `once`, `off`, `any`,
   `next`, `scan`, `tap`, `pipe`, `unpipe`), including optional `SubscribeOptions` on subscribe/pipe/await
@@ -110,10 +109,15 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Changed
 
-- **`Logger.debug` is required** — custom `options.logger` implementations must
-  provide `debug(...args)`. Strongbus invokes it when
-  `duplicateSubscriptionStrategy.logLevel` is `'debug'`. (`console` already
-  satisfies this.)
+- **`Logger` method arguments are `StrongbusLogRecord`** — each of `info` /
+  `warn` / `error` / `debug` is now `(record: StrongbusLogRecord) => void`, not
+  `(...args: any[]) => void`. Strongbus always invokes `level(record)` with a
+  single `{code, message, context?}` value. Custom loggers that forwarded rest
+  args to `console` or another sink must unpack `record.message` /
+  `record.context` (or handle `record` as a unit). **`debug` is required**
+  (invoked when `options.duplicateSubscriptionStrategy.logLevel` is `'debug'`). Passing
+  bare `console` as `options.logger` is no longer appropriate — pass nothing and rely on
+  `defaultConsoleLogger`, or pass an adapter.
 - **Listener introspection** — scoped methods on `Bus` / `IntrospectionSurface`:
   `hasListeners`, `getListenerCount`, `getListeners`, `getEventCount`,
   `hasListenersFor`, `getListenerCountFor`, `getListenersFor`, and `forEach`
@@ -269,15 +273,62 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | `bus.forEachListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ...)` or `bus.forEach((event, handlers) => ..., {scope: ListenerScope.ANY})` |
 | `bus.forEachOwnListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., {scope: ListenerScope.OWN})` |
 | `bus.forEachDownstreamListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., {scope: ListenerScope.DOWNSTREAM})` |
-| custom `Logger` with only `info`/`warn`/`error` | add required `debug(...args)` |
+| custom `Logger` with `info`/`warn`/`error`/`debug` as `(...args: any[]) => void` | accept `(record: StrongbusLogRecord) => void`; add `debug` if missing |
+| `options.logger: console` (or console-shaped rest-arg sink) | `defaultConsoleLogger`, or wrap `record.message` / `record.context` |
 
 Import `ListenerScope` from `'strongbus'` wherever the v3 column uses it. `ListenerScope.ANY` is equivalent to `ListenerScope.OWN | ListenerScope.DOWNSTREAM`. `ListenerScope.DOWNSTREAM` covers listeners on buses attached with `pipe(bus)` only, not `tap` handlers (those are `ListenerScope.OWN`).
 
-### Custom `Logger` must implement `debug`
+### Custom `Logger`: record argument + required `debug`
 
-`Logger` now requires `debug(...args: any[]): void` alongside `info` / `warn` / `error`.
-Strongbus calls it when `options.duplicateSubscriptionStrategy.logLevel` is `'debug'`.
-`console` already implements `debug`; custom loggers need an explicit method (even a no-op).
+`Logger` methods no longer take rest args. Each level receives one
+`StrongbusLogRecord`:
+
+```typescript
+// v2
+const logger: Logger = {
+  info: (...args) => console.info(...args),
+  warn: (...args) => console.warn(...args),
+  error: (...args) => console.error(...args),
+  // debug often omitted
+};
+
+// v3
+import {
+  defaultConsoleLogger,
+  StrongbusLogCode,
+  type Logger,
+  type StrongbusLogRecord
+} from 'strongbus';
+
+const logger: Logger = {
+  info(record) {
+    console.info(record.message, record.context);
+  },
+  warn(record) {
+    console.warn(record.message, record.context);
+  },
+  error(record) {
+    console.error(record.message, record.context);
+  },
+  debug(record) {
+    console.debug(record.message, record.context);
+  }
+};
+
+// Discriminate without parsing message text:
+function onLog(record: StrongbusLogRecord): void {
+  if (record.code === StrongbusLogCode.DuplicateSubscription) {
+    // ...
+  }
+}
+
+// Or use the built-in console adapter (you don't actually need to do this, it's the default behavior when no logger adapter is provided)
+new Bus({logger: defaultConsoleLogger});
+```
+
+`debug` is required alongside `info` / `warn` / `error`. Strongbus calls it when
+`options.duplicateSubscriptionStrategy.logLevel` is `'debug'`. A no-op `debug`
+is fine if you do not care about that level.
 
 ### `on` with arrays or the wildcard
 
