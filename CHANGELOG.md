@@ -72,9 +72,6 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   `record.code`; structured extras (e.g. error-handler failure details) live on
   optional `record.context`. Both are exported from the package root. See
   **Changed** / migration for the `Logger` method signature break.
-- **`defaultConsoleLogger`** — default `options.logger`; writes `record.message`
-  (and `record.context` when present) to `console`. Prefer this over passing
-  `console` itself as `options.logger`.
 - **`ControlSurface<TEventMap>`** — `emit` and `destroy`.
 - **`SubscriptionSurface<TEventMap>`** — subscribe, await, scan, and pipe (`on`, `once`, `off`, `any`,
   `next`, `scan`, `tap`, `pipe`, `unpipe`), including optional `SubscribeOptions` on subscribe/pipe/await
@@ -116,8 +113,8 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   args to `console` or another sink must unpack `record.message` /
   `record.context` (or handle `record` as a unit). **`debug` is required**
   (invoked when `options.duplicateSubscriptionStrategy.logLevel` is `'debug'`). Passing
-  bare `console` as `options.logger` is no longer appropriate — pass nothing and rely on
-  `defaultConsoleLogger`, or pass an adapter.
+  bare `console` as `options.logger` is no longer appropriate — omit `logger` to use
+  the built-in console adapter, or pass your own record-shaped `Logger`.
 - **Listener introspection** — scoped methods on `Bus` / `IntrospectionSurface`:
   `hasListeners`, `getListenerCount`, `getListeners`, `getEventCount`,
   `hasListenersFor`, `getListenerCountFor`, `getListenersFor`, and `forEach`
@@ -274,7 +271,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 | `bus.forEachOwnListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., {scope: ListenerScope.OWN})` |
 | `bus.forEachDownstreamListener((handlers, event) => ...)` | `bus.forEach((event, handlers) => ..., {scope: ListenerScope.DOWNSTREAM})` |
 | custom `Logger` with `info`/`warn`/`error`/`debug` as `(...args: any[]) => void` | accept `(record: StrongbusLogRecord) => void`; add `debug` if missing |
-| `options.logger: console` (or console-shaped rest-arg sink) | `defaultConsoleLogger`, or wrap `record.message` / `record.context` |
+| `options.logger: console` (or console-shaped rest-arg sink) | omit `logger` (falls back to built-in console adapter), or wrap `record.message` / `record.context` |
 
 Import `ListenerScope` from `'strongbus'` wherever the v3 column uses it. `ListenerScope.ANY` is equivalent to `ListenerScope.OWN | ListenerScope.DOWNSTREAM`. `ListenerScope.DOWNSTREAM` covers listeners on buses attached with `pipe(bus)` only, not `tap` handlers (those are `ListenerScope.OWN`).
 
@@ -294,7 +291,6 @@ const logger: Logger = {
 
 // v3
 import {
-  defaultConsoleLogger,
   StrongbusLogCode,
   type Logger,
   type StrongbusLogRecord
@@ -322,8 +318,8 @@ function onLog(record: StrongbusLogRecord): void {
   }
 }
 
-// Or use the built-in console adapter (you don't actually need to do this, it's the default behavior when no logger adapter is provided)
-new Bus({logger: defaultConsoleLogger});
+// Omit `logger` to use the built-in console adapter.
+new Bus();
 ```
 
 `debug` is required alongside `info` / `warn` / `error`. Strongbus calls it when

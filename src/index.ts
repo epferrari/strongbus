@@ -3,7 +3,6 @@ export {Scanner} from './scanner';
 export {subscriptionWrapper} from './utils/subscriptionWrapper';
 export {
   StrongbusLogCode,
-  defaultConsoleLogger,
   type StrongbusLogRecord,
   type Logger,
   type LoggerProvider
