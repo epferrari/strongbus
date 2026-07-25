@@ -8,17 +8,17 @@ import type {
   EventSink,
   TapHandler,
   PipePredicate,
-  PipedMessage,
   InferPipeDownstreamMap,
   PipePayloadOverlap
 } from '../eventHandlers';
 import type {EventKeys, EventPayloadPair, SubscribableEventKeys} from '../utility';
+import { brand } from './brand';
 
-export type AnyEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
+export type AnyEventMap<T extends EventMap> = {[K in keyof T]: T[K]};
 
-export type PipeEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
+export type PipeEventMap<T extends EventMap> = {[K in keyof T]: T[K]};
 
-export type ScanEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
+export type ScanEventMap<T extends EventMap> = {[K in keyof T]: T[K]};
 
 /**
  * Options for registering interest that should not count toward monitoring
@@ -51,7 +51,7 @@ export type ScanParams<T, TEventMap extends EventMap, TMap extends ScanEventMap<
   } & ScanOptions;
 }['bivarianceHack'];
 
-export type SubscriptionSurfaceScan<in out TEventMap extends EventMap> = {
+export type SubscriptionSurfaceScan<TEventMap extends EventMap> = {
   bivarianceHack<
     T = any,
     TMap extends ScanEventMap<TEventMap> = TEventMap
@@ -70,14 +70,14 @@ export type SubscriptionSurfaceScan<in out TEventMap extends EventMap> = {
   >(params: ScanParams<T, TEventMap, TMap>): CancelablePromise<T>;
 }['bivarianceHack'];
 
-export type SubscriptionSurfaceAny<in out TEventMap extends EventMap> = {
+export type SubscriptionSurfaceAny<TEventMap extends EventMap> = {
   bivarianceHack<
     TMap extends AnyEventMap<TEventMap>,
     TEvents extends SubscribableEventKeys<TMap>[] & SubscribableEventKeys<TEventMap>[]
   >(events: TEvents, handler: EventSink<TMap>, options?: SubscribeOptions): Subscription;
 }['bivarianceHack'];
 
-export type SubscriptionSurfaceTap<in out TEventMap extends EventMap> = {
+export type SubscriptionSurfaceTap<TEventMap extends EventMap> = {
   bivarianceHack<TMap extends PipeEventMap<TEventMap>>(
     handler: TapHandler<TMap>,
     options?: SubscribeOptions
@@ -88,7 +88,7 @@ export type SubscriptionSurfaceTap<in out TEventMap extends EventMap> = {
  * Handle returned by {@link SubscriptionSurface.pipe} when given a {@link PipePredicate}.
  * Call {@link FilteredPipeHandle.pipe} to attach a filtered graph edge.
  */
-export type FilteredPipeHandle<in out TEventMap extends EventMap> = {
+export type FilteredPipeHandle<TEventMap extends EventMap> = {
   pipe: {
     bivarianceHack<TDownstream extends Bus<any>>(
       downstream: TDownstream & PipePayloadOverlap<TEventMap, InferPipeDownstreamMap<TDownstream>>,
@@ -97,7 +97,7 @@ export type FilteredPipeHandle<in out TEventMap extends EventMap> = {
   }['bivarianceHack'];
 };
 
-export type SubscriptionSurfacePipe<in out TEventMap extends EventMap> = {
+export type SubscriptionSurfacePipe<TEventMap extends EventMap> = {
   bivarianceHack: {
     <TMap extends PipeEventMap<TEventMap>>(
       predicate: PipePredicate<TMap>
@@ -123,7 +123,7 @@ export type SubscriptionSurfacePipe<in out TEventMap extends EventMap> = {
  * condition, use {@link Bus.scan} — including `trigger: '*'` with an evaluator
  * that discriminates on `resolve.trigger` (see {@link Scanner.Evaluator}).
  */
-export type SubscriptionSurfaceNext<in out TEventMap extends EventMap> = {
+export type SubscriptionSurfaceNext<TEventMap extends EventMap> = {
   bivarianceHack: {
     <T extends SubscribableListenable<EventKeys<TEventMap>>>(
       resolutionTrigger: T,
@@ -141,7 +141,7 @@ export type SubscriptionSurfaceNext<in out TEventMap extends EventMap> = {
   };
 }['bivarianceHack'];
 
-export type SubscriptionSurfaceUnpipe<in out TEventMap extends EventMap> = {
+export type SubscriptionSurfaceUnpipe<TEventMap extends EventMap> = {
   bivarianceHack<TDownstream extends Bus<any>>(downstream: TDownstream): void;
 }['bivarianceHack'];
 
@@ -154,8 +154,12 @@ export type NextResult<TEventMap extends EventMap, T> =
 
 /**
  * Subscribe, await, scan, and pipe events on a {@link Bus}.
+ *
+ * Event-map typing is bivariant (via method/`bivarianceHack` members, without an
+ * `in out` variance marker) so a surface over a wider map is assignable to a
+ * narrower view — the same Wide→Narrow shape as {@link Bus} itself.
  */
-export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMap> {
+export interface SubscriptionSurface<TEventMap extends EventMap = EventMap> {
   /**
    * Subscribe a handler to a single event. A second call with the same `event` and
    * handler reference returns the existing {@link Subscription} without adding again.
@@ -195,4 +199,26 @@ export interface SubscriptionSurface<in out TEventMap extends EventMap = EventMa
   pipe: SubscriptionSurfacePipe<TEventMap>;
 
   unpipe: SubscriptionSurfaceUnpipe<TEventMap>;
+}
+
+/**
+ * Unwrap a {@link SubscriptionSurface} or a {@link SubscriptionSurface.Branded} carrier.
+ * Domain objects brand only the surfaces they expose; consumers call this instead of
+ * reaching for flattened `on`/`tap`/`pipe` aliases.
+ */
+export function SubscriptionSurface<T extends EventMap>(
+  s: SubscriptionSurface<T> | SubscriptionSurface.Branded<T>
+): SubscriptionSurface<T> {
+  return (
+    SubscriptionSurface.BRAND in s ? s[SubscriptionSurface.BRAND] : s
+  ) as SubscriptionSurface<T>;
+}
+
+export namespace SubscriptionSurface {
+  export const BRAND = brand('Subscription');
+
+  /** An object that exposes a {@link SubscriptionSurface} under {@link BRAND}. */
+  export type Branded<T extends EventMap = EventMap> = {
+    readonly [BRAND]: SubscriptionSurface<T>;
+  };
 }

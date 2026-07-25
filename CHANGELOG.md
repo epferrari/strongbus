@@ -17,6 +17,13 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Added
 
+- **Surface brand helpers** — each surface (`SubscriptionSurface`, `MonitoringSurface`,
+  `ControlSurface`, `EmittingSurface`, `IntrospectionSurface`) is now a callable + namespace with
+  `BRAND` / `Branded`. Domain objects brand only the surfaces they expose
+  (`obj[SubscriptionSurface.BRAND] = bus`); consumers unwrap with
+  `SubscriptionSurface(obj).on(...)` instead of flattened method aliases.
+- **`EmittingSurface<TEventMap>`** — `emit` only. Use when a dependency may raise
+  events but must not destroy the bus. `ControlSurface` extends it with `destroy`.
 - **`duplicateSubscriptionStrategy`** — bus option controlling duplicate listenable+handler
   registrations along four axes (`observability`, `invocation`, `disposal`, `logLevel`), each
   `collapse` | `stack` except `logLevel` (`never` | `debug` | `info` | `warn` | `error`).
@@ -59,7 +66,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   });
   ```
 
-- **`pipe(pred).pipe(dest)`** — call-site filter for multi-hop relay. Unfiltered
+- **`pipe(predicate).pipe(dest)`** — call-site filter for multi-hop relay. Unfiltered
   outbound edges from a bus that already has inbound pipes warn once per unique unsound path and
   block passthrough; local raises still deliver. See [docs/pipe_limitations.md](./docs/pipe_limitations.md).
 - **`ASSUMED_SOUND_EDGE`** — exported `() => true` pipe predicate for
@@ -72,7 +79,8 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   `record.code`; structured extras (e.g. error-handler failure details) live on
   optional `record.context`. Both are exported from the package root. See
   **Changed** / migration for the `Logger` method signature break.
-- **`ControlSurface<TEventMap>`** — `emit` and `destroy`.
+- **`ControlSurface<TEventMap>`** — `emit` and `destroy` (extends `EmittingSurface`).
+- **`EmittingSurface<TEventMap>`** — `emit` only.
 - **`SubscriptionSurface<TEventMap>`** — subscribe, await, scan, and pipe (`on`, `once`, `off`, `any`,
   `next`, `scan`, `tap`, `pipe`, `unpipe`), including optional `SubscribeOptions` on subscribe/pipe/await
   methods. Use when a component should listen but must not raise events.
@@ -208,9 +216,10 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   remaining listener demand. `willIdle` / `idle` are not emitted when another downstream
   (or own listener) still has demand.
 - **Variance:** a `Bus<Wide>` is assignable to `SubscriptionSurface<Narrow>`,
-  `IntrospectionSurface<Narrow>`, and other contravariant views, so consumers can
+  `IntrospectionSurface<Narrow>`, and other narrower views, so consumers can
   declare a narrower event map while still preventing subscription to events
-  outside it. `scan`, `any`, `next`, `pipe`, and listener introspection methods
+  outside it. The same Wide→Narrow assignability holds surface-to-surface.
+  `scan`, `any`, `next`, `pipe`, and listener introspection methods
   participate in this narrowing.
 
 ### Internal
