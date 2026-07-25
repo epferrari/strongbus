@@ -1,5 +1,6 @@
 import type {EventMap} from '../events';
 import type {EventKeys, VoidEventKeys} from '../utility';
+import { brand } from './brand';
 
 /**
  * Emit events and tear down a {@link Bus} instance.
@@ -40,7 +41,7 @@ export function ControlSurface<T extends EventMap>(
 }
 
 export namespace ControlSurface {
-  export const BRAND = '@@ControlSurface';
+  export const BRAND = brand('Control');
 
   /** An object that exposes a {@link ControlSurface} under {@link BRAND}. */
   export type Branded<T extends EventMap = EventMap> = {

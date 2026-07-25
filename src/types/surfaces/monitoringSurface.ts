@@ -1,5 +1,6 @@
 import type {Subscription, EventMap} from '../events';
 import type {Lifecycle} from '../lifecycle';
+import { brand } from './brand';
 
 export type MonitoringHook<TEventMap extends EventMap> = {
   bivarianceHack<L extends Lifecycle>(
@@ -34,7 +35,7 @@ export function MonitoringSurface<T extends EventMap>(
 }
 
 export namespace MonitoringSurface {
-  export const BRAND = '@@MonitoringSurface';
+  export const BRAND = brand('Monitoring');
 
   /** An object that exposes a {@link MonitoringSurface} under {@link BRAND}. */
   export type Branded<T extends EventMap = EventMap> = {

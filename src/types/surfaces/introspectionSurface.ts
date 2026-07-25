@@ -2,6 +2,7 @@ import type {EventMap} from '../events';
 import type {EventListenerMapKey, ListenerSet} from '../listenerRegistry';
 import type {IntrospectionOptions} from '../listenerScope';
 import type {GenericHandler} from '../eventHandlers';
+import { brand } from './brand';
 
 export type IntrospectionSurfaceHasListenersForEvent<TEventMap extends EventMap> = {
   bivarianceHack(event: EventListenerMapKey<TEventMap>, options?: IntrospectionOptions): boolean;
@@ -60,7 +61,7 @@ export function IntrospectionSurface<T extends EventMap>(
 }
 
 export namespace IntrospectionSurface {
-  export const BRAND = '@@IntrospectionSurface';
+  export const BRAND = brand('Introspection');
 
   /** An object that exposes a {@link IntrospectionSurface} under {@link BRAND}. */
   export type Branded<T extends EventMap = EventMap> = {

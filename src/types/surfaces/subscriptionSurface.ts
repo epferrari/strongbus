@@ -12,6 +12,7 @@ import type {
   PipePayloadOverlap
 } from '../eventHandlers';
 import type {EventKeys, EventPayloadPair, SubscribableEventKeys} from '../utility';
+import { brand } from './brand';
 
 export type AnyEventMap<T extends EventMap> = {[K in keyof T]: T[K]};
 
@@ -214,7 +215,7 @@ export function SubscriptionSurface<T extends EventMap>(
 }
 
 export namespace SubscriptionSurface {
-  export const BRAND = '@@SubscriptionSurface';
+  export const BRAND = brand('Subscription');
 
   /** An object that exposes a {@link SubscriptionSurface} under {@link BRAND}. */
   export type Branded<T extends EventMap = EventMap> = {
