@@ -22,23 +22,23 @@ export * from './types/lifecycle';
 export * from './types/options';
 export {ListenerScope} from './types/listenerScope';
 export type {IntrospectionOptions} from './types/listenerScope';
-export type {
+export {
   ControlSurface
 } from './types/surfaces/controlSurface';
-export type {
+export {
   IntrospectionSurface
 } from './types/surfaces/introspectionSurface';
-export type {
+export {
   MonitoringSurface,
-  MonitoringHook
+  type MonitoringHook
 } from './types/surfaces/monitoringSurface';
 export type {Scannable} from './types/scannable';
-export type {
+export {
   SubscriptionSurface,
-  ScanParams,
-  ScanOptions,
-  SubscribeOptions,
-  FilteredPipeHandle
+  type ScanParams,
+  type ScanOptions,
+  type SubscribeOptions,
+  type FilteredPipeHandle
 } from './types/surfaces/subscriptionSurface';
 export type {EventListenerMapKey, ListenerSet} from './types/listenerRegistry';
 export type {EventKeys, SubscribableEventKeys} from './types/utility';

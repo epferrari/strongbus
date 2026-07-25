@@ -5,10 +5,10 @@ import {Lifecycle, type LifecycleSubjectEvent} from './types/lifecycle';
 import {ListenerScope} from './types/listenerScope';
 import {ASSUMED_SOUND_EDGE, type EventHandler, type TapHandler, type PipedMessage} from './types/eventHandlers';
 import type {ListenerSet} from './types/listenerRegistry';
-import type {ControlSurface} from './types/surfaces/controlSurface';
-import type {IntrospectionSurface} from './types/surfaces/introspectionSurface';
-import type {MonitoringSurface} from './types/surfaces/monitoringSurface';
-import type {SubscriptionSurface} from './types/surfaces/subscriptionSurface';
+import {ControlSurface} from './types/surfaces/controlSurface';
+import {IntrospectionSurface} from './types/surfaces/introspectionSurface';
+import {MonitoringSurface} from './types/surfaces/monitoringSurface';
+import {SubscriptionSurface} from './types/surfaces/subscriptionSurface';
 import type {EventKeys, SubscribableEventKeys, VoidEventKeys} from './types/utility';
 import type {Merge} from './types/merge';
 
@@ -771,6 +771,52 @@ describe('type safety', () => {
       narrowed.hook(Lifecycle.didAddListener, event => {
         expectType<LifecycleSubjectEvent<Narrow>>(event);
       });
+    });
+
+    it('accepts assignment of SubscriptionSurface<Wide> to SubscriptionSurface<Narrow>', () => {
+      const wide: SubscriptionSurface<Wide> = new Bus<Wide>();
+      const narrowed: SubscriptionSurface<Narrow> = wide;
+      narrowed.on('foo', payload => expectType<number>(payload));
+      // @ts-expect-error Narrow→Wide must not assign
+      const _widened: SubscriptionSurface<Wide> = narrowed;
+    });
+
+    it('accepts assignment of MonitoringSurface<Wide> to MonitoringSurface<Narrow>', () => {
+      const wide: MonitoringSurface<Wide> = new Bus<Wide>();
+      const narrowed: MonitoringSurface<Narrow> = wide;
+      narrowed.hook(Lifecycle.didAddListener, event => {
+        expectType<LifecycleSubjectEvent<Narrow>>(event);
+      });
+    });
+
+    it('brand helpers unwrap carriers and preserve Wide→Narrow brand assignability', () => {
+      class Producer implements SubscriptionSurface.Branded<Wide>, MonitoringSurface.Branded<Wide> {
+        private readonly bus = new Bus<Wide>();
+        public readonly [SubscriptionSurface.BRAND] = this.bus;
+        public readonly [MonitoringSurface.BRAND] = this.bus;
+      }
+
+      interface BaseEvents {
+        foo: number;
+        bar: string;
+      }
+      interface ExtEvents extends BaseEvents {
+        baz: boolean;
+      }
+      interface BaseCarrier extends SubscriptionSurface.Branded<BaseEvents> {}
+      class ExtCarrier implements SubscriptionSurface.Branded<ExtEvents> {
+        private readonly bus = new Bus<ExtEvents>();
+        public readonly [SubscriptionSurface.BRAND] = this.bus;
+      }
+
+      const producer = new Producer();
+      SubscriptionSurface(producer).on('foo', payload => expectType<number>(payload));
+      MonitoringSurface(producer).monitor(active => expectType<boolean>(active));
+
+      const ext: BaseCarrier = new ExtCarrier();
+      SubscriptionSurface(ext).on('foo', payload => expectType<number>(payload));
+      // @ts-expect-error branded BaseEvents view must not expose Ext-only keys
+      SubscriptionSurface(ext).on('baz', () => undefined);
     });
 
     it('accepts assignment of Bus<Wide> to ControlSurface<Narrow>', () => {

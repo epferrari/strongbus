@@ -459,7 +459,29 @@ hooks per listener; coalescing applies only to the initial `pipe()` / final
 | **`IntrospectionSurface`** | `hasListeners`, `getListeners`, `getListenerCount`, `hasListenersFor`, `getEventCount`, `getListenerCountFor`, `getListenersFor`, `forEach` | Inspecting listener state |
 | **`MonitoringSurface`** | `monitor`, `hook`, `active` | Observing lifecycle and active/idle state |
 
-A `Bus<Wide>` is assignable to any narrower view (for example `SubscriptionSurface<Narrow>`) so consumers can declare only the events and capabilities they need.
+A `Bus<Wide>` is assignable to any narrower view (for example `SubscriptionSurface<Narrow>`) so consumers can declare only the events and capabilities they need. The same Wide→Narrow assignability holds surface-to-surface (`SubscriptionSurface<Wide>` → `SubscriptionSurface<Narrow>`), matching the flattened method picks domain objects used to expose.
+
+### Branding domain objects
+
+When a domain object should expose a surface without re-declaring `on` / `tap` / `pipe` / … as public aliases, brand it and unwrap at the call site:
+
+```typescript
+import {Bus, SubscriptionSurface, MonitoringSurface} from 'strongbus';
+
+interface ServiceEvents {
+  status: string;
+}
+
+class Service implements SubscriptionSurface.Branded<ServiceEvents> {
+  private readonly bus = new Bus<ServiceEvents>();
+  public readonly [SubscriptionSurface.BRAND] = this.bus;
+}
+
+const service = new Service();
+SubscriptionSurface(service).on('status', handle);
+```
+
+Brand only the surfaces the object actually exposes. Separate brands (`@@SubscriptionSurface`, `@@MonitoringSurface`, …) keep partial exposure sound — branding a subscription surface does not claim control or monitoring.
 
 ### SubscriptionSurface
 
@@ -486,7 +508,7 @@ const app = new Bus<AppEvents>();
 wireFeature(app);                 // Bus<AppEvents> is a SubscriptionSurface<FeatureEvents>
 ```
 
-Because event-map typing is contravariant on the subscription surface, a bus that emits a wider map can be passed where only a subset of events is relevant. Methods such as `scan`, `any`, `next`, and `pipe` respect the declared map — listening to unknown events are compile errors on the narrowed view.
+Because event-map typing is bivariant on the surfaces (Wide→Narrow assignability, same as `Bus`), a bus that emits a wider map can be passed where only a subset of events is relevant. Methods such as `scan`, `any`, `next`, and `pipe` respect the declared map — listening to unknown events are compile errors on the narrowed view.
 
 ## Composing event maps
 
