@@ -38,6 +38,7 @@ import type {
   SubscribeOptions
 } from './types/surfaces/subscriptionSurface';
 import type {ControlSurface} from './types/surfaces/controlSurface';
+import type {EmittingSurface} from './types/surfaces/emittingSurface';
 import type {
   IntrospectionSurface,
   IntrospectionSurfaceHasListenersForEvent,
@@ -59,6 +60,7 @@ import {EventDispatcher} from './eventDispatcher';
 
 export interface Bus<TEventMap extends EventMap = EventMap> extends
   ControlSurface<TEventMap>,
+  EmittingSurface<TEventMap>,
   SubscriptionSurface<TEventMap>,
   IntrospectionSurface<TEventMap>,
   MonitoringSurface<TEventMap> {}
@@ -66,6 +68,7 @@ export interface Bus<TEventMap extends EventMap = EventMap> extends
 @autobind
 export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEventMap> implements
   ControlSurface<TEventMap>,
+  EmittingSurface<TEventMap>,
   SubscriptionSurface<TEventMap>,
   IntrospectionSurface<TEventMap>,
   MonitoringSurface<TEventMap> {

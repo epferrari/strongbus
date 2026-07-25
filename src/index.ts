@@ -26,6 +26,9 @@ export {
   ControlSurface
 } from './types/surfaces/controlSurface';
 export {
+  EmittingSurface
+} from './types/surfaces/emittingSurface';
+export {
   IntrospectionSurface
 } from './types/surfaces/introspectionSurface';
 export {

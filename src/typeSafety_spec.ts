@@ -6,6 +6,7 @@ import {ListenerScope} from './types/listenerScope';
 import {ASSUMED_SOUND_EDGE, type EventHandler, type TapHandler, type PipedMessage} from './types/eventHandlers';
 import type {ListenerSet} from './types/listenerRegistry';
 import {ControlSurface} from './types/surfaces/controlSurface';
+import {EmittingSurface} from './types/surfaces/emittingSurface';
 import {IntrospectionSurface} from './types/surfaces/introspectionSurface';
 import {MonitoringSurface} from './types/surfaces/monitoringSurface';
 import {SubscriptionSurface} from './types/surfaces/subscriptionSurface';
@@ -825,6 +826,33 @@ describe('type safety', () => {
 
       narrowed.emit('foo', 1);
       narrowed.destroy();
+    });
+
+    it('accepts assignment of Bus<Wide> to EmittingSurface<Narrow>', () => {
+      const wide = new Bus<Wide>();
+      const narrowed: EmittingSurface<Narrow> = wide;
+
+      narrowed.emit('foo', 1);
+      // @ts-expect-error EmittingSurface does not include destroy
+      narrowed.destroy();
+    });
+
+    it('ControlSurface is assignable to EmittingSurface', () => {
+      const control: ControlSurface<Narrow> = new Bus<Wide>();
+      const emitting: EmittingSurface<Narrow> = control;
+      emitting.emit('bar', 'x');
+    });
+
+    it('EmittingSurface brand unwraps without exposing destroy', () => {
+      class Producer implements EmittingSurface.Branded<Wide> {
+        private readonly bus = new Bus<Wide>();
+        public readonly [EmittingSurface.BRAND] = this.bus;
+      }
+
+      const producer = new Producer();
+      EmittingSurface(producer).emit('foo', 1);
+      // @ts-expect-error branded EmittingSurface must not expose destroy
+      EmittingSurface(producer).destroy();
     });
 
     it('NarrowSurface composition satisfies SubscriptionSurface<Narrow>', () => {

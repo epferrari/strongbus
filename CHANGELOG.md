@@ -18,10 +18,12 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 ### Added
 
 - **Surface brand helpers** — each surface (`SubscriptionSurface`, `MonitoringSurface`,
-  `ControlSurface`, `IntrospectionSurface`) is now a callable + namespace with
+  `ControlSurface`, `EmittingSurface`, `IntrospectionSurface`) is now a callable + namespace with
   `BRAND` / `Branded`. Domain objects brand only the surfaces they expose
   (`obj[SubscriptionSurface.BRAND] = bus`); consumers unwrap with
   `SubscriptionSurface(obj).on(...)` instead of flattened method aliases.
+- **`EmittingSurface<TEventMap>`** — `emit` only. Use when a dependency may raise
+  events but must not destroy the bus. `ControlSurface` extends it with `destroy`.
 - **`duplicateSubscriptionStrategy`** — bus option controlling duplicate listenable+handler
   registrations along four axes (`observability`, `invocation`, `disposal`, `logLevel`), each
   `collapse` | `stack` except `logLevel` (`never` | `debug` | `info` | `warn` | `error`).
@@ -77,7 +79,8 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   `record.code`; structured extras (e.g. error-handler failure details) live on
   optional `record.context`. Both are exported from the package root. See
   **Changed** / migration for the `Logger` method signature break.
-- **`ControlSurface<TEventMap>`** — `emit` and `destroy`.
+- **`ControlSurface<TEventMap>`** — `emit` and `destroy` (extends `EmittingSurface`).
+- **`EmittingSurface<TEventMap>`** — `emit` only.
 - **`SubscriptionSurface<TEventMap>`** — subscribe, await, scan, and pipe (`on`, `once`, `off`, `any`,
   `next`, `scan`, `tap`, `pipe`, `unpipe`), including optional `SubscribeOptions` on subscribe/pipe/await
   methods. Use when a component should listen but must not raise events.
