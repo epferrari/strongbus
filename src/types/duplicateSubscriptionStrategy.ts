@@ -1,10 +1,9 @@
+import { LogLevel } from './logger';
+
 /**
  * One logical unit vs a stack of frames — used for observability, invocation, and disposal.
  */
 export type DuplicateIntentMode = 'collapse' | 'stack';
-
-export type DuplicateLogLevel = 'never' | 'debug' | 'info' | 'warn' | 'error';
-
 /**
  * How duplicate SubscriptionSurface registrations for the same listenable + handler
  * affect counting, emit, dispose, and logging.
@@ -17,7 +16,7 @@ export type DuplicateSubscriptionStrategy = {
   /** How much intent `sub()` / `off()` releases (`on` / `any` / `pipe` only). */
   disposal: DuplicateIntentMode;
   /** Log when duplicate intent is registered. */
-  logLevel: DuplicateLogLevel;
+  logLevel: LogLevel;
 };
 
 /**

@@ -44,3 +44,6 @@ export interface Logger {
 }
 
 export type LoggerProvider = Logger|(() => Logger);
+
+export type LogLevel = 'never' | 'debug' | 'info' | 'warn' | 'error';
+

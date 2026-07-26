@@ -1,6 +1,8 @@
 {
   "tsconfig": "./tsconfig.dist.json",
   "excludePrivate": true,
+  "excludeProtected": true,
+  "excludeInternal": true,
   "includeVersion": true,
   "readme": "none",
   "sort": ["required-first"],
