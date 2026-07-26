@@ -1,6 +1,6 @@
 import type {Bus} from '../../strongbus';
 import type {EventMap} from '../events';
-import {brand} from './brand';
+import {brand, isObjectWithFunctions, unwrapSurface} from './utils';
 import type {EmittingSurface} from './emittingSurface';
 
 /**
@@ -21,10 +21,10 @@ export interface ControlSurface<TEventMap extends EventMap = EventMap>
 type InferControlEventMap<S> =
   S extends {readonly [ControlSurface.BRAND]: infer V}
     ? V extends Bus<infer M> ? M
-      : V extends ControlSurface<infer M> ? M
+      : V extends ControlSurface<infer Q> ? Q
         : never
     : S extends Bus<infer M> ? M
-      : S extends ControlSurface<infer M> ? M
+      : S extends ControlSurface<infer Q> ? Q
         : never;
 
 /**
@@ -36,9 +36,15 @@ type InferControlEventMap<S> =
 export function ControlSurface<
   S extends ControlSurface.Branded<any> | ControlSurface<any> | Bus<any>
 >(s: S): ControlSurface<InferControlEventMap<S>> {
-  return (
-    ControlSurface.BRAND in s ? (s as ControlSurface.Branded<any>)[ControlSurface.BRAND] : s
+  return unwrapSurface(
+    s,
+    ControlSurface.BRAND,
+    isControlSurface
   ) as ControlSurface<InferControlEventMap<S>>;
+}
+
+function isControlSurface(value: unknown): value is ControlSurface {
+  return isObjectWithFunctions(value, ['emit', 'destroy']);
 }
 
 export namespace ControlSurface {

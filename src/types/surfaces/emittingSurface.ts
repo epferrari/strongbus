@@ -1,7 +1,7 @@
 import type {Bus} from '../../strongbus';
 import type {EventMap} from '../events';
 import type {EventKeys, VoidEventKeys} from '../utility';
-import {brand} from './brand';
+import {brand, isObjectWithFunctions, unwrapSurface} from './utils';
 
 /**
  * Callable shape of {@link EmittingSurface.emit}. Declared via `bivarianceHack`
@@ -44,10 +44,10 @@ export interface EmittingSurface<TEventMap extends EventMap = EventMap> {
 type InferEmittingEventMap<S> =
   S extends {readonly [EmittingSurface.BRAND]: infer V}
     ? V extends Bus<infer M> ? M
-      : V extends EmittingSurface<infer M> ? M
+      : V extends EmittingSurface<infer Q> ? Q
         : never
     : S extends Bus<infer M> ? M
-      : S extends EmittingSurface<infer M> ? M
+      : S extends EmittingSurface<infer Q> ? Q
         : never;
 
 /**
@@ -60,9 +60,15 @@ type InferEmittingEventMap<S> =
 export function EmittingSurface<
   S extends EmittingSurface.Branded<any> | EmittingSurface<any> | Bus<any>
 >(s: S): EmittingSurface<InferEmittingEventMap<S>> {
-  return (
-    EmittingSurface.BRAND in s ? (s as EmittingSurface.Branded<any>)[EmittingSurface.BRAND] : s
+  return unwrapSurface(
+    s,
+    EmittingSurface.BRAND,
+    isEmittingSurface
   ) as EmittingSurface<InferEmittingEventMap<S>>;
+}
+
+function isEmittingSurface(value: unknown): value is EmittingSurface {
+  return isObjectWithFunctions(value, ['emit']);
 }
 
 export namespace EmittingSurface {

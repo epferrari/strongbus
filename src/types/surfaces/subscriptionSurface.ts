@@ -12,7 +12,7 @@ import type {
   PipePayloadOverlap
 } from '../eventHandlers';
 import type {EventKeys, EventPayloadPair, SubscribableEventKeys} from '../utility';
-import { brand } from './brand';
+import {brand, isObjectWithFunctions, unwrapSurface} from './utils';
 
 export type AnyEventMap<T extends EventMap> = {[K in keyof T]: T[K]};
 
@@ -209,9 +209,11 @@ export interface SubscriptionSurface<TEventMap extends EventMap = EventMap> {
 export function SubscriptionSurface<T extends EventMap>(
   s: SubscriptionSurface<T> | SubscriptionSurface.Branded<T>
 ): SubscriptionSurface<T> {
-  return (
-    SubscriptionSurface.BRAND in s ? s[SubscriptionSurface.BRAND] : s
-  ) as SubscriptionSurface<T>;
+  return unwrapSurface(s, SubscriptionSurface.BRAND, isSubscriptionSurface) as SubscriptionSurface<T>;
+}
+
+function isSubscriptionSurface(value: unknown): value is SubscriptionSurface {
+  return isObjectWithFunctions(value, ['on', 'tap']);
 }
 
 export namespace SubscriptionSurface {

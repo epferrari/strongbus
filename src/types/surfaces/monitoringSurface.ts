@@ -1,6 +1,6 @@
 import type {Subscription, EventMap} from '../events';
 import type {Lifecycle} from '../lifecycle';
-import { brand } from './brand';
+import {brand, isObjectWithFunctions, unwrapSurface} from './utils';
 
 export type MonitoringHook<TEventMap extends EventMap> = {
   bivarianceHack<L extends Lifecycle>(
@@ -29,9 +29,11 @@ export interface MonitoringSurface<TEventMap extends EventMap = EventMap> {
 export function MonitoringSurface<T extends EventMap>(
   s: MonitoringSurface<T> | MonitoringSurface.Branded<T>
 ): MonitoringSurface<T> {
-  return (
-    MonitoringSurface.BRAND in s ? s[MonitoringSurface.BRAND] : s
-  ) as MonitoringSurface<T>;
+  return unwrapSurface(s, MonitoringSurface.BRAND, isMonitoringSurface) as MonitoringSurface<T>;
+}
+
+function isMonitoringSurface(value: unknown): value is MonitoringSurface {
+  return isObjectWithFunctions(value, ['hook', 'monitor']);
 }
 
 export namespace MonitoringSurface {
