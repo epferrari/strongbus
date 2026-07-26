@@ -21,7 +21,7 @@ export function unwrapSurface<T>(
   isSurface: (value: unknown) => value is T
 ): T {
   const branded = (s as Record<PropertyKey, unknown>)[brandKey];
-  return isSurface(branded) ? branded : (s as T);
+  return isSurface(branded) ? branded : (s as unknown as T);
 }
 
 /**
