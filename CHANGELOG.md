@@ -15,6 +15,14 @@ below).
 
 See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
+### Fixed
+
+- **Surface brand unwrap vs Proxy `has` traps** — helpers previously used
+  `BRAND in s`, which is false for Proxy carriers that only implement `get`
+  (common for worker / RPC facades). Unwrap now reads the brand via property
+  access and duck-checks the value so stubbed unknown-key getters are not
+  mistaken for a surface.
+
 ### Added
 
 - **Surface brand helpers** — each surface (`SubscriptionSurface`, `MonitoringSurface`,
