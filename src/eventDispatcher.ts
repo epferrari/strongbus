@@ -2,9 +2,13 @@ import {autobind} from 'core-decorators';
 
 import type {SubscriptionManager} from './subscriptionManager';
 import {WILDCARD, type EventMap} from './types/events';
-import type {MaterializedBusOptions} from './types/options';
+import type {MaterializedBusOptions} from './types/materializedBusOptions';
 import type {EventKeys} from './types/utility';
 
+/**
+ * Dispatches raised events to local handlers and propagates along pipe edges.
+ * @internal
+ */
 export namespace EventDispatcher {
   export type Graph<TEventMap extends EventMap> = {
     propagate<T extends EventKeys<TEventMap>>(
@@ -21,6 +25,9 @@ export namespace EventDispatcher {
   };
 }
 
+/**
+ * @internal
+ */
 @autobind
 export class EventDispatcher<TEventMap extends EventMap = EventMap> {
 

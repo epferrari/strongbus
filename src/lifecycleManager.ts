@@ -1,7 +1,7 @@
 import {autobind} from 'core-decorators';
 
 import {type StrongbusLogger} from './strongbusLogger';
-import type {MaterializedBusOptions} from './types/options';
+import type {MaterializedBusOptions} from './types/materializedBusOptions';
 import {Lifecycle} from './types/lifecycle';
 import type {GenericHandler} from './types/eventHandlers';
 import type {EventMap, WILDCARD} from './types/events';
@@ -11,11 +11,13 @@ import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {normalizeError} from './utils/normalizeError';
 import {over} from './utils/over';
 
+/** @internal Downstream listener counts captured when attaching/detaching a pipe edge. */
 export type DownstreamSnapshotEntry<TEventMap extends EventMap> = {
   event: EventKeys<TEventMap>|WILDCARD;
   count: number;
 };
 
+/** @internal */
 export type DownstreamSnapshot<TEventMap extends EventMap> = DownstreamSnapshotEntry<TEventMap>[];
 
 /**
@@ -32,6 +34,10 @@ export interface LifecycleHost<TEventMap extends EventMap> {
   accountForRemovedDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void;
 }
 
+/**
+ * Owns active/idle state and lifecycle hook dispatch for a {@link Bus}.
+ * @internal
+ */
 @autobind
 export class LifecycleManager<TEventMap extends EventMap = EventMap> {
   private readonly handlers = new Map<Lifecycle, Set<GenericHandler>>();

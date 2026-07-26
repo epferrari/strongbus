@@ -13,6 +13,7 @@ import type {
 } from './types/surfaces/introspectionSurface';
 import type {EventKeys} from './types/utility';
 
+/** @internal Graph callbacks {@link IntrospectionManager} needs from the pipe host. */
 export namespace IntrospectionManager {
   export type Graph<TEventMap extends EventMap> = {
     forEachDownstream(
@@ -27,8 +28,8 @@ export namespace IntrospectionManager {
 }
 
 /**
- * @ignore
  * Owns listener introspection caches, scope routing, and surplus-aware counts.
+ * @internal
  */
 @autobind
 export class IntrospectionManager<TEventMap extends EventMap = EventMap> {

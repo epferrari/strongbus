@@ -1,9 +1,6 @@
 
 import type {LoggerProvider} from './logger';
-import {
-  DEFAULT_DUPLICATE_SUBSCRIPTION_STRATEGY,
-  type DuplicateSubscriptionStrategy
-} from './duplicateSubscriptionStrategy';
+import type {DuplicateSubscriptionStrategy} from './duplicateSubscriptionStrategy';
 
 export * from './duplicateSubscriptionStrategy';
 
@@ -42,36 +39,3 @@ export interface Options {
 
 /** Options accepted by {@link Bus.configure}; `name` is per-instance only. */
 export type ConfigurableBusOptions = Omit<Partial<Options>, 'name'>;
-
-/**
- * Bus options after defaults are applied — every field is present and nested
- * shapes (`thresholds`, `duplicateSubscriptionStrategy`) are fully filled in.
- * `logger` stays optional; when omitted, logging falls back to a built-in console adapter.
- */
-export type MaterializedBusOptions = Omit<
-  Required<Options>,
-  'duplicateSubscriptionStrategy' | 'thresholds' | 'logger'
-> & {
-  thresholds: Required<ListenerThresholds>;
-  duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy;
-  logger?: LoggerProvider;
-};
-
-export function resolveDuplicateSubscriptionStrategy(
-  partial?: Partial<DuplicateSubscriptionStrategy>
-): DuplicateSubscriptionStrategy {
-  return {
-    ...DEFAULT_DUPLICATE_SUBSCRIPTION_STRATEGY,
-    ...partial
-  };
-}
-
-export const DEFAULT_NAME = 'Anonymous';
-
-let i = 0;
-export function uniqueName(name: string): string {
-  if(name === DEFAULT_NAME) {
-    return `${name}<${i++}>`;
-  }
-  return name;
-}

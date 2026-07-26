@@ -1,6 +1,6 @@
 import {type Subscription, type EventMap, WILDCARD} from './types/events';
 import type {EventSink, TapHandler, PipedMessage, GenericHandler} from './types/eventHandlers';
-import type {MaterializedBusOptions} from './types/options';
+import type {MaterializedBusOptions} from './types/materializedBusOptions';
 import type {SubscribeOptions} from './types/surfaces/subscriptionSurface';
 import type {EventKeys} from './types/utility';
 import type {LifecycleManager} from './lifecycleManager';
@@ -26,9 +26,9 @@ type IntentFrameMeta = {
 };
 
 /**
- * @ignore
  * Bus identity / callbacks {@link SubscriptionManager} needs.
  * Shared resources (`options`, `logger`, `lifecycle`) are constructor deps.
+ * @internal
  */
 export type SubscriptionHost = {
   invalidateOwnListenerCache(): void;
@@ -36,8 +36,8 @@ export type SubscriptionHost = {
 };
 
 /**
- * @ignore
  * Owns duplicate-subscription stacks, emit-handler storage, and unsub queue.
+ * @internal
  */
 export class SubscriptionManager<TEventMap extends EventMap> {
 

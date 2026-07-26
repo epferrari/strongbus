@@ -5,25 +5,31 @@ import type {EventKeys} from './utility';
 export type EventListenerMapKey<TEventMap extends EventMap> =
   EventKeys<TEventMap> | WILDCARD;
 
+/** @internal Identity alias used to keep registry callables bivariant in the event map. */
 export type AnyEventMap<in out T extends EventMap> = {[K in keyof T]: T[K]};
 
 /** Handlers registered for a single event (or the wildcard sink). */
 export type ListenerSet = ReadonlySet<GenericHandler>;
 
+/** @internal */
 export const EMPTY_LISTENER_SET: ListenerSet = new Set();
 
+/** @internal */
 export type ListenerRegistryGet<in out TEventMap extends EventMap> = {
   bivarianceHack(event: EventListenerMapKey<TEventMap>): ListenerSet | undefined;
 }['bivarianceHack'];
 
+/** @internal */
 export type ListenerRegistryGetCount<in out TEventMap extends EventMap> = {
   bivarianceHack(event: EventListenerMapKey<TEventMap>): number;
 }['bivarianceHack'];
 
+/** @internal */
 export type ListenerRegistryForEachHandler<in out TEventMap extends EventMap> = {
   bivarianceHack(handlers: ListenerSet, event: EventListenerMapKey<TEventMap>): void;
 }['bivarianceHack'];
 
+/** @internal */
 export type ListenerRegistryForEach<in out TEventMap extends EventMap> = {
   bivarianceHack<
     TMap extends AnyEventMap<TEventMap>
@@ -35,6 +41,7 @@ export type ListenerRegistryForEach<in out TEventMap extends EventMap> = {
  * lookup keys are typed through the event map so a `Bus<Wide>` can satisfy
  * `IntrospectionSurface<Narrow>`. Iteration via {@link forEach} is typed at
  * compile time only; at runtime all registered keys are visited.
+ * @internal
  */
 export interface ListenerRegistry<TEventMap extends EventMap = EventMap> {
   get: ListenerRegistryGet<TEventMap>;
@@ -47,6 +54,10 @@ export interface ListenerRegistry<TEventMap extends EventMap = EventMap> {
   readonly size: number;
 }
 
+/**
+ * Lazy {@link ListenerRegistry} backed by a map factory.
+ * @internal
+ */
 export class ListenerRegistryView<TEventMap extends EventMap> implements ListenerRegistry<TEventMap> {
   private readonly source: () => ReadonlyMap<EventKeys<TEventMap> | WILDCARD, ListenerSet>;
 

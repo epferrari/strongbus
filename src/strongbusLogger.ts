@@ -15,6 +15,7 @@ export {
   type StrongbusLogRecord
 } from './types/logger';
 
+/** @internal Structured extras for error-handler failure log records. */
 export type ErrorHandlerFailureDetails = {
   errorHandler?: string;
   errorHandlerError: unknown;
@@ -22,9 +23,14 @@ export type ErrorHandlerFailureDetails = {
   eventHandlerError: unknown;
 };
 
+/** @internal */
 export type LogLevel = 'never' | 'debug' | 'info' | 'warn' | 'error';
 
 
+/**
+ * Domain-oriented adapter over {@link Logger} / {@link LoggerProvider}.
+ * @internal
+ */
 @autobind
 export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
   private readonly name: string;
@@ -302,6 +308,7 @@ function buildAsyncErrorHandlerFailed(context: ErrorHandlerFailureDetails): Stro
  * Expected {@link StrongbusLogRecord} fixtures for specs. Prefer asserting against
  * these rather than hard-coding message text. Production call sites should use
  * {@link StrongbusLogger} domain methods instead.
+ * @internal
  */
 export class StrongbusLogMessages {
   public static infoThresholdReached = buildInfoThresholdReached;

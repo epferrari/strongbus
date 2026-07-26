@@ -14,10 +14,13 @@ import type {
 import type {EventKeys, EventPayloadPair, SubscribableEventKeys} from '../utility';
 import {brand, isObjectWithFunctions, unwrapSurface} from './utils';
 
+/** @internal Identity alias used to keep surface callables bivariant in the event map. */
 export type AnyEventMap<T extends EventMap> = {[K in keyof T]: T[K]};
 
+/** @internal Identity alias used to keep surface callables bivariant in the event map. */
 export type PipeEventMap<T extends EventMap> = {[K in keyof T]: T[K]};
 
+/** @internal Identity alias used to keep surface callables bivariant in the event map. */
 export type ScanEventMap<T extends EventMap> = {[K in keyof T]: T[K]};
 
 /**
@@ -51,6 +54,7 @@ export type ScanParams<T, TEventMap extends EventMap, TMap extends ScanEventMap<
   } & ScanOptions;
 }['bivarianceHack'];
 
+/** @internal Callable shape of {@link SubscriptionSurface.scan}. */
 export type SubscriptionSurfaceScan<TEventMap extends EventMap> = {
   bivarianceHack<
     T = any,
@@ -70,6 +74,7 @@ export type SubscriptionSurfaceScan<TEventMap extends EventMap> = {
   >(params: ScanParams<T, TEventMap, TMap>): CancelablePromise<T>;
 }['bivarianceHack'];
 
+/** @internal Callable shape of {@link SubscriptionSurface.any}. */
 export type SubscriptionSurfaceAny<TEventMap extends EventMap> = {
   bivarianceHack<
     TMap extends AnyEventMap<TEventMap>,
@@ -77,6 +82,7 @@ export type SubscriptionSurfaceAny<TEventMap extends EventMap> = {
   >(events: TEvents, handler: EventSink<TMap>, options?: SubscribeOptions): Subscription;
 }['bivarianceHack'];
 
+/** @internal Callable shape of {@link SubscriptionSurface.tap}. */
 export type SubscriptionSurfaceTap<TEventMap extends EventMap> = {
   bivarianceHack<TMap extends PipeEventMap<TEventMap>>(
     handler: TapHandler<TMap>,
@@ -97,6 +103,7 @@ export type FilteredPipeHandle<TEventMap extends EventMap> = {
   }['bivarianceHack'];
 };
 
+/** @internal Callable shape of {@link SubscriptionSurface.pipe}. */
 export type SubscriptionSurfacePipe<TEventMap extends EventMap> = {
   bivarianceHack: {
     <TMap extends PipeEventMap<TEventMap>>(
@@ -110,18 +117,8 @@ export type SubscriptionSurfacePipe<TEventMap extends EventMap> = {
 }['bivarianceHack'];
 
 /**
- * Await the first matching event as a `CancelablePromise` of `{event, payload}`.
- *
- * Triggers must be {@link SubscribableListenable} values (a single event key or
- * array of keys). The `'*'` wildcard is not supported — it cannot keep event
- * and payload types correlated.
- *
- * To resolve on the first of several known events, pass every key:
- * `next(['foo', 'bar', 'baz'])`. The result discriminates on `event`.
- *
- * When you need to inspect payload shape, filter events, or resolve only under a
- * condition, use {@link Bus.scan} — including `trigger: '*'` with an evaluator
- * that discriminates on `resolve.trigger` (see {@link Scanner.Evaluator}).
+ * Callable shape of {@link SubscriptionSurface.next}.
+ * @internal
  */
 export type SubscriptionSurfaceNext<TEventMap extends EventMap> = {
   bivarianceHack: {
@@ -141,10 +138,15 @@ export type SubscriptionSurfaceNext<TEventMap extends EventMap> = {
   };
 }['bivarianceHack'];
 
+/** @internal Callable shape of {@link SubscriptionSurface.unpipe}. */
 export type SubscriptionSurfaceUnpipe<TEventMap extends EventMap> = {
   bivarianceHack<TDownstream extends Bus<any>>(downstream: TDownstream): void;
 }['bivarianceHack'];
 
+/**
+ * Correlated `{event, payload}` result of {@link SubscriptionSurface.next}.
+ * @internal
+ */
 export type NextResult<TEventMap extends EventMap, T> =
   T extends EventKeys<TEventMap>[]
     ? EventPayloadPair<TEventMap, T[number]>
@@ -186,6 +188,20 @@ export interface SubscriptionSurface<TEventMap extends EventMap = EventMap> {
 
   any: SubscriptionSurfaceAny<TEventMap>;
 
+  /**
+   * Await the first matching event as a `CancelablePromise` of `{event, payload}`.
+   *
+   * Triggers must be {@link SubscribableListenable} values (a single event key or
+   * array of keys). The `'*'` wildcard is not supported — it cannot keep event
+   * and payload types correlated.
+   *
+   * To resolve on the first of several known events, pass every key:
+   * `next(['foo', 'bar', 'baz'])`. The result discriminates on `event`.
+   *
+   * When you need to inspect payload shape, filter events, or resolve only under a
+   * condition, use {@link Bus.scan} — including `trigger: '*'` with an evaluator
+   * that discriminates on `resolve.trigger` (see {@link Scanner.Evaluator}).
+   */
   next: SubscriptionSurfaceNext<TEventMap>;
 
   scan: SubscriptionSurfaceScan<TEventMap>;
