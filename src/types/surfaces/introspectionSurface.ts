@@ -4,18 +4,22 @@ import type {IntrospectionOptions} from '../listenerScope';
 import type {GenericHandler} from '../eventHandlers';
 import {brand, isObjectWithFunctions, unwrapSurface} from './utils';
 
+/** @internal Callable shape of {@link IntrospectionSurface.hasListenersFor}. */
 export type IntrospectionSurfaceHasListenersForEvent<TEventMap extends EventMap> = {
   bivarianceHack(event: EventListenerMapKey<TEventMap>, options?: IntrospectionOptions): boolean;
 }['bivarianceHack'];
 
+/** @internal Callable shape of {@link IntrospectionSurface.getListenersFor}. */
 export type IntrospectionSurfaceListenerForEvent<TEventMap extends EventMap> = {
   bivarianceHack(event: EventListenerMapKey<TEventMap>, options?: IntrospectionOptions): ListenerSet;
 }['bivarianceHack'];
 
+/** @internal Callable shape of {@link IntrospectionSurface.getListenerCountFor}. */
 export type IntrospectionSurfaceListenerCountForEvent<TEventMap extends EventMap> = {
   bivarianceHack(event: EventListenerMapKey<TEventMap>, options?: IntrospectionOptions): number;
 }['bivarianceHack'];
 
+/** @internal Callable shape of {@link IntrospectionSurface.forEach}. */
 export type IntrospectionSurfaceListenerForEach<TEventMap extends EventMap> = {
   bivarianceHack<
     TMap extends {[K in keyof TEventMap]: TEventMap[K]}

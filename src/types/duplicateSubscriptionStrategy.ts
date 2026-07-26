@@ -20,13 +20,6 @@ export type DuplicateSubscriptionStrategy = {
   logLevel: DuplicateLogLevel;
 };
 
-export const DEFAULT_DUPLICATE_SUBSCRIPTION_STRATEGY: DuplicateSubscriptionStrategy = {
-  observability: 'collapse',
-  invocation: 'collapse',
-  disposal: 'collapse',
-  logLevel: 'warn'
-};
-
 /**
  * Named presets for {@link DuplicateSubscriptionStrategy}. Knobs remain the source of truth;
  * these are sugar aligned with familiar host APIs and common app patterns.

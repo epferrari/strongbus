@@ -16,14 +16,16 @@ import type {
 } from './types/eventHandlers';
 import type {Logger} from './types/logger';
 import {
-  resolveDuplicateSubscriptionStrategy,
   type Options,
-  type MaterializedBusOptions,
   type ListenerThresholds,
-  type ConfigurableBusOptions,
-  DEFAULT_NAME,
-  uniqueName
+  type ConfigurableBusOptions
 } from './types/options';
+import {
+  type MaterializedBusOptions,
+  DEFAULT_NAME,
+  uniqueName,
+  resolveDuplicateSubscriptionStrategy
+} from './types/materializedBusOptions';
 import {ListenerScope, type IntrospectionOptions} from './types/listenerScope';
 import type {
   SubscriptionSurface,

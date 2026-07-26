@@ -74,6 +74,7 @@ type SamePrimitiveFamily<S, D> =
  * `1|2 → number`). Object and other structured payloads still require exact
  * match. Source-only events are not required on the target; target-only events
  * are simply never raised by the source.
+ * @internal
  */
 export type PipePayloadOverlap<TSource extends EventMap, TDownstream extends EventMap> =
   Extract<EventKeys<TSource>, EventKeys<TDownstream>> extends never

@@ -10,12 +10,13 @@ import {type StrongbusLogger} from './strongbusLogger';
 import type {EventMap, WILDCARD} from './types/events';
 import type {GenericHandler, PipedMessage, PipePredicate} from './types/eventHandlers';
 import {Lifecycle} from './types/lifecycle';
-import type {MaterializedBusOptions} from './types/options';
+import type {MaterializedBusOptions} from './types/materializedBusOptions';
 import type {MonitoringHook} from './types/surfaces/monitoringSurface';
 import type {SubscribeOptions} from './types/surfaces/subscriptionSurface';
 import type {EventKeys} from './types/utility';
 import {over} from './utils/over';
 
+/** @internal Options for attaching a pipe graph edge. */
 export type DownstreamLinkOptions<TEventMap extends EventMap> = SubscribeOptions & {
   filter?: PipePredicate<TEventMap>;
 };

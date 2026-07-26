@@ -7,6 +7,7 @@ import {brand, isObjectWithFunctions, unwrapSurface} from './utils';
  * Callable shape of {@link EmittingSurface.emit}. Declared via `bivarianceHack`
  * so Wide→Narrow assignability matches other surface callables under
  * `strictFunctionTypes`.
+ * @internal
  */
 export type EmittingSurfaceEmit<TEventMap extends EventMap> = {
   bivarianceHack: {

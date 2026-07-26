@@ -8,6 +8,7 @@ import type {EventKeys} from './types/utility';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import { autobind } from 'core-decorators';
 
+/** @internal Normalized scan request used by {@link ScannerPools}. */
 export interface ScanParams<T, TEventMap extends EventMap> {
   evaluator: Scanner.Evaluator<T, TEventMap>;
   trigger: Listenable<EventKeys<TEventMap>>;
@@ -32,6 +33,7 @@ interface Pool<TEventMap extends EventMap> {
  * redundantly. Monitored and incognito scans never share a pool.
  * Each pooled scan tracks a `constituentCount`; the underlying scanner is only
  * canceled once every constituent has been canceled.
+ * @internal
  */
 @autobind
 export class ScannerPools<TEventMap extends EventMap> {
@@ -220,7 +222,7 @@ function toPoolKey(lazyOrEager: LazyOrEager, incognito: boolean): PoolKey {
 }
 
 /**
- * @ignore
+ * @internal
  */
 export function normalizeScanParams<TEventMap extends EventMap>(
   args: readonly unknown[]
