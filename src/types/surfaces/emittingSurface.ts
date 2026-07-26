@@ -44,10 +44,10 @@ export interface EmittingSurface<TEventMap extends EventMap = EventMap> {
 type InferEmittingEventMap<S> =
   S extends {readonly [EmittingSurface.BRAND]: infer V}
     ? V extends Bus<infer M> ? M
-      : V extends EmittingSurface<infer M> ? M
+      : V extends EmittingSurface<infer Q> ? Q
         : never
     : S extends Bus<infer M> ? M
-      : S extends EmittingSurface<infer M> ? M
+      : S extends EmittingSurface<infer Q> ? Q
         : never;
 
 /**

@@ -21,10 +21,10 @@ export interface ControlSurface<TEventMap extends EventMap = EventMap>
 type InferControlEventMap<S> =
   S extends {readonly [ControlSurface.BRAND]: infer V}
     ? V extends Bus<infer M> ? M
-      : V extends ControlSurface<infer M> ? M
+      : V extends ControlSurface<infer Q> ? Q
         : never
     : S extends Bus<infer M> ? M
-      : S extends ControlSurface<infer M> ? M
+      : S extends ControlSurface<infer Q> ? Q
         : never;
 
 /**
