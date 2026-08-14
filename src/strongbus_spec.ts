@@ -4090,6 +4090,54 @@ describe('Strongbus.Bus', () => {
             p2.cancel();
           });
         });
+
+        describe('and the evaluator settles during eager evaluation', () => {
+          let setTimeoutSpy: jasmine.Spy;
+          beforeEach(() => {
+            setTimeoutSpy = spyOn(global, 'setTimeout').and.callThrough();
+          });
+
+          it('does not schedule a timer when the evaluator resolves', async () => {
+            const p = bus.scan({
+              evaluator: (resolve: Scanner.Resolver<boolean>) => resolve(true),
+              trigger: 'foo',
+              timeout: 100
+            });
+
+            expect(setTimeoutSpy).not.toHaveBeenCalled();
+            expect((p as any)[INTERNAL_PROMISE] === p).toBeTrue();
+            expect(bus.getListenerCountFor('foo')).toBe(0);
+            await expectAsync(p).toBeResolvedTo(true);
+          });
+
+          it('does not schedule a timer when the evaluator rejects', async () => {
+            const err = new Error('nope');
+            const p = bus.scan({
+              evaluator: (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => reject(err),
+              trigger: 'foo',
+              timeout: 100
+            });
+
+            expect(setTimeoutSpy).not.toHaveBeenCalled();
+            expect((p as any)[INTERNAL_PROMISE] === p).toBeTrue();
+            expect(bus.getListenerCountFor('foo')).toBe(0);
+            await expectAsync(p).toBeRejectedWith(err);
+          });
+
+          it('schedules a timer when the evaluator does not settle', () => {
+            const p = bus.scan({
+              evaluator: () => undefined,
+              trigger: 'foo',
+              timeout: 100
+            });
+
+            expect(setTimeoutSpy).toHaveBeenCalled();
+            expect((p as any)[INTERNAL_PROMISE] === p).toBeFalse();
+
+            p.catch((e: unknown): void => null);
+            p.cancel();
+          });
+        });
       });
     });
   });

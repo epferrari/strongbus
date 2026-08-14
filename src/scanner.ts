@@ -64,7 +64,7 @@ export namespace Scanner {
  */
 @autobind
 export class Scanner<TResult> implements CancelablePromise<TResult> {
-  private settled: boolean = false;
+  private _settled: boolean = false;
   private readonly triggerListeners = new Set<Subscription>();
   private readonly willDestroyListeners = new Set<Subscription>();
   private readonly evaluator!: Scanner.Evaluator<TResult, any>;
@@ -90,9 +90,17 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
     (resolver as any).resolve = this.resolve;
     (resolver as any).reject = this.reject;
     (resolver as any).trigger = trigger;
-    if(!this.settled) {
+    if(!this._settled) {
       return this.evaluator(resolver as any, this.reject);
     }
+  }
+
+  /**
+   * Has the scanner resolved, rejected, or been canceled.
+   * A scanner that settles during eager evaluation never subscribes to any events.
+   */
+  public get settled(): boolean {
+    return this._settled;
   }
 
   private resolve(value: TResult): void {
@@ -108,14 +116,14 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
   }
 
   private settle(): boolean {
-    if(this.settled) {
+    if(this._settled) {
       return false;
     }
     over(this.triggerListeners)();
     this.triggerListeners.clear();
     over(this.willDestroyListeners)();
     this.willDestroyListeners.clear();
-    return (this.settled = true);
+    return (this._settled = true);
   }
 
   public then<TResult1 = TResult, TResult2 = never>(
@@ -150,7 +158,7 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
     listenable: Listenable<EventKeys<TEventMap>>,
     options?: SubscribeOptions
   ): this {
-    if(this.settled) {
+    if(this._settled) {
       return this;
     }
 
@@ -171,7 +179,7 @@ export class Scanner<TResult> implements CancelablePromise<TResult> {
           event: null,
           payload: null
         });
-        if(!this.settled) {
+        if(!this._settled) {
           this.cancel('All Scannables have been destroyed');
         }
       }

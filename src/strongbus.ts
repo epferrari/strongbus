@@ -404,6 +404,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * @param options.pool - attempt to pool scanners that share the same evaluator and trigger; default `true`.
    * @param options.timeout - cancel the scan after N milliseconds. Values `<= 0` are ignored.
    *   Configuring a timeout disables pooling even when `options.pool` is true.
+   *   No timer is scheduled if the scan settles during eager evaluation.
    * @param options.eager - call the evaluator immediately; default `true`.
    *   This eliminates the anti-pattern of guarding `scan` with `if (!condition)`.
    */
@@ -420,6 +421,14 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     if(params.timeout && params.timeout > 0) {
       const scanner = new Scanner<any>(scanParams);
       scanner.scan<TEventMap>(this, params.trigger, subscribeOptions);
+      if(scanner.settled) {
+        // eager evaluation already settled the scan; a timer would never fire
+        // tslint:disable-next-line:prefer-object-spread
+        return Object.assign(
+          scanner,
+          {[INTERNAL_PROMISE]: scanner}
+        );
+      }
       // tslint:disable-next-line:prefer-object-spread
       return Object.assign(
         timeout(scanner, {ms: params.timeout, cancelUnderlyingPromiseOnTimeout: true}),
