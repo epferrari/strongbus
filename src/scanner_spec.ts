@@ -2,7 +2,6 @@ import {sleep} from 'jaasync';
 
 import {Scanner} from './scanner';
 import {Bus} from './strongbus';
-import {ListenerScope} from './types/listenerScope';
 
 class Store extends Bus<{value: void}> {
   private _value: 0|1|2 = 0;

@@ -215,6 +215,13 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   introspection, and marks the upstream bus idle when that downstream was its only
   remaining listener demand. `willIdle` / `idle` are not emitted when another downstream
   (or own listener) still has demand.
+- **`scan` with `options.timeout` no longer schedules a timer when the evaluator settles
+  eagerly** — if the evaluator resolves or rejects during eager evaluation (`eager: true`,
+  the default), the scan is already settled before any timer would be needed, so none is
+  created. Previously a timeout scan always armed its timer, leaving a pending timer for
+  the full duration even though it could no longer affect the result — which kept Node
+  processes and test runners alive until it fired. Behavior for scans that do not settle
+  eagerly is unchanged: the timeout still cancels the scan after N milliseconds.
 - **Variance:** a `Bus<Wide>` is assignable to `SubscriptionSurface<Narrow>`,
   `IntrospectionSurface<Narrow>`, and other narrower views, so consumers can
   declare a narrower event map while still preventing subscription to events

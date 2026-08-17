@@ -4090,6 +4090,57 @@ describe('Strongbus.Bus', () => {
             p2.cancel();
           });
         });
+
+        describe('interop with eager evaluation', () => {
+          let setTimeoutSpy: jasmine.Spy;
+          beforeEach(() => {
+            setTimeoutSpy = spyOn(globalThis, 'setTimeout').and.callThrough();
+          });
+
+          describe('given the evaluator resolves during eager evaluation', () => {
+            it('does not schedule a timer', async () => {
+              const p = bus.scan(
+                'foo',
+                (resolve: Scanner.Resolver<boolean>) => resolve(true),
+                {timeout: 100}
+              );
+
+              expect(setTimeoutSpy).not.toHaveBeenCalled();
+              expect(bus.getListenerCountFor('foo')).toBe(0);
+              await expectAsync(p).toBeResolvedTo(true);
+            });
+          });
+
+          describe('given the evaluator rejects during eager evaluation', () => {
+            it('does not schedule a timer', async () => {
+              const err = new Error('nope');
+              const p = bus.scan(
+                'foo',
+                (resolve: Scanner.Resolver<boolean>, reject: Scanner.Rejecter) => reject(err),
+                {timeout: 100}
+              );
+
+              expect(setTimeoutSpy).not.toHaveBeenCalled();
+              expect(bus.getListenerCountFor('foo')).toBe(0);
+              await expectAsync(p).toBeRejectedWith(err);
+            });
+          });
+
+          describe('given the evaluator does not settle during eager evaluation', () => {
+            it('schedules a timer', () => {
+              const p = bus.scan(
+                'foo',
+                (resolve: Scanner.Resolver<boolean>) => undefined,
+                {timeout: 100}
+              );
+
+              expect(setTimeoutSpy).toHaveBeenCalled();
+              expect(bus.getListenerCountFor('foo')).toBe(1);
+              p.catch((e: unknown): void => null);
+              p.cancel();
+            });
+          });
+        });
       });
     });
   });
