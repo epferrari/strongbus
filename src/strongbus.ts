@@ -280,7 +280,8 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
    * @param params.trigger - event or events that should trigger evaluator
    * @param {boolean} [params.pool=true] - attempt to pool scanners that can be resolved by the same evaluator and trigger; default is `true`
    * @param {integer} [params.timeout] - cancel the scan after `params.timeout` milliseconds. Values `<= 0` are ignored.
-   * Currently pooling timeouts is not supported. If `params.timeout` is configured, it will disable pooling regardless if `params.pool=true`
+   * Currently pooling timeouts is not supported. If `params.timeout` is configured, it will disable pooling regardless if `params.pool=true`.
+   * No timer is scheduled if the scan settles during eager evaluation.
    * @param {boolean} [params.eager=true] - should `params.evaluator` be called immediately; default is `true`.
    * This eliminates the following anti-pattern:
    * ```
@@ -303,6 +304,14 @@ export class Bus<TEventMap extends Events.EventMap = Events.EventMap> implements
     if(params.timeout && params.timeout > 0) {
       const scanner = new Scanner<TReturnType>(params);
       scanner.scan<TEventMap>(this, params.trigger);
+      if(scanner.settled) {
+        // eager evaluation already settled the scan; a timer would never fire
+        // tslint:disable-next-line:prefer-object-spread
+        return Object.assign(
+          scanner,
+          {[INTERNAL_PROMISE]: scanner}
+        );
+      }
       // tslint:disable-next-line:prefer-object-spread
       return Object.assign(
         timeout(scanner, {ms: params.timeout, cancelUnderlyingPromiseOnTimeout: true}),
