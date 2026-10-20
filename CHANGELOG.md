@@ -207,6 +207,9 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Removed
 
+- **Runtime `Scanner` export** — `Scanner` is now exported as a type only (`Scanner.Evaluator`,
+  `Scanner.Resolver`, and friends still work in type positions). Use `bus.scan(...)` instead of
+  constructing a `Scanner`.
 - **`options.allowUnhandledEvents`** — use **`options.onUnhandledEvent`** (`'ignore'` |
   `'throw'` | callback).
 - **`Bus#handleUnexpectedEvent`** — override path removed; use `onUnhandledEvent: 'throw'` or
