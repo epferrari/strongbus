@@ -3001,7 +3001,11 @@ describe('Strongbus.Bus', () => {
           incognitoUpstream.pipe(bus, {incognito: true});
           const next = bus.next('bar');
           const incognitoNext = bus.next('bar', {incognito: true});
-          const incognitoScan = bus.scan('bar', () => undefined, {incognito: true});
+          const incognitoScan = bus.scan('bar', (resolve) => {
+            if(resolve.trigger.type === 'event') {
+              resolve(resolve.trigger.payload);
+            }
+          }, {incognito: true});
 
           bus.clear({includeIncognito: false});
           await expectAsync(next).toBeRejected();
@@ -3013,10 +3017,10 @@ describe('Strongbus.Bus', () => {
           expect(downstreamHandler).not.toHaveBeenCalled();
           expect(incognitoHandler.calls.allArgs()).toEqual([['local'], ['from incognito upstream']]);
           expect(incognitoDownstreamHandler).toHaveBeenCalledOnceWith('local');
-          expect(await isPending(incognitoNext)).toBeTrue();
-          expect(await isPending(incognitoScan)).toBeTrue();
-          incognitoNext.cancel();
-          incognitoScan.cancel();
+
+          bus.emit('bar', true);
+          await expectAsync(incognitoNext).toBeResolvedTo({event: 'bar', payload: true});
+          await expectAsync(incognitoScan).toBeResolvedTo(true);
         });
       });
     });
