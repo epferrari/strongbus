@@ -125,7 +125,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   `ControlSurface` implementations must add it.
 - **`options.onUseAfterDestroy`** (default `false`) — `false` | `'debug'` | `'info'` | `'warn'` |
   `'error'` | `'throw'`. When set, calling any `MonitoringSurface` or `SubscriptionSurface` method
-  on a destroyed bus throws, or logs `StrongbusLogCode.UseAfterDestroy` (`1015`) at that level,
+  on a destroyed bus throws, or logs `StrongbusLogCode.UseAfterDestroy` (`1016`) at that level,
   naming the method and the destroy reason. Thrown errors carry the same `code`; `next` / `scan`
   reject with that error instead of throwing synchronously. When not throwing, the call is skipped
   and returns an inert stub: a no-op `Subscription` from subscribe/hook methods, the downstream
@@ -244,7 +244,7 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   settled. A hook that called `destroy()` re-entered teardown and recursed. While teardown
   runs, `destroy` and `clear` are now ignored, and `MonitoringSurface` / `SubscriptionSurface`
   methods are skipped under any `onUseAfterDestroy` setting, logging
-  `StrongbusLogCode.UseDuringDestroy` (`1016`) at `debug`. They return the same inert stubs,
+  `StrongbusLogCode.UseDuringDestroy` (`1015`) at `debug`. They return the same inert stubs,
   except that `next` / `scan` return an already-canceled promise. `emit` still runs.
 - **Downstream listeners before `pipe()`** — when a downstream already has listeners
   (including via nested `pipe` links) at the moment `pipe(bus)` runs, the upstream
