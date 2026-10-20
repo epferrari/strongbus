@@ -96,17 +96,12 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
     this.error(buildAsyncErrorHandlerFailed(details));
   }
 
-  /** Throws an `Error` carrying `record.code` instead of logging when `level` is `'throw'`. */
   public onInvokeAfterDestroy(
     method: string,
     reason: string|undefined,
-    level: Exclude<LogLevel, 'never'>|'throw'
+    level: Exclude<LogLevel, 'never'>
   ): void {
-    const record = buildInvokeAfterDestroy(this.name, method, reason);
-    if(level === 'throw') {
-      throw Object.assign(new Error(record.message), {code: record.code});
-    }
-    this[level](record);
+    this[level](buildInvokeAfterDestroy(this.name, method, reason));
   }
 
   private onAddListenerNonVerbose(event: EventKeys<TEventMap>|WILDCARD, n: number) {
@@ -325,9 +320,9 @@ function buildInvokeAfterDestroy(name: string, method: string, reason?: string):
 }
 
 /**
- * Expected {@link StrongbusLogRecord} fixtures for specs. Prefer asserting against
- * these rather than hard-coding message text. Production call sites should use
- * {@link StrongbusLogger} domain methods instead.
+ * Builders for the {@link StrongbusLogRecord} behind each {@link StrongbusLogCode}.
+ * Specs assert against these instead of hard-coding message text; {@link Bus} uses
+ * `invokeAfterDestroy` to build the error it throws under `onUseAfterDestroy: 'throw'`.
  * @internal
  */
 export class StrongbusLogMessages {

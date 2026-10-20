@@ -4,7 +4,7 @@ import {type CancelablePromise, cancelable, timeout} from 'jaasync';
 
 import {Scanner} from './scanner';
 import {normalizeScanParams, ScannerPools, type ScanParams} from './scannerPools';
-import {StrongbusLogger} from './strongbusLogger';
+import {StrongbusLogger, StrongbusLogMessages} from './strongbusLogger';
 import {LifecycleManager, type LifecycleHost} from './lifecycleManager';
 import {type Subscription, type EventMap, WILDCARD} from './types/events';
 import type {
@@ -636,6 +636,10 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
       return false;
     }
     const reason = this.destroyReason === Bus.DESTROYED ? undefined : this.destroyReason;
+    if(onUseAfterDestroy === 'throw') {
+      const {message, code} = StrongbusLogMessages.invokeAfterDestroy(this.name, method, reason);
+      throw Object.assign(new Error(message), {code});
+    }
     this.logger.onInvokeAfterDestroy(method, reason, onUseAfterDestroy);
     return true;
   }
