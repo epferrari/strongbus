@@ -594,11 +594,35 @@ bus.hasListeners({includeIncognito: true});
 
 ## Teardown
 
-`destroy()` releases all event subscribers, fires `willDestroy`, removes all hooks, and detaches all downstreams.
+`destroy(reason?)` releases all event subscribers, fires `willDestroy`, removes all hooks, and detaches all downstreams.
+Afterwards, `bus.destroyed` is `true`.
 
 ```typescript
-bus.destroy();
+bus.destroy('session closed');
 ```
+
+By default a destroyed bus still accepts calls, so a consumer that outlives the bus's owner keeps subscribing and
+emitting without any sign of trouble. Set `strictDestroy` to catch this:
+
+```typescript
+const bus = new Bus<Events>({strictDestroy: 'warn'});
+bus.destroy('session closed');
+
+bus.on('foo', handler);
+// logs StrongbusLogCode.InvokeAfterDestroy:
+// "<name> Bus: on() invoked after destroy (reason: session closed)"
+// and returns a no-op Subscription without registering `handler`
+```
+
+- `false` (default) — calls run as usual.
+- a log level (`'debug'` | `'info'` | `'warn'` | `'error'`) — log, then skip the call and return an inert stub.
+  `'never'` skips without logging.
+- `'throw'` — throw an `Error` with the same message.
+
+Stubs: `emit` returns `false`; `on`, `once`, `any`, `tap`, `hook`, and `monitor` return a no-op `Subscription`;
+`pipe(bus)` returns `bus` without linking; `pipe(predicate)` returns a handle whose `pipe` does nothing; `next` and
+`scan` return a `CancelablePromise` that never settles unless canceled; `off`, `unpipe`, and `destroy` return.
+Introspection methods (`hasListeners`, `getListenerCount`, `destroyed`, etc.) are never affected.
 
 ## Options
 
@@ -611,6 +635,8 @@ bus.destroy();
 - `logger` — a `Logger`, or a `() => Logger` provider.
 - `verbose` — log on every listener past a threshold (`true`), or only at threshold boundaries
   (`false`, default).
+- `strictDestroy` — `false` (default), a log level, or `'throw'`: how to treat calls on a destroyed bus.
+  See [Teardown](#teardown).
 - `duplicateSubscriptionStrategy` — how duplicate listenable+handler registrations behave for
   `on`, `any`, and `tap` across four axes:
 
