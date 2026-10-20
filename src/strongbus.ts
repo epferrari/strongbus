@@ -638,10 +638,10 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     }
     const reason = this.destroyReason === Bus.DESTROYED ? undefined : this.destroyReason;
     if(onUseAfterDestroy === 'throw') {
-      const {message, code} = StrongbusLogMessages.invokeAfterDestroy(this.name, method, reason);
+      const {message, code} = StrongbusLogMessages.useAfterDestroy(this.name, method, reason);
       throw Object.assign(new Error(message), {code});
     }
-    this.logger.onInvokeAfterDestroy(method, reason, onUseAfterDestroy);
+    this.logger.onUseAfterDestroy(method, reason, onUseAfterDestroy);
     return true;
   }
 

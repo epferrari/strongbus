@@ -28,7 +28,7 @@ export interface ListenerThresholds {
  * @prop duplicateSubscriptionStrategy - how duplicate listenable+handler registrations behave
  * @prop onUseAfterDestroy [false] - what to do when a monitoring or subscription method is called
  * after `destroy()`: `false` runs it as usual; a {@link LogLevel} logs
- * `StrongbusLogCode.InvokeAfterDestroy`, then skips it and returns an inert stub;
+ * `StrongbusLogCode.UseAfterDestroy`, then skips it and returns an inert stub;
  * `'throw'` throws instead. When set to any of these, `emit` and `destroy` become silent no-ops.
  * Introspection is never affected.
  */

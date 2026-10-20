@@ -3008,9 +3008,9 @@ describe('Strongbus.Bus', () => {
 
         function expectLogged(method: string): void {
           expect(logger.warn).toHaveBeenCalledOnceWith(
-            StrongbusLogMessages.invokeAfterDestroy(bus.name, method, undefined)
+            StrongbusLogMessages.useAfterDestroy(bus.name, method, undefined)
           );
-          expect(logger.warn.calls.mostRecent().args[0].code).toBe(Strongbus.StrongbusLogCode.InvokeAfterDestroy);
+          expect(logger.warn.calls.mostRecent().args[0].code).toBe(Strongbus.StrongbusLogCode.UseAfterDestroy);
         }
 
         function expectInertSubscription(sub: Strongbus.Subscription): void {
@@ -3121,7 +3121,7 @@ describe('Strongbus.Bus', () => {
         bus.destroy('owner disposed');
         bus.on('foo', singleEventHandler);
         expect(logger.warn).toHaveBeenCalledOnceWith(
-          StrongbusLogMessages.invokeAfterDestroy(bus.name, 'on', 'owner disposed')
+          StrongbusLogMessages.useAfterDestroy(bus.name, 'on', 'owner disposed')
         );
         expect(logger.warn.calls.mostRecent().args[0].message).toContain('owner disposed');
       });
@@ -3132,7 +3132,7 @@ describe('Strongbus.Bus', () => {
         expect(handle.pipe(downstream)).toBe(downstream);
         expect(bus.getListenerCount()).toBe(0);
         expect(logger.warn).toHaveBeenCalledOnceWith(
-          StrongbusLogMessages.invokeAfterDestroy(bus.name, 'pipe', undefined)
+          StrongbusLogMessages.useAfterDestroy(bus.name, 'pipe', undefined)
         );
       });
 
@@ -3146,7 +3146,7 @@ describe('Strongbus.Bus', () => {
 
         function expectLoggedOnTarget(): void {
           expect(logger.warn).toHaveBeenCalledOnceWith(
-            StrongbusLogMessages.invokeAfterDestroy(bus.name, `${live.name}.pipe`, undefined)
+            StrongbusLogMessages.useAfterDestroy(bus.name, `${live.name}.pipe`, undefined)
           );
         }
 
@@ -3189,7 +3189,7 @@ describe('Strongbus.Bus', () => {
 
       it('throws the log message and code, without logging', () => {
         bus.destroy();
-        const {message, code} = StrongbusLogMessages.invokeAfterDestroy(bus.name, 'on', undefined);
+        const {message, code} = StrongbusLogMessages.useAfterDestroy(bus.name, 'on', undefined);
         expect(() => bus.on('foo', singleEventHandler)).toThrow(jasmine.objectContaining({message, code}));
         expect(bus.getListenerCount()).toBe(0);
         expect(logger.error).not.toHaveBeenCalled();
@@ -3198,7 +3198,7 @@ describe('Strongbus.Bus', () => {
       for(const method of ['next', 'scan'] as const) {
         it(`#${method} returns a rejected promise instead of throwing`, async () => {
           bus.destroy();
-          const {message, code} = StrongbusLogMessages.invokeAfterDestroy(bus.name, method, undefined);
+          const {message, code} = StrongbusLogMessages.useAfterDestroy(bus.name, method, undefined);
           let p: Promise<unknown>;
           expect(() => {
             p = method === 'next' ? bus.next('foo') : bus.scan('foo', () => undefined);
@@ -3222,7 +3222,7 @@ describe('Strongbus.Bus', () => {
       it('throws when a live bus pipes into the destroyed bus', () => {
         bus.destroy();
         const live = new Strongbus.Bus<TestEventMap>();
-        const {message, code} = StrongbusLogMessages.invokeAfterDestroy(bus.name, `${live.name}.pipe`, undefined);
+        const {message, code} = StrongbusLogMessages.useAfterDestroy(bus.name, `${live.name}.pipe`, undefined);
         expect(() => live.pipe(bus)).toThrow(jasmine.objectContaining({message, code}));
       });
 

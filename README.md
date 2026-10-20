@@ -610,7 +610,7 @@ const bus = new Bus<Events>({onUseAfterDestroy: 'warn'});
 bus.destroy('session closed');
 
 bus.on('foo', handler);
-// logs StrongbusLogCode.InvokeAfterDestroy:
+// logs StrongbusLogCode.UseAfterDestroy:
 // "<name> Bus: on() invoked after destroy (reason: session closed)"
 // and returns a no-op Subscription without registering `handler`
 ```

@@ -96,12 +96,12 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
     this.error(buildAsyncErrorHandlerFailed(details));
   }
 
-  public onInvokeAfterDestroy(
+  public onUseAfterDestroy(
     method: string,
     reason: string|undefined,
     level: Exclude<LogLevel, 'never'>
   ): void {
-    this[level](buildInvokeAfterDestroy(this.name, method, reason));
+    this[level](buildUseAfterDestroy(this.name, method, reason));
   }
 
   private onAddListenerNonVerbose(event: EventKeys<TEventMap>|WILDCARD, n: number) {
@@ -312,9 +312,9 @@ function buildAsyncErrorHandlerFailed(context: ErrorHandlerFailureDetails): Stro
   };
 }
 
-function buildInvokeAfterDestroy(name: string, method: string, reason?: string): StrongbusLogRecord {
+function buildUseAfterDestroy(name: string, method: string, reason?: string): StrongbusLogRecord {
   return {
-    code: StrongbusLogCode.InvokeAfterDestroy,
+    code: StrongbusLogCode.UseAfterDestroy,
     message: `${name}: ${method}() invoked after destroy${reason === undefined ? '' : ` (reason: ${reason})`}`
   };
 }
@@ -322,7 +322,7 @@ function buildInvokeAfterDestroy(name: string, method: string, reason?: string):
 /**
  * Builders for the {@link StrongbusLogRecord} behind each {@link StrongbusLogCode}.
  * Specs assert against these instead of hard-coding message text; {@link Bus} uses
- * `invokeAfterDestroy` to build the error it throws under `onUseAfterDestroy: 'throw'`.
+ * `useAfterDestroy` to build the error it throws under `onUseAfterDestroy: 'throw'`.
  * @internal
  */
 export class StrongbusLogMessages {
@@ -341,7 +341,7 @@ export class StrongbusLogMessages {
   public static unsoundPipeEdgeFilterUpgrade = buildUnsoundPipeEdgeFilterUpgrade;
   public static errorHandlerFailed = buildErrorHandlerFailed;
   public static asyncErrorHandlerFailed = buildAsyncErrorHandlerFailed;
-  public static invokeAfterDestroy = buildInvokeAfterDestroy;
+  public static useAfterDestroy = buildUseAfterDestroy;
 }
 
 /**
