@@ -100,14 +100,13 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
   public onInvokeAfterDestroy(
     method: string,
     reason: string|undefined,
-    level: LogLevel|'throw'
+    level: Exclude<LogLevel, 'never'>|'throw'
   ): void {
     const record = buildInvokeAfterDestroy(this.name, method, reason);
     if(level === 'throw') {
       throw new Error(record.message);
-    } else if(level !== 'never') {
-      this[level](record);
     }
+    this[level](record);
   }
 
   private onAddListenerNonVerbose(event: EventKeys<TEventMap>|WILDCARD, n: number) {

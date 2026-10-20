@@ -616,7 +616,6 @@ bus.on('foo', handler);
 
 - `false` (default) — calls run as usual.
 - a log level (`'debug'` | `'info'` | `'warn'` | `'error'`) — log, then skip the call and return an inert stub.
-  `'never'` skips without logging.
 - `'throw'` — throw an `Error` with the same message.
 
 Stubs: `emit` returns `false`; `on`, `once`, `any`, `tap`, `hook`, and `monitor` return a no-op `Subscription`;

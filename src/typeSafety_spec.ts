@@ -12,6 +12,7 @@ import {MonitoringSurface} from './types/surfaces/monitoringSurface';
 import {SubscriptionSurface} from './types/surfaces/subscriptionSurface';
 import type {EventKeys, SubscribableEventKeys, VoidEventKeys} from './types/utility';
 import type {Merge} from './types/merge';
+import type {Options} from './types/options';
 
 /**
  * These specs are primarily *compile-time* assertions. The test pipeline runs
@@ -35,6 +36,20 @@ describe('type safety', () => {
     // type-level assertion only; no runtime behavior
   }
 
+
+  describe('options.onUseAfterDestroy', () => {
+    it('accepts false, log levels, and \'throw\'', () => {
+      expectType<Options>({onUseAfterDestroy: false});
+      expectType<Options>({onUseAfterDestroy: 'debug'});
+      expectType<Options>({onUseAfterDestroy: 'error'});
+      expectType<Options>({onUseAfterDestroy: 'throw'});
+    });
+
+    it('rejects \'never\'', () => {
+      // @ts-expect-error a silent mode would hide use-after-destroy bugs
+      expectType<Options>({onUseAfterDestroy: 'never'});
+    });
+  });
 
   describe('#on', () => {
     it('accepts valid event and payload types', () => {

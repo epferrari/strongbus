@@ -115,10 +115,11 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   first call. `IntrospectionSurface` gains a readonly `destroyed` getter, which becomes `true` once
   teardown completes (still `false` inside `willDestroy` hooks). Hand-rolled
   `IntrospectionSurface` implementations must add it.
-- **`options.onUseAfterDestroy`** (default `false`) — `false` | `LogLevel` | `'throw'`. When set,
-  calling any `ControlSurface`, `EmittingSurface`, `MonitoringSurface`, or `SubscriptionSurface`
-  method on a destroyed bus throws, or logs `StrongbusLogCode.InvokeAfterDestroy` (`1015`) at that
-  level (`'never'` is silent), naming the method and the destroy reason. When not throwing, the
+- **`options.onUseAfterDestroy`** (default `false`) — `false` | `'debug'` | `'info'` | `'warn'` |
+  `'error'` | `'throw'`. When set, calling any `ControlSurface`, `EmittingSurface`,
+  `MonitoringSurface`, or `SubscriptionSurface` method on a destroyed bus throws, or logs
+  `StrongbusLogCode.InvokeAfterDestroy` (`1015`) at that level, naming the method and the destroy
+  reason. When not throwing, the
   call is skipped and returns an inert stub: `false` from `emit`, a no-op `Subscription` from
   subscribe/hook methods, the downstream from `pipe`, and a never-settling `CancelablePromise` from
   `next` / `scan`. Introspection is unaffected. See [Teardown](./README.md#teardown).

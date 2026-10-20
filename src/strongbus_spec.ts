@@ -3105,22 +3105,6 @@ describe('Strongbus.Bus', () => {
       });
     });
 
-    describe('given onUseAfterDestroy is \'never\'', () => {
-      it('makes methods inert without logging', () => {
-        bus = guardedBus('never');
-        bus.destroy();
-
-        bus.on('foo', singleEventHandler);
-        expect(bus.emit('foo', 'x')).toBeFalse();
-
-        expect(bus.getListenerCount()).toBe(0);
-        expect(singleEventHandler).not.toHaveBeenCalled();
-        for(const level of ['debug', 'info', 'warn', 'error'] as const) {
-          expect(logger[level]).not.toHaveBeenCalled();
-        }
-      });
-    });
-
     describe('given onUseAfterDestroy is \'throw\'', () => {
       beforeEach(() => {
         bus = guardedBus('throw');
