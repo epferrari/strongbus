@@ -128,9 +128,6 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Changed
 
-- **`destroy()` detaches the bus from its upstreams** — previously only its own downstream
-  edges were released, so an upstream that piped into a destroyed bus kept forwarding events to
-  it while no longer tracking its listeners. Upstreams now drop the edge during `destroy()`.
 - **`Logger` method arguments are `StrongbusLogRecord`** — each of `info` /
   `warn` / `error` / `debug` is now `(record: StrongbusLogRecord) => void`, not
   `(...args: any[]) => void`. Strongbus always invokes `level(record)` with a
@@ -224,6 +221,12 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Fixed
 
+- **Upstreams of a destroyed bus** — `destroy()` released only the bus's own downstream edges.
+  An upstream that piped into a destroyed bus kept forwarding events to it, but `destroy()` had
+  cleared the hooks that report the bus's listener changes upstream. Listeners added afterwards
+  received events without updating the upstream's `active` state or lifecycle hooks, and its
+  listener counts went stale until something else refreshed them. `destroy()` now detaches the
+  bus from every upstream, so upstreams stop forwarding to it.
 - **Downstream listeners before `pipe()`** — when a downstream already has listeners
   (including via nested `pipe` links) at the moment `pipe(bus)` runs, the upstream
   bus now bubbles the corresponding add-listener lifecycle hooks, updates listener
