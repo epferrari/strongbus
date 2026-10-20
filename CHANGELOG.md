@@ -123,7 +123,8 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   throwing synchronously. When not throwing, the
   call is skipped and returns an inert stub: `false` from `emit`, a no-op `Subscription` from
   subscribe/hook methods, the downstream from `pipe`, and a never-settling `CancelablePromise` from
-  `next` / `scan`. Introspection is unaffected. See [Teardown](./README.md#teardown).
+  `next` / `scan`. Introspection is unaffected. Piping a live bus into a destroyed one is reported
+  under the destroyed bus's setting and creates no edge. See [Teardown](./README.md#teardown).
 
 ### Changed
 

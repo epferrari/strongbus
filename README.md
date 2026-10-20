@@ -625,6 +625,9 @@ Stubs: `emit` returns `false`; `on`, `once`, `any`, `tap`, `hook`, and `monitor`
 `scan` return a `CancelablePromise` that never settles unless canceled; `off`, `unpipe`, and `destroy` return.
 Introspection methods (`hasListeners`, `getListenerCount`, `destroyed`, etc.) are never affected.
 
+Piping a live bus into a destroyed one counts as using the destroyed bus: it is reported under the destroyed bus's
+`onUseAfterDestroy` (as `<live name>.pipe()`), and no edge is created.
+
 ## Options
 
 `new Bus<Events>(options)` accepts:

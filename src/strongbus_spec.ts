@@ -3135,9 +3135,48 @@ describe('Strongbus.Bus', () => {
         );
       });
 
-      it('does not log when a live bus pipes into the destroyed bus', () => {
+      describe('and a live bus pipes into the destroyed bus', () => {
+        let live: Strongbus.Bus<TestEventMap>;
+
+        beforeEach(() => {
+          live = new Strongbus.Bus<TestEventMap>();
+          bus.destroy();
+        });
+
+        function expectLoggedOnTarget(): void {
+          expect(logger.warn).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.invokeAfterDestroy(bus.name, `${live.name}.pipe`, undefined)
+          );
+        }
+
+        it('logs on the destroyed bus and does not link', () => {
+          expect(live.pipe(bus)).toBe(bus);
+          live.emit('foo', 'x');
+
+          expectLoggedOnTarget();
+          expect(onUnhandledEvent).not.toHaveBeenCalled();
+        });
+
+        it('logs through a FilteredPipeHandle and does not link', () => {
+          expect(live.pipe(() => true).pipe(bus)).toBe(bus);
+          live.emit('foo', 'x');
+
+          expectLoggedOnTarget();
+          expect(onUnhandledEvent).not.toHaveBeenCalled();
+        });
+      });
+    });
+
+    describe('given onUseAfterDestroy is false and a live bus pipes into a destroyed bus', () => {
+      it('links as before', () => {
+        bus = guardedBus(false);
         bus.destroy();
-        downstream.pipe(bus);
+        const live = new Strongbus.Bus<TestEventMap>();
+
+        live.pipe(bus);
+        live.emit('foo', 'x');
+
+        expect(onUnhandledEvent).toHaveBeenCalledWith('foo', 'x');
         expect(logger.warn).not.toHaveBeenCalled();
       });
     });
@@ -3170,6 +3209,13 @@ describe('Strongbus.Bus', () => {
       it('includes the destroy reason', () => {
         bus.destroy('owner disposed');
         expect(() => bus.emit('foo', 'x')).toThrowError(/emit\(\) invoked after destroy \(reason: owner disposed\)/);
+      });
+
+      it('throws when a live bus pipes into the destroyed bus', () => {
+        bus.destroy();
+        const live = new Strongbus.Bus<TestEventMap>();
+        const {message, code} = StrongbusLogMessages.invokeAfterDestroy(bus.name, `${live.name}.pipe`, undefined);
+        expect(() => live.pipe(bus)).toThrow(jasmine.objectContaining({message, code}));
       });
 
       it('does not throw from introspection', () => {

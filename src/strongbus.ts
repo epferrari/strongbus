@@ -316,6 +316,8 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
       return typeof dest === 'function' ? inertFilteredPipeHandle() : dest;
     } else if(typeof dest === 'function') {
       return this.createFilteredPipeHandle(dest as PipePredicate<TEventMap>);
+    } else if(dest.isInertPipeTarget(this.name)) {
+      return dest;
     }
     return this.connectDownstreamNode(dest, options) as Bus<any>;
   }) as SubscriptionSurfacePipe<TEventMap>;
@@ -616,7 +618,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   ): FilteredPipeHandle<TEventMap> {
     return {
       pipe: ((downstream: Bus<any>, options?: SubscribeOptions) => {
-        if(this.isInertAfterDestroy('pipe')) {
+        if(this.isInertAfterDestroy('pipe') || downstream.isInertPipeTarget(this.name)) {
           return downstream;
         }
         return this.connectDownstreamNode(downstream, {...options, filter}) as Bus<any>;
@@ -636,6 +638,14 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     const reason = this.destroyReason === Bus.DESTROYED ? undefined : this.destroyReason;
     this.logger.onInvokeAfterDestroy(method, reason, onUseAfterDestroy);
     return true;
+  }
+
+  /**
+   * {@link Bus.isInertAfterDestroy} for an upstream piping into this bus, reported under
+   * this bus's {@link Options.onUseAfterDestroy}.
+   */
+  private isInertPipeTarget(upstreamName: string): boolean {
+    return this.isInertAfterDestroy(`${upstreamName}.pipe`);
   }
 
   /**
