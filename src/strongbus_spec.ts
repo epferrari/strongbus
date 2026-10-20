@@ -3019,15 +3019,16 @@ describe('Strongbus.Bus', () => {
           expect(() => sub.unsubscribe()).not.toThrow();
         }
 
-        it('#emit logs and returns false without dispatching', () => {
+        it('#emit returns false without dispatching or logging', () => {
           expect(bus.emit('foo', 'x')).toBeFalse();
           expect(onUnhandledEvent).not.toHaveBeenCalled();
-          expectLogged('emit');
+          expect(logger.warn).not.toHaveBeenCalled();
         });
 
-        it('#destroy logs and returns', () => {
-          bus.destroy();
-          expectLogged('destroy');
+        it('#destroy returns without logging', () => {
+          bus.destroy('again');
+          expect(bus.destroyed).toBeTrue();
+          expect(logger.warn).not.toHaveBeenCalled();
         });
 
         it('#on logs and returns an inert Subscription', () => {
@@ -3118,9 +3119,9 @@ describe('Strongbus.Bus', () => {
 
       it('includes the destroy reason in the log', () => {
         bus.destroy('owner disposed');
-        bus.emit('foo', 'x');
+        bus.on('foo', singleEventHandler);
         expect(logger.warn).toHaveBeenCalledOnceWith(
-          StrongbusLogMessages.invokeAfterDestroy(bus.name, 'emit', 'owner disposed')
+          StrongbusLogMessages.invokeAfterDestroy(bus.name, 'on', 'owner disposed')
         );
         expect(logger.warn.calls.mostRecent().args[0].message).toContain('owner disposed');
       });
@@ -3208,7 +3209,14 @@ describe('Strongbus.Bus', () => {
 
       it('includes the destroy reason', () => {
         bus.destroy('owner disposed');
-        expect(() => bus.emit('foo', 'x')).toThrowError(/emit\(\) invoked after destroy \(reason: owner disposed\)/);
+        expect(() => bus.on('foo', singleEventHandler)).toThrowError(/on\(\) invoked after destroy \(reason: owner disposed\)/);
+      });
+
+      it('does not throw from #emit or #destroy', () => {
+        bus.destroy();
+        expect(bus.emit('foo', 'x')).toBeFalse();
+        expect(() => bus.destroy()).not.toThrow();
+        expect(onUnhandledEvent).not.toHaveBeenCalled();
       });
 
       it('throws when a live bus pipes into the destroyed bus', () => {

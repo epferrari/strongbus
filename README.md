@@ -602,8 +602,8 @@ Afterwards, `bus.destroyed` is `true`.
 bus.destroy('session closed');
 ```
 
-By default a destroyed bus still accepts calls, so a consumer that outlives the bus's owner keeps subscribing and
-emitting without any sign of trouble. Set `onUseAfterDestroy` to catch this:
+By default a destroyed bus still accepts calls, so a consumer that outlives the bus's owner keeps subscribing without
+any sign of trouble. Set `onUseAfterDestroy` to catch this:
 
 ```typescript
 const bus = new Bus<Events>({onUseAfterDestroy: 'warn'});
@@ -620,10 +620,13 @@ bus.on('foo', handler);
 - `'throw'` — throw an `Error` with the same message and `code`. `next` and `scan` return a rejected
   `CancelablePromise` instead of throwing.
 
-Stubs: `emit` returns `false`; `on`, `once`, `any`, `tap`, `hook`, and `monitor` return a no-op `Subscription`;
-`pipe(bus)` returns `bus` without linking; `pipe(predicate)` returns a handle whose `pipe` does nothing; `next` and
-`scan` return a `CancelablePromise` that never settles unless canceled; `off`, `unpipe`, and `destroy` return.
-Introspection methods (`hasListeners`, `getListenerCount`, `destroyed`, etc.) are never affected.
+Stubs: `on`, `once`, `any`, `tap`, `hook`, and `monitor` return a no-op `Subscription`; `pipe(bus)` returns `bus`
+without linking; `pipe(predicate)` returns a handle whose `pipe` does nothing; `next` and `scan` return a
+`CancelablePromise` that never settles unless canceled; `off` and `unpipe` return.
+
+`emit` and `destroy` are exempt from logging and throwing: under any `onUseAfterDestroy` setting other than `false`,
+they quietly do nothing (`emit` returns `false`). Introspection methods (`hasListeners`, `getListenerCount`,
+`destroyed`, etc.) are never affected.
 
 Piping a live bus into a destroyed one counts as using the destroyed bus: it is reported under the destroyed bus's
 `onUseAfterDestroy` (as `<live name>.pipe()`), and no edge is created.

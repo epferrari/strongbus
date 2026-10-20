@@ -116,14 +116,14 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   `willDestroy` hooks). It is optional on `IntrospectionSurface` for now, so hand-rolled
   implementations need not add it.
 - **`options.onUseAfterDestroy`** (default `false`) — `false` | `'debug'` | `'info'` | `'warn'` |
-  `'error'` | `'throw'`. When set, calling any `ControlSurface`, `EmittingSurface`,
-  `MonitoringSurface`, or `SubscriptionSurface` method on a destroyed bus throws, or logs
-  `StrongbusLogCode.InvokeAfterDestroy` (`1015`) at that level, naming the method and the destroy
-  reason. Thrown errors carry the same `code`; `next` / `scan` reject with that error instead of
-  throwing synchronously. When not throwing, the
-  call is skipped and returns an inert stub: `false` from `emit`, a no-op `Subscription` from
-  subscribe/hook methods, the downstream from `pipe`, and a never-settling `CancelablePromise` from
-  `next` / `scan`. Introspection is unaffected. Piping a live bus into a destroyed one is reported
+  `'error'` | `'throw'`. When set, calling any `MonitoringSurface` or `SubscriptionSurface` method
+  on a destroyed bus throws, or logs `StrongbusLogCode.InvokeAfterDestroy` (`1015`) at that level,
+  naming the method and the destroy reason. Thrown errors carry the same `code`; `next` / `scan`
+  reject with that error instead of throwing synchronously. When not throwing, the call is skipped
+  and returns an inert stub: a no-op `Subscription` from subscribe/hook methods, the downstream
+  from `pipe`, and a never-settling `CancelablePromise` from `next` / `scan`. `emit` and `destroy`
+  (`ControlSurface` / `EmittingSurface`) become silent no-ops under any setting other than
+  `false`; `emit` returns `false`. Introspection is unaffected. Piping a live bus into a destroyed one is reported
   under the destroyed bus's setting and creates no edge. See [Teardown](./README.md#teardown).
 
 ### Changed

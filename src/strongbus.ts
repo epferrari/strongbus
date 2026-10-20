@@ -211,7 +211,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     event: EventKeys<TEventMap>,
     payload?: TEventMap[EventKeys<TEventMap>]
   ): boolean {
-    if(this.isInertAfterDestroy('emit')) {
+    if(this.inertAfterDestroy) {
       return false;
     }
     return this.dispatcher.dispatchEvent(event, payload);
@@ -581,7 +581,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * The first `reason` given is retained and reported by {@link Options.onUseAfterDestroy}.
    */
   public destroy(reason?: string) {
-    if(this.isInertAfterDestroy('destroy')) {
+    if(this.inertAfterDestroy) {
       return;
     }
     this.subscriptions.releaseAll();
@@ -638,6 +638,14 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     const reason = this.destroyReason === Bus.DESTROYED ? undefined : this.destroyReason;
     this.logger.onInvokeAfterDestroy(method, reason, onUseAfterDestroy);
     return true;
+  }
+
+  /**
+   * Whether {@link Options.onUseAfterDestroy} skips calls now, without reporting them.
+   * Used by `emit` and `destroy`, which skip silently.
+   */
+  private get inertAfterDestroy(): boolean {
+    return Boolean(this.options.onUseAfterDestroy) && this.destroyed;
   }
 
   /**
