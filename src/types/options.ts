@@ -1,5 +1,5 @@
 
-import type {LoggerProvider} from './logger';
+import type {LoggerProvider, LogLevel} from './logger';
 import type {DuplicateSubscriptionStrategy} from './duplicateSubscriptionStrategy';
 
 export * from './duplicateSubscriptionStrategy';
@@ -26,6 +26,10 @@ export interface ListenerThresholds {
  * @prop coalesceDownstreamLifecycleEvents [true] - when true, coalesce will/did add/remove hooks to one
  * emission per event key during `pipe()` / `unpipe()` reconcile of a heavily-subscribed downstream bus
  * @prop duplicateSubscriptionStrategy - how duplicate listenable+handler registrations behave
+ * @prop strictDestroy [false] - what to do when a control, emitting, monitoring, or subscription
+ * method is called after `destroy()`: `false` runs it as usual; a {@link LogLevel} skips it and
+ * returns an inert stub, logging `StrongbusLogCode.InvokeAfterDestroy` (`'never'` skips silently);
+ * `'throw'` throws instead. Introspection is never affected.
  */
 export interface Options {
   name?: string;
@@ -35,6 +39,7 @@ export interface Options {
   coalesceDownstreamLifecycleEvents?: boolean;
   duplicateSubscriptionStrategy?: Partial<DuplicateSubscriptionStrategy>;
   onUnhandledEvent?: 'throw'|'ignore'|((event: string|number|symbol, payload: unknown) => void);
+  strictDestroy?: false|LogLevel|'throw';
 }
 
 /** Options accepted by {@link Bus.configure}; `name` is per-instance only. */

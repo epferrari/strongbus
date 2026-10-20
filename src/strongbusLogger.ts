@@ -96,6 +96,20 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
     this.error(buildAsyncErrorHandlerFailed(details));
   }
 
+  /** Throws instead of logging when `level` is `'throw'`. */
+  public onInvokeAfterDestroy(
+    method: string,
+    reason: string|undefined,
+    level: LogLevel|'throw'
+  ): void {
+    const record = buildInvokeAfterDestroy(this.name, method, reason);
+    if(level === 'throw') {
+      throw new Error(record.message);
+    } else if(level !== 'never') {
+      this[level](record);
+    }
+  }
+
   private onAddListenerNonVerbose(event: EventKeys<TEventMap>|WILDCARD, n: number) {
     const {thresholds} = this;
     if(n === thresholds.info) {
@@ -304,6 +318,13 @@ function buildAsyncErrorHandlerFailed(context: ErrorHandlerFailureDetails): Stro
   };
 }
 
+function buildInvokeAfterDestroy(name: string, method: string, reason?: string): StrongbusLogRecord {
+  return {
+    code: StrongbusLogCode.InvokeAfterDestroy,
+    message: `${name}: ${method}() invoked after destroy${reason === undefined ? '' : ` (reason: ${reason})`}`
+  };
+}
+
 /**
  * Expected {@link StrongbusLogRecord} fixtures for specs. Prefer asserting against
  * these rather than hard-coding message text. Production call sites should use
@@ -326,6 +347,7 @@ export class StrongbusLogMessages {
   public static unsoundPipeEdgeFilterUpgrade = buildUnsoundPipeEdgeFilterUpgrade;
   public static errorHandlerFailed = buildErrorHandlerFailed;
   public static asyncErrorHandlerFailed = buildAsyncErrorHandlerFailed;
+  public static invokeAfterDestroy = buildInvokeAfterDestroy;
 }
 
 /**

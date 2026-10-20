@@ -51,6 +51,7 @@ import type {
 import type {MonitoringSurface, MonitoringHook} from './types/surfaces/monitoringSurface';
 import type {EventKeys, SubscribableEventKeys, VoidEventKeys} from './types/utility';
 import {subscribeListenable} from './utils/subscribeListenable';
+import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import {isSubscribeOptions} from './utils/isSubscribeOptions';
 import {BusGraphNode} from './busGraphNode';
@@ -85,7 +86,8 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     verbose: false,
     coalesceDownstreamLifecycleEvents: true,
     duplicateSubscriptionStrategy: resolveDuplicateSubscriptionStrategy(),
-    onUnhandledEvent: 'ignore'
+    onUnhandledEvent: 'ignore',
+    strictDestroy: false
   };
 
   /**
@@ -171,7 +173,12 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
       options: this.options,
       logger: this.logger
     });
-    this.hook = this.lifecycle.hook;
+    this.hook = ((event, handler) => {
+      if(this.isInertAfterDestroy('hook')) {
+        return inertSubscription();
+      }
+      return this.lifecycle.hook(event, handler);
+    }) as MonitoringHook<TEventMap>;
     this.subscriptions = new SubscriptionManager({
       host: this.createSubscriptionHost(),
       options: this.options,
@@ -204,6 +211,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     event: EventKeys<TEventMap>,
     payload?: TEventMap[EventKeys<TEventMap>]
   ): boolean {
+    if(this.isInertAfterDestroy('emit')) {
+      return false;
+    }
     return this.dispatcher.dispatchEvent(event, payload);
   }
 
@@ -216,6 +226,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     handler: EventHandler<TEventMap, T>,
     options?: SubscribeOptions
   ): Subscription {
+    if(this.isInertAfterDestroy('on')) {
+      return inertSubscription();
+    }
     return this.subscriptions.on(event, handler, options);
   }
 
@@ -227,6 +240,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * {@link Bus.any} / {@link Bus.tap} intent.
    */
   public off<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): void {
+    if(this.isInertAfterDestroy('off')) {
+      return;
+    }
     this.subscriptions.off(event, handler);
   }
 
@@ -240,6 +256,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     handler: EventHandler<TEventMap, T>,
     options?: SubscribeOptions
   ): Subscription {
+    if(this.isInertAfterDestroy('once')) {
+      return inertSubscription();
+    }
     return this.subscriptions.once(event, handler, options);
   }
 
@@ -254,6 +273,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     handler,
     options?: SubscribeOptions
   ) => {
+    if(this.isInertAfterDestroy('any')) {
+      return inertSubscription();
+    }
     return this.subscriptions.any(
       events as EventKeys<TEventMap>[],
       handler as unknown as EventSink<TEventMap>,
@@ -269,6 +291,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     handler: TapHandler<TEventMap>,
     options?: SubscribeOptions
   ) => {
+    if(this.isInertAfterDestroy('tap')) {
+      return inertSubscription();
+    }
     return this.subscriptions.tap(handler, options);
   }) as SubscriptionSurfaceTap<TEventMap>;
 
@@ -287,7 +312,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     dest: PipePredicate<TEventMap> | Bus<any>,
     options?: SubscribeOptions
   ): FilteredPipeHandle<TEventMap> | Bus<any> => {
-    if(typeof dest === 'function') {
+    if(this.isInertAfterDestroy('pipe')) {
+      return typeof dest === 'function' ? inertFilteredPipeHandle() : dest;
+    } else if(typeof dest === 'function') {
       return this.createFilteredPipeHandle(dest as PipePredicate<TEventMap>);
     }
     return this.connectDownstreamNode(dest, options) as Bus<any>;
@@ -299,6 +326,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   public unpipe: SubscriptionSurfaceUnpipe<TEventMap> = ((
     dest: Bus<any>
   ) => {
+    if(this.isInertAfterDestroy('unpipe')) {
+      return;
+    }
     this.disconnectDownstreamNode(dest);
   }) as SubscriptionSurfaceUnpipe<TEventMap>;
 
@@ -332,6 +362,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   ) => {
     type T = typeof resolutionTrigger;
     type TResult = NextResult<TEventMap, T>;
+    if(this.isInertAfterDestroy('next')) {
+      return inertPromise<TResult>();
+    }
     let settled: boolean = false;
     let resolveInternalPromise: (value: TResult) => void;
     let rejectInternalPromise: (err?: Error) => void;
@@ -414,6 +447,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   public scan: SubscriptionSurfaceScan<TEventMap> = ((
     ...args: unknown[]
   ): CancelablePromise<any> => {
+    if(this.isInertAfterDestroy('scan')) {
+      return inertPromise();
+    }
     const params = normalizeScanParams<TEventMap>(args);
     const scanParams = params as unknown as ScanParams<any, TEventMap>;
 
@@ -460,6 +496,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * The handler receives a `boolean` indicating if the bus is active (`true`) or idle (`false`)
    */
   public monitor(handler: (activeState: boolean) => void): Subscription {
+    if(this.isInertAfterDestroy('monitor')) {
+      return inertSubscription();
+    }
     return this.lifecycle.monitor(handler);
   }
 
@@ -534,9 +573,12 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * Remove all event subscribers, lifecycle subscribers, and downstreams.
    * Triggers lifecycle meta events for all subscribed events before removing
    * lifecycle subscribers, emitting {@link Lifecycle.willDestroy} during teardown.
-   * The first `reason` given is retained.
+   * The first `reason` given is retained and reported by {@link Options.strictDestroy}.
    */
   public destroy(reason?: string) {
+    if(this.isInertAfterDestroy('destroy')) {
+      return;
+    }
     this.subscriptions.releaseAll();
     this.lifecycle.destroy();
     this.releaseAllDownstreamEdges();
@@ -570,9 +612,26 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   ): FilteredPipeHandle<TEventMap> {
     return {
       pipe: ((downstream: Bus<any>, options?: SubscribeOptions) => {
+        if(this.isInertAfterDestroy('pipe')) {
+          return downstream;
+        }
         return this.connectDownstreamNode(downstream, {...options, filter}) as Bus<any>;
       }) as FilteredPipeHandle<TEventMap>['pipe']
     };
+  }
+
+  /**
+   * Under {@link Options.strictDestroy}, report a call to `method` on a destroyed bus.
+   * @returns `true` when the caller should return its inert stub instead of running
+   */
+  private isInertAfterDestroy(method: string): boolean {
+    const {strictDestroy} = this.options;
+    if(!strictDestroy || !this.destroyed) {
+      return false;
+    }
+    const reason = this.destroyReason === Bus.DESTROYED ? undefined : this.destroyReason;
+    this.logger.onInvokeAfterDestroy(method, reason, strictDestroy);
+    return true;
   }
 
   private accountForDownstreamListeners(_event: EventKeys<TEventMap>|WILDCARD, _count: number): void {
@@ -590,4 +649,19 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   private invalidateOwnListenerCache(): void {
     this.introspection.invalidateOwnListenerCache();
   }
+}
+
+function inertSubscription(): Subscription {
+  return subscriptionWrapper(() => undefined);
+}
+
+function inertFilteredPipeHandle<TEventMap extends EventMap>(): FilteredPipeHandle<TEventMap> {
+  return {
+    pipe: ((downstream: Bus<any>) => downstream) as FilteredPipeHandle<TEventMap>['pipe']
+  };
+}
+
+/** Never settles on its own; `cancel()` still rejects it. */
+function inertPromise<T>(): CancelablePromise<T> {
+  return cancelable<T>(() => new Promise<T>(() => undefined));
 }

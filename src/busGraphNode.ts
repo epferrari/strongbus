@@ -93,13 +93,13 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
     } else {
       downstreams.set(downstream, {
         unlink: over([
-          downstream.hook(Lifecycle.willAddListener, (event) =>
+          downstream.lifecycle.hook(Lifecycle.willAddListener, (event) =>
             this.lifecycle.onDownstreamWillAdd(event as EventKeys<TEventMap>|WILDCARD)),
-          downstream.hook(Lifecycle.didAddListener, (event) =>
+          downstream.lifecycle.hook(Lifecycle.didAddListener, (event) =>
             this.lifecycle.onDownstreamDidAdd(event as EventKeys<TEventMap>|WILDCARD)),
-          downstream.hook(Lifecycle.willRemoveListener, (event) =>
+          downstream.lifecycle.hook(Lifecycle.willRemoveListener, (event) =>
             this.lifecycle.onDownstreamWillRemove(event as EventKeys<TEventMap>|WILDCARD)),
-          downstream.hook(Lifecycle.didRemoveListener, (event) =>
+          downstream.lifecycle.hook(Lifecycle.didRemoveListener, (event) =>
             this.lifecycle.onDownstreamDidRemove(event as EventKeys<TEventMap>|WILDCARD))
         ]),
         incognito: false,

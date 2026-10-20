@@ -2915,6 +2915,238 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('options.strictDestroy', () => {
+    let logger: jasmine.SpyObj<Logger>;
+    let onUnhandledEvent: jasmine.Spy;
+    let downstream: Strongbus.Bus<TestEventMap>;
+
+    function strictBus(strictDestroy: Strongbus.Options['strictDestroy']): Strongbus.Bus<TestEventMap> {
+      return new Strongbus.Bus<TestEventMap>({name: 'Strict', logger, onUnhandledEvent, strictDestroy});
+    }
+
+    async function isPending(p: Promise<unknown>): Promise<boolean> {
+      const pending = Symbol('pending');
+      const winner = await Promise.race([p.catch((): void => undefined), sleep(5).then(() => pending)]);
+      return winner === pending;
+    }
+
+    beforeEach(() => {
+      logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+      onUnhandledEvent = jasmine.createSpy('onUnhandledEvent');
+      downstream = new Strongbus.Bus<TestEventMap>();
+      downstream.on('foo', singleEventHandler);
+    });
+
+    describe('given strictDestroy is false (default)', () => {
+      it('runs methods on a destroyed bus as before, without logging', () => {
+        bus = strictBus(undefined);
+        bus.destroy();
+
+        bus.on('foo', singleEventHandler);
+        bus.emit('foo', 'x');
+
+        expect(singleEventHandler).toHaveBeenCalledWith('x');
+        expect(bus.getListenerCount()).toBe(1);
+        expect(logger.warn).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('given strictDestroy is a LogLevel', () => {
+      beforeEach(() => {
+        bus = strictBus('warn');
+      });
+
+      it('does not interfere before destroy', () => {
+        bus.on('foo', singleEventHandler);
+        bus.emit('foo', 'x');
+
+        expect(singleEventHandler).toHaveBeenCalledWith('x');
+        expect(logger.warn).not.toHaveBeenCalled();
+      });
+
+      describe('and the bus is destroyed', () => {
+        beforeEach(() => {
+          bus.destroy();
+        });
+
+        function expectLogged(method: string): void {
+          expect(logger.warn).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.invokeAfterDestroy(bus.name, method, undefined)
+          );
+          expect(logger.warn.calls.mostRecent().args[0].code).toBe(Strongbus.StrongbusLogCode.InvokeAfterDestroy);
+        }
+
+        function expectInertSubscription(sub: Strongbus.Subscription): void {
+          expect(bus.getListenerCount()).toBe(0);
+          expect(() => sub()).not.toThrow();
+          expect(() => sub.unsubscribe()).not.toThrow();
+        }
+
+        it('#emit logs and returns false without dispatching', () => {
+          expect(bus.emit('foo', 'x')).toBeFalse();
+          expect(onUnhandledEvent).not.toHaveBeenCalled();
+          expectLogged('emit');
+        });
+
+        it('#destroy logs and returns', () => {
+          bus.destroy();
+          expectLogged('destroy');
+        });
+
+        it('#on logs and returns an inert Subscription', () => {
+          expectInertSubscription(bus.on('foo', singleEventHandler));
+          expectLogged('on');
+        });
+
+        it('#once logs and returns an inert Subscription', () => {
+          expectInertSubscription(bus.once('foo', singleEventHandler));
+          expectLogged('once');
+        });
+
+        it('#any logs and returns an inert Subscription', () => {
+          expectInertSubscription(bus.any(['foo', 'bar'], eventSink));
+          expectLogged('any');
+        });
+
+        it('#tap logs and returns an inert Subscription', () => {
+          expectInertSubscription(bus.tap(eventSink));
+          expectLogged('tap');
+        });
+
+        it('#off logs and returns', () => {
+          bus.off('foo', singleEventHandler);
+          expectLogged('off');
+        });
+
+        it('#hook logs and returns an inert Subscription', () => {
+          expectInertSubscription(bus.hook('didAddListener', eventSink));
+          expectLogged('hook');
+        });
+
+        it('#monitor logs and returns an inert Subscription', () => {
+          expectInertSubscription(bus.monitor(eventSink));
+          expectLogged('monitor');
+        });
+
+        it('#pipe(bus) logs and returns the downstream without linking it', () => {
+          expect(bus.pipe(downstream)).toBe(downstream);
+          expect(bus.getListenerCount()).toBe(0);
+          expectLogged('pipe');
+        });
+
+        it('#pipe(predicate) logs once and returns a handle that does not link', () => {
+          const handle = bus.pipe(() => true);
+          expect(handle.pipe(downstream)).toBe(downstream);
+          expect(bus.getListenerCount()).toBe(0);
+          expectLogged('pipe');
+        });
+
+        it('#unpipe logs and returns', () => {
+          bus.unpipe(downstream);
+          expectLogged('unpipe');
+        });
+
+        it('#next logs and returns a pending CancelablePromise', async () => {
+          const p = bus.next('foo');
+          expectLogged('next');
+          expect(await isPending(p)).toBeTrue();
+          p.cancel();
+          await expectAsync(p).toBeRejected();
+        });
+
+        it('#scan logs and returns a pending CancelablePromise', async () => {
+          const evaluator = jasmine.createSpy('evaluator');
+          const p = bus.scan('foo', evaluator);
+          expectLogged('scan');
+          expect(evaluator).not.toHaveBeenCalled();
+          expect(await isPending(p)).toBeTrue();
+          p.cancel();
+          await expectAsync(p).toBeRejected();
+        });
+
+        it('does not affect introspection', () => {
+          expect(bus.destroyed).toBeTrue();
+          expect(bus.active).toBeFalse();
+          expect(bus.hasListeners()).toBeFalse();
+          expect(bus.getListenerCount()).toBe(0);
+          expect(bus.getListeners().size).toBe(0);
+          expect(bus.getEventCount()).toBe(0);
+          expect(bus.hasListenersFor('foo')).toBeFalse();
+          expect(bus.getListenerCountFor('foo')).toBe(0);
+          expect(bus.getListenersFor('foo').size).toBe(0);
+          bus.forEach(() => undefined);
+          expect(logger.warn).not.toHaveBeenCalled();
+        });
+      });
+
+      it('includes the destroy reason in the log', () => {
+        bus.destroy('owner disposed');
+        bus.emit('foo', 'x');
+        expect(logger.warn).toHaveBeenCalledOnceWith(
+          StrongbusLogMessages.invokeAfterDestroy(bus.name, 'emit', 'owner disposed')
+        );
+        expect(logger.warn.calls.mostRecent().args[0].message).toContain('owner disposed');
+      });
+
+      it('logs a FilteredPipeHandle created before destroy and piped after', () => {
+        const handle = bus.pipe(() => true);
+        bus.destroy();
+        expect(handle.pipe(downstream)).toBe(downstream);
+        expect(bus.getListenerCount()).toBe(0);
+        expect(logger.warn).toHaveBeenCalledOnceWith(
+          StrongbusLogMessages.invokeAfterDestroy(bus.name, 'pipe', undefined)
+        );
+      });
+
+      it('does not log when a live bus pipes into the destroyed bus', () => {
+        bus.destroy();
+        downstream.pipe(bus);
+        expect(logger.warn).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('given strictDestroy is \'never\'', () => {
+      it('makes methods inert without logging', () => {
+        bus = strictBus('never');
+        bus.destroy();
+
+        bus.on('foo', singleEventHandler);
+        expect(bus.emit('foo', 'x')).toBeFalse();
+
+        expect(bus.getListenerCount()).toBe(0);
+        expect(singleEventHandler).not.toHaveBeenCalled();
+        for(const level of ['debug', 'info', 'warn', 'error'] as const) {
+          expect(logger[level]).not.toHaveBeenCalled();
+        }
+      });
+    });
+
+    describe('given strictDestroy is \'throw\'', () => {
+      beforeEach(() => {
+        bus = strictBus('throw');
+      });
+
+      it('throws the log message, without logging', () => {
+        bus.destroy();
+        const {message} = StrongbusLogMessages.invokeAfterDestroy(bus.name, 'on', undefined);
+        expect(() => bus.on('foo', singleEventHandler)).toThrowError(message);
+        expect(bus.getListenerCount()).toBe(0);
+        expect(logger.error).not.toHaveBeenCalled();
+      });
+
+      it('includes the destroy reason', () => {
+        bus.destroy('owner disposed');
+        expect(() => bus.emit('foo', 'x')).toThrowError(/emit\(\) invoked after destroy \(reason: owner disposed\)/);
+      });
+
+      it('does not throw from introspection', () => {
+        bus.destroy();
+        expect(() => bus.getListenerCount()).not.toThrow();
+        expect(bus.destroyed).toBeTrue();
+      });
+    });
+  });
+
   describe('Reserved events', () => {
     describe('given the wildcard (*) event is manually raised', () => {
       it('raises an error', () => {
