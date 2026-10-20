@@ -164,9 +164,10 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     this.options = Bus.mergeOptions(Bus.defaultOptions, options);
     this.name = `${uniqueName(this.options.name)} ${this.constructor.name}`;
     this.logger = new StrongbusLogger<TEventMap>({
-      ...this.options,
+      name: this.name,
       provider: this.options.logger,
-      name: this.name
+      thresholds: this.options.thresholds,
+      verbose: this.options.verbose
     });
     this.lifecycle = new LifecycleManager<TEventMap>({
       host: this.createLifecycleHost(),
