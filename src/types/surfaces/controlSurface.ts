@@ -6,9 +6,9 @@ import type {EmittingSurface} from './emittingSurface';
 /**
  * Emit events and tear down a {@link Bus} instance.
  *
- * Extends {@link EmittingSurface} with {@link ControlSurface.destroy}. Prefer
- * {@link EmittingSurface} when a dependency may raise events but must not
- * destroy the bus.
+ * Extends {@link EmittingSurface} with {@link ControlSurface.destroy} and
+ * {@link ControlSurface.clear}. Prefer {@link EmittingSurface} when a dependency
+ * may raise events but must not destroy or clear the bus.
  *
  * Event-map typing is bivariant (no `in out`) so a surface over a wider map is
  * assignable to a narrower view — the same Wide→Narrow shape as {@link Bus}.
@@ -16,6 +16,12 @@ import type {EmittingSurface} from './emittingSurface';
 export interface ControlSurface<TEventMap extends EventMap = EventMap>
   extends EmittingSurface<TEventMap> {
   destroy(reason?: string): void;
+
+  /**
+   * Remove all event listeners, sever all pipe edges, and cancel pending `next` / `scan`
+   * promises, leaving the bus usable. Lifecycle hooks stay registered.
+   */
+  clear(): void;
 }
 
 type InferControlEventMap<S> =

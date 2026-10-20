@@ -2952,6 +2952,121 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('#clear', () => {
+    it('removes all event listeners, including incognito ones', () => {
+      bus.on('foo', singleEventHandler);
+      bus.once('bar', singleEventHandler);
+      bus.any(['foo', 'baz'], eventSink);
+      bus.tap(eventSink);
+      bus.on('baz', singleEventHandler, {incognito: true});
+
+      bus.clear();
+      bus.emit('foo', 'x');
+      bus.emit('bar', true);
+      bus.emit('baz', 1);
+
+      expect(singleEventHandler).not.toHaveBeenCalled();
+      expect(eventSink).not.toHaveBeenCalled();
+      expect(bus.getListenerCount({includeIncognito: true})).toBe(0);
+    });
+
+    it('keeps lifecycle hooks, which see the removals and later additions', () => {
+      const didRemoveListener = jasmine.createSpy('didRemoveListener');
+      const didAddListener = jasmine.createSpy('didAddListener');
+      const onIdle = jasmine.createSpy('idle');
+      bus.on('foo', singleEventHandler);
+      bus.hook('didRemoveListener', didRemoveListener);
+      bus.hook('didAddListener', didAddListener);
+      bus.hook('idle', onIdle);
+
+      bus.clear();
+      expect(didRemoveListener).toHaveBeenCalledWith('foo');
+      expect(onIdle).toHaveBeenCalled();
+      expect(bus.active).toBeFalse();
+
+      bus.on('bar', singleEventHandler);
+      expect(didAddListener).toHaveBeenCalledWith('bar');
+    });
+
+    it('severs downstream edges and stops counting downstream listeners', () => {
+      const downstream = new Strongbus.Bus<TestEventMap>();
+      downstream.on('foo', singleEventHandler);
+      bus.pipe(downstream);
+      expect(bus.active).toBeTrue();
+
+      bus.clear();
+      bus.emit('foo', 'x');
+
+      expect(singleEventHandler).not.toHaveBeenCalled();
+      expect(bus.getListenerCount()).toBe(0);
+      expect(bus.active).toBeFalse();
+    });
+
+    it('severs upstream edges', () => {
+      const upstream = new Strongbus.Bus<TestEventMap>();
+      bus.on('foo', singleEventHandler);
+      upstream.pipe(bus);
+
+      bus.clear();
+      bus.on('foo', singleEventHandler);
+      upstream.emit('foo', 'x');
+
+      expect(singleEventHandler).not.toHaveBeenCalled();
+      expect(upstream.getListenerCount()).toBe(0);
+    });
+
+    it('cancels pending next and scan promises', async () => {
+      const evaluator = (): void => undefined;
+      const pending = [
+        bus.next('foo'),
+        bus.scan('foo', evaluator),
+        bus.scan('bar', evaluator, {pool: false}),
+        bus.scan('baz', evaluator, {timeout: 10000})
+      ];
+
+      bus.clear();
+
+      for(const p of pending) {
+        await expectAsync(p).toBeRejected();
+      }
+    });
+
+    it('does not leave an orphaned pooled scanner for later scans', async () => {
+      const evaluator: Scanner.Evaluator<string, TestEventMap> = (resolve, reject) => {
+        if(resolve.trigger.type === 'event' && resolve.trigger.event === 'foo') {
+          resolve(resolve.trigger.payload as string);
+        }
+      };
+      const first = bus.scan('foo', evaluator);
+      bus.clear();
+      await expectAsync(first).toBeRejected();
+
+      const second = bus.scan('foo', evaluator);
+      bus.emit('foo', 'x');
+      await expectAsync(second).toBeResolvedTo('x');
+    });
+
+    it('leaves the bus usable and not destroyed', () => {
+      bus.clear();
+      bus.on('foo', singleEventHandler);
+      bus.emit('foo', 'x');
+
+      expect(singleEventHandler).toHaveBeenCalledWith('x');
+      expect(bus.destroyed).toBeFalse();
+    });
+
+    describe('given onUseAfterDestroy is set and the bus is destroyed', () => {
+      it('silently does nothing', () => {
+        const logger = jasmine.createSpyObj<Logger>('logger', ['info', 'warn', 'error', 'debug']);
+        bus = new Strongbus.Bus<TestEventMap>({logger, onUseAfterDestroy: 'throw'});
+        bus.destroy();
+
+        expect(() => bus.clear()).not.toThrow();
+        expect(logger.error).not.toHaveBeenCalled();
+      });
+    });
+  });
+
   describe('options.onUseAfterDestroy', () => {
     let logger: jasmine.SpyObj<Logger>;
     let onUnhandledEvent: jasmine.Spy;

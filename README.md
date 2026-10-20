@@ -455,12 +455,12 @@ hooks per listener; coalescing applies only to the initial `pipe()` / final
 | Surface | Methods | Use when |
 |---------|---------|----------|
 | **`EmittingSurface`** | `emit` | Raising events without teardown |
-| **`ControlSurface`** | `emit`, `destroy` | Raising events or tearing down a bus |
+| **`ControlSurface`** | `emit`, `destroy`, `clear` | Raising events, or clearing or tearing down a bus |
 | **`SubscriptionSurface`** | `on`, `once`, `any`, `next`, `scan`, `tap`, `pipe`, `unpipe` | Subscribing, awaiting, or forwarding events |
 | **`IntrospectionSurface`** | `hasListeners`, `getListeners`, `getListenerCount`, `hasListenersFor`, `getEventCount`, `getListenerCountFor`, `getListenersFor`, `forEach` | Inspecting listener state |
 | **`MonitoringSurface`** | `monitor`, `hook`, `active` | Observing lifecycle and active/idle state |
 
-`ControlSurface` extends `EmittingSurface`. Prefer `EmittingSurface` when a dependency may raise events but must not destroy the bus.
+`ControlSurface` extends `EmittingSurface`. Prefer `EmittingSurface` when a dependency may raise events but must not destroy or clear the bus.
 
 A `Bus<Wide>` is assignable to any narrower view (for example `SubscriptionSurface<Narrow>`) so consumers can declare only the events and capabilities they need. The same Wide→Narrow assignability holds surface-to-surface (`SubscriptionSurface<Wide>` → `SubscriptionSurface<Narrow>`), matching the flattened method picks domain objects used to expose.
 
@@ -600,6 +600,15 @@ Afterwards, `bus.destroyed` is `true`.
 
 ```typescript
 bus.destroy('session closed');
+```
+
+To start over without destroying the bus, `clear()` cancels pending `next` / `scan` promises, releases all event
+subscribers, and severs every pipe edge in both directions. Lifecycle hooks stay registered and fire for the removed
+listeners (including `idle`), and the bus stays usable: `destroyed` remains `false`.
+
+```typescript
+bus.clear();
+bus.on('foo', handler); // works as on a fresh bus
 ```
 
 By default a destroyed bus still accepts calls, so a consumer that outlives the bus's owner keeps subscribing without

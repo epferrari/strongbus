@@ -170,6 +170,16 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
   }
 
   /**
+   * Disconnect every downstream via {@link BusGraphNode.disconnectDownstreamNode}, so
+   * this node's lifecycle and listener accounting see each removal.
+   */
+  protected disconnectAllDownstreamNodes(): void {
+    for(const downstream of [...this.graph.downstreams.keys()]) {
+      this.disconnectDownstreamNode(downstream);
+    }
+  }
+
+  /**
    * Have every upstream drop its edge to this node.
    */
   protected releaseAllUpstreamEdges(): void {

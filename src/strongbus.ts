@@ -157,6 +157,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   protected readonly introspection!: IntrospectionManager<TEventMap>;
   private readonly subscriptions!: SubscriptionManager<TEventMap>;
   private readonly scanners!: ScannerPools<TEventMap>;
+  private readonly inFlight = new Set<CancelablePromise<unknown>>();
   private destroyReason: string | typeof Bus.DESTROYED | undefined;
 
   constructor(options?: Options) {
@@ -430,7 +431,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
 
     willDestroyListener = this.hook('willDestroy', () => p.cancel(`${this.name} destroyed`));
 
-    return p;
+    return this.trackInFlight(p);
   }) as SubscriptionSurfaceNext<TEventMap>;
 
   /**
@@ -474,25 +475,25 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
         );
       }
       // tslint:disable-next-line:prefer-object-spread
-      return Object.assign(
+      return this.trackInFlight(Object.assign(
         timeout(scanner, {ms: params.timeout, cancelUnderlyingPromiseOnTimeout: true}),
         {
           [INTERNAL_PROMISE]: scanner,
           cancel: (err: any) => scanner.cancel(err)
         }
-      );
+      ));
     } else if(params.pool === false) {
       const scanner = new Scanner<any>(scanParams);
       scanner.scan<TEventMap>(this, params.trigger, subscribeOptions);
       // tslint:disable-next-line:prefer-object-spread
-      return Object.assign(
+      return this.trackInFlight(Object.assign(
         scanner,
         {[INTERNAL_PROMISE]: scanner}
-      );
+      ));
 
     }
 
-    return this.scanners.scan<any>(this, scanParams);
+    return this.trackInFlight(this.scanners.scan<any>(this, scanParams));
   }) as SubscriptionSurfaceScan<TEventMap>;
 
   /**
@@ -590,6 +591,32 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     this.releaseAllDownstreamEdges();
     this.releaseAllUpstreamEdges();
     this.destroyReason ??= reason ?? Bus.DESTROYED;
+  }
+
+  /**
+   * Cancel pending {@link Bus.next} / {@link Bus.scan} promises, remove all event subscribers,
+   * and sever every pipe edge in both directions. Unlike {@link Bus.destroy}, lifecycle hooks
+   * stay registered (and see the listener removals), and the bus remains usable.
+   */
+  public clear(): void {
+    if(this.inertAfterDestroy) {
+      return;
+    }
+    for(const p of [...this.inFlight]) {
+      p.cancel(`${this.name} cleared`);
+    }
+    this.subscriptions.releaseAll();
+    this.disconnectAllDownstreamNodes();
+    this.releaseAllUpstreamEdges();
+  }
+
+  private trackInFlight<P extends CancelablePromise<any>>(p: P): P {
+    const untrack = () => {
+      this.inFlight.delete(p);
+    };
+    this.inFlight.add(p);
+    p.then(untrack, untrack);
+    return p;
   }
 
   private createSubscriptionHost(): SubscriptionHost {

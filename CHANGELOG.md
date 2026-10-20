@@ -115,6 +115,11 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   first call. `Bus#destroyed` becomes `true` once teardown completes (still `false` inside
   `willDestroy` hooks). It is optional on `IntrospectionSurface` for now, so hand-rolled
   implementations need not add it.
+- **`clear()`** — on `Bus` and `ControlSurface`. Cancels pending `next` / `scan` promises, releases
+  all event subscribers, and severs every pipe edge in both directions, without destroying the bus.
+  Lifecycle hooks stay registered and see the listener removals; `destroyed` stays `false`. Under
+  `onUseAfterDestroy`, `clear()` on a destroyed bus is a silent no-op. Hand-rolled
+  `ControlSurface` implementations must add it.
 - **`options.onUseAfterDestroy`** (default `false`) — `false` | `'debug'` | `'info'` | `'warn'` |
   `'error'` | `'throw'`. When set, calling any `MonitoringSurface` or `SubscriptionSurface` method
   on a destroyed bus throws, or logs `StrongbusLogCode.UseAfterDestroy` (`1015`) at that level,
