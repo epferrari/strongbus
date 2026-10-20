@@ -127,6 +127,9 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Changed
 
+- **`destroy()` detaches the bus from its upstreams** — previously only its own downstream
+  edges were released, so an upstream that piped into a destroyed bus kept forwarding events to
+  it while no longer tracking its listeners. Upstreams now drop the edge during `destroy()`.
 - **`Logger` method arguments are `StrongbusLogRecord`** — each of `info` /
   `warn` / `error` / `debug` is now `(record: StrongbusLogRecord) => void`, not
   `(...args: any[]) => void`. Strongbus always invokes `level(record)` with a

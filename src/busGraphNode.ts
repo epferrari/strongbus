@@ -169,6 +169,15 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
     this.graph.downstreams.clear();
   }
 
+  /**
+   * Have every upstream drop its edge to this node.
+   */
+  protected releaseAllUpstreamEdges(): void {
+    for(const upstream of [...this.graph.upstreams]) {
+      upstream.disconnectDownstreamNode(this);
+    }
+  }
+
   protected forEachDownstream(
     fn: (downstream: {
       getCombinedListenersMap(

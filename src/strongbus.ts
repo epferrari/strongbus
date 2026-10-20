@@ -572,7 +572,8 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   }
 
   /**
-   * Remove all event subscribers, lifecycle subscribers, and downstreams.
+   * Remove all event subscribers, lifecycle subscribers, and downstreams, and detach
+   * from every upstream that pipes into this bus.
    * Triggers lifecycle meta events for all subscribed events before removing
    * lifecycle subscribers, emitting {@link Lifecycle.willDestroy} during teardown.
    * The first `reason` given is retained and reported by {@link Options.onUseAfterDestroy}.
@@ -584,6 +585,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     this.subscriptions.releaseAll();
     this.lifecycle.destroy();
     this.releaseAllDownstreamEdges();
+    this.releaseAllUpstreamEdges();
     this.destroyReason ??= reason ?? Bus.DESTROYED;
   }
 

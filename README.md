@@ -594,7 +594,8 @@ bus.hasListeners({includeIncognito: true});
 
 ## Teardown
 
-`destroy(reason?)` releases all event subscribers, fires `willDestroy`, removes all hooks, and detaches all downstreams.
+`destroy(reason?)` releases all event subscribers, fires `willDestroy`, removes all hooks, detaches all downstreams,
+and detaches it from every upstream that pipes into it.
 Afterwards, `bus.destroyed` is `true`.
 
 ```typescript

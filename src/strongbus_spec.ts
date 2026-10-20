@@ -2891,6 +2891,43 @@ describe('Strongbus.Bus', () => {
       expect(eventSink).not.toHaveBeenCalled();
     });
 
+    describe('given the bus is piped into by an upstream', () => {
+      let upstream: Strongbus.Bus<TestEventMap>;
+      let onUnhandledEvent: jasmine.Spy;
+
+      beforeEach(() => {
+        onUnhandledEvent = jasmine.createSpy('onUnhandledEvent');
+        upstream = new Strongbus.Bus<TestEventMap>();
+        bus = new Strongbus.Bus<TestEventMap>({onUnhandledEvent});
+        bus.on('foo', singleEventHandler);
+      });
+
+      it('stops the upstream from forwarding to it', () => {
+        upstream.pipe(bus);
+        bus.destroy();
+
+        expect(upstream.emit('foo', 'x')).toBeFalse();
+        expect(onUnhandledEvent).not.toHaveBeenCalled();
+      });
+
+      it('detaches an incognito pipe too', () => {
+        upstream.pipe(bus, {incognito: true});
+        bus.destroy();
+
+        upstream.emit('foo', 'x');
+        expect(onUnhandledEvent).not.toHaveBeenCalled();
+      });
+
+      it('leaves the upstream unaffected by listeners added later', () => {
+        upstream.pipe(bus);
+        bus.destroy();
+        bus.on('foo', singleEventHandler);
+
+        expect(upstream.getListenerCount()).toBe(0);
+        expect(upstream.active).toBeFalse();
+      });
+    });
+
     describe('#destroyed', () => {
       it('is false before destroy', () => {
         expect(bus.destroyed).toBeFalse();
