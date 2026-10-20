@@ -5,6 +5,56 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [strictDestroy]
+
+### Added
+
+- **`destroy(reason?)`** and **`destroyed`** — `destroy` accepts an optional reason, kept from the
+  first call. `Bus#destroyed` becomes `true` once teardown completes (still `false` inside
+  `willDestroy` hooks). It is optional on `IntrospectionSurface` for now, so hand-rolled
+  implementations need not add it.
+- **`clear(options?)`** — on `Bus` and `ControlSurface`. Resets a bus without destroying it:
+  lifecycle hooks stay registered and see the removals, and `destroyed` stays `false`. Takes
+  `IntrospectionOptions`, defaulting to `scope: ListenerScope.ANY` and `includeIncognito: true`.
+  `OWN` cancels pending `next` / `scan` promises and releases this bus's subscribers;
+  `DOWNSTREAM` severs edges to buses it pipes into; `ANY` does both and also detaches from
+  upstreams. `includeIncognito: false` leaves incognito subscriptions, promises, and edges in
+  place. Under `onUseAfterDestroy`, `clear()` on a destroyed bus is a silent no-op. Hand-rolled
+  `ControlSurface` implementations must add it.
+- **`options.onUseAfterDestroy`** (default `false`) — `false` | `'debug'` | `'info'` | `'warn'` |
+  `'error'` | `'throw'`. When set, calling any `MonitoringSurface` or `SubscriptionSurface` method
+  on a destroyed bus throws, or logs `StrongbusLogCode.UseAfterDestroy` (`1016`) at that level,
+  naming the method and the destroy reason. Thrown errors carry the same `code`; `next` / `scan`
+  reject with that error instead of throwing synchronously. When not throwing, the call is skipped
+  and returns an inert stub: a no-op `Subscription` from subscribe/hook methods, the downstream
+  from `pipe`, and a never-settling `CancelablePromise` from `next` / `scan`. `emit` and `destroy`
+  (`ControlSurface` / `EmittingSurface`) become silent no-ops under any setting other than
+  `false`; `emit` returns `false`. Introspection is unaffected. Piping a live bus into a destroyed one is reported
+  under the destroyed bus's setting and creates no edge. See [Teardown](./README.md#teardown).
+
+### Removed
+
+- **Runtime `Scanner` export** — `Scanner` is now exported as a type only (`Scanner.Evaluator`,
+  `Scanner.Resolver`, and friends still work in type positions). Use `bus.scan(...)` instead of
+  constructing a `Scanner`.
+
+### Fixed
+
+- **Upstreams of a destroyed bus** — `destroy()` released only the bus's own downstream edges.
+  An upstream that piped into a destroyed bus kept forwarding events to it, but `destroy()` had
+  cleared the hooks that report the bus's listener changes upstream. Listeners added afterwards
+  received events without updating the upstream's `active` state or lifecycle hooks, and its
+  listener counts went stale until something else refreshed them. `destroy()` now detaches the
+  bus from every upstream, so upstreams stop forwarding to it.
+- **Calls made during `destroy()`** — `destroy()` released subscribers before firing
+  `willDestroy`, so a hook (or any lifecycle hook fired by the teardown) that subscribed or
+  called `next` / `scan` left listeners behind on the destroyed bus, and those promises never
+  settled. A hook that called `destroy()` re-entered teardown and recursed. While teardown
+  runs, `destroy` and `clear` are now ignored, and `MonitoringSurface` / `SubscriptionSurface`
+  methods are skipped under any `onUseAfterDestroy` setting, logging
+  `StrongbusLogCode.UseDuringDestroy` (`1015`) at `debug`. They return the same inert stubs,
+  except that `next` / `scan` return an already-canceled promise. `emit` still runs.
+
 ## [3.0.0]
 
 v3 tightens the subscription API around a smaller, more explicit set of methods
@@ -111,28 +161,6 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   emissions are coalesced for that reconcile. Incremental downstream listener changes
   after the link is established still emit hooks per listener. Set to `false` for one
   hook pair per listener during reconcile (see [Lifecycle hook ordering](./README.md#lifecycle-hook-ordering)).
-- **`destroy(reason?)`** and **`destroyed`** — `destroy` accepts an optional reason, kept from the
-  first call. `Bus#destroyed` becomes `true` once teardown completes (still `false` inside
-  `willDestroy` hooks). It is optional on `IntrospectionSurface` for now, so hand-rolled
-  implementations need not add it.
-- **`clear(options?)`** — on `Bus` and `ControlSurface`. Resets a bus without destroying it:
-  lifecycle hooks stay registered and see the removals, and `destroyed` stays `false`. Takes
-  `IntrospectionOptions`, defaulting to `scope: ListenerScope.ANY` and `includeIncognito: true`.
-  `OWN` cancels pending `next` / `scan` promises and releases this bus's subscribers;
-  `DOWNSTREAM` severs edges to buses it pipes into; `ANY` does both and also detaches from
-  upstreams. `includeIncognito: false` leaves incognito subscriptions, promises, and edges in
-  place. Under `onUseAfterDestroy`, `clear()` on a destroyed bus is a silent no-op. Hand-rolled
-  `ControlSurface` implementations must add it.
-- **`options.onUseAfterDestroy`** (default `false`) — `false` | `'debug'` | `'info'` | `'warn'` |
-  `'error'` | `'throw'`. When set, calling any `MonitoringSurface` or `SubscriptionSurface` method
-  on a destroyed bus throws, or logs `StrongbusLogCode.UseAfterDestroy` (`1016`) at that level,
-  naming the method and the destroy reason. Thrown errors carry the same `code`; `next` / `scan`
-  reject with that error instead of throwing synchronously. When not throwing, the call is skipped
-  and returns an inert stub: a no-op `Subscription` from subscribe/hook methods, the downstream
-  from `pipe`, and a never-settling `CancelablePromise` from `next` / `scan`. `emit` and `destroy`
-  (`ControlSurface` / `EmittingSurface`) become silent no-ops under any setting other than
-  `false`; `emit` returns `false`. Introspection is unaffected. Piping a live bus into a destroyed one is reported
-  under the destroyed bus's setting and creates no edge. See [Teardown](./README.md#teardown).
 
 ### Changed
 
@@ -210,9 +238,6 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Removed
 
-- **Runtime `Scanner` export** — `Scanner` is now exported as a type only (`Scanner.Evaluator`,
-  `Scanner.Resolver`, and friends still work in type positions). Use `bus.scan(...)` instead of
-  constructing a `Scanner`.
 - **`options.allowUnhandledEvents`** — use **`options.onUnhandledEvent`** (`'ignore'` |
   `'throw'` | callback).
 - **`Bus#handleUnexpectedEvent`** — override path removed; use `onUnhandledEvent: 'throw'` or
@@ -232,20 +257,6 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
 
 ### Fixed
 
-- **Upstreams of a destroyed bus** — `destroy()` released only the bus's own downstream edges.
-  An upstream that piped into a destroyed bus kept forwarding events to it, but `destroy()` had
-  cleared the hooks that report the bus's listener changes upstream. Listeners added afterwards
-  received events without updating the upstream's `active` state or lifecycle hooks, and its
-  listener counts went stale until something else refreshed them. `destroy()` now detaches the
-  bus from every upstream, so upstreams stop forwarding to it.
-- **Calls made during `destroy()`** — `destroy()` released subscribers before firing
-  `willDestroy`, so a hook (or any lifecycle hook fired by the teardown) that subscribed or
-  called `next` / `scan` left listeners behind on the destroyed bus, and those promises never
-  settled. A hook that called `destroy()` re-entered teardown and recursed. While teardown
-  runs, `destroy` and `clear` are now ignored, and `MonitoringSurface` / `SubscriptionSurface`
-  methods are skipped under any `onUseAfterDestroy` setting, logging
-  `StrongbusLogCode.UseDuringDestroy` (`1015`) at `debug`. They return the same inert stubs,
-  except that `next` / `scan` return an already-canceled promise. `emit` still runs.
 - **Downstream listeners before `pipe()`** — when a downstream already has listeners
   (including via nested `pipe` links) at the moment `pipe(bus)` runs, the upstream
   bus now bubbles the corresponding add-listener lifecycle hooks, updates listener
