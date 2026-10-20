@@ -362,8 +362,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   ) => {
     type T = typeof resolutionTrigger;
     type TResult = NextResult<TEventMap, T>;
-    if(this.isInertAfterDestroy('next')) {
-      return inertPromise<TResult>();
+    const inert = this.inertPromiseAfterDestroy<TResult>('next');
+    if(inert) {
+      return inert;
     }
     let settled: boolean = false;
     let resolveInternalPromise: (value: TResult) => void;
@@ -447,8 +448,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   public scan: SubscriptionSurfaceScan<TEventMap> = ((
     ...args: unknown[]
   ): CancelablePromise<any> => {
-    if(this.isInertAfterDestroy('scan')) {
-      return inertPromise();
+    const inert = this.inertPromiseAfterDestroy('scan');
+    if(inert) {
+      return inert;
     }
     const params = normalizeScanParams<TEventMap>(args);
     const scanParams = params as unknown as ScanParams<any, TEventMap>;
@@ -634,6 +636,19 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     return true;
   }
 
+  /**
+   * {@link Bus.isInertAfterDestroy} for promise-returning methods: under `'throw'`, rejects
+   * rather than throwing synchronously.
+   * @returns the stub to return, or `null` when the caller should run
+   */
+  private inertPromiseAfterDestroy<T>(method: string): CancelablePromise<T> | null {
+    try {
+      return this.isInertAfterDestroy(method) ? pendingPromise<T>() : null;
+    } catch(e) {
+      return cancelable<T>(() => Promise.reject(e));
+    }
+  }
+
   private accountForDownstreamListeners(_event: EventKeys<TEventMap>|WILDCARD, _count: number): void {
     this.invalidateCombinedListenerCache();
   }
@@ -662,6 +677,6 @@ function inertFilteredPipeHandle<TEventMap extends EventMap>(): FilteredPipeHand
 }
 
 /** Never settles on its own; `cancel()` still rejects it. */
-function inertPromise<T>(): CancelablePromise<T> {
+function pendingPromise<T>(): CancelablePromise<T> {
   return cancelable<T>(() => new Promise<T>(() => undefined));
 }

@@ -616,7 +616,8 @@ bus.on('foo', handler);
 
 - `false` (default) — calls run as usual.
 - a log level (`'debug'` | `'info'` | `'warn'` | `'error'`) — log, then skip the call and return an inert stub.
-- `'throw'` — throw an `Error` with the same message.
+- `'throw'` — throw an `Error` with the same message and `code`. `next` and `scan` return a rejected
+  `CancelablePromise` instead of throwing.
 
 Stubs: `emit` returns `false`; `on`, `once`, `any`, `tap`, `hook`, and `monitor` return a no-op `Subscription`;
 `pipe(bus)` returns `bus` without linking; `pipe(predicate)` returns a handle whose `pipe` does nothing; `next` and

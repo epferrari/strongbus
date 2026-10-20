@@ -3110,13 +3110,25 @@ describe('Strongbus.Bus', () => {
         bus = guardedBus('throw');
       });
 
-      it('throws the log message, without logging', () => {
+      it('throws the log message and code, without logging', () => {
         bus.destroy();
-        const {message} = StrongbusLogMessages.invokeAfterDestroy(bus.name, 'on', undefined);
-        expect(() => bus.on('foo', singleEventHandler)).toThrowError(message);
+        const {message, code} = StrongbusLogMessages.invokeAfterDestroy(bus.name, 'on', undefined);
+        expect(() => bus.on('foo', singleEventHandler)).toThrow(jasmine.objectContaining({message, code}));
         expect(bus.getListenerCount()).toBe(0);
         expect(logger.error).not.toHaveBeenCalled();
       });
+
+      for(const method of ['next', 'scan'] as const) {
+        it(`#${method} returns a rejected promise instead of throwing`, async () => {
+          bus.destroy();
+          const {message, code} = StrongbusLogMessages.invokeAfterDestroy(bus.name, method, undefined);
+          let p: Promise<unknown>;
+          expect(() => {
+            p = method === 'next' ? bus.next('foo') : bus.scan('foo', () => undefined);
+          }).not.toThrow();
+          await expectAsync(p).toBeRejectedWith(jasmine.objectContaining({message, code}));
+        });
+      }
 
       it('includes the destroy reason', () => {
         bus.destroy('owner disposed');

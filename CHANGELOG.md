@@ -119,7 +119,8 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   `'error'` | `'throw'`. When set, calling any `ControlSurface`, `EmittingSurface`,
   `MonitoringSurface`, or `SubscriptionSurface` method on a destroyed bus throws, or logs
   `StrongbusLogCode.InvokeAfterDestroy` (`1015`) at that level, naming the method and the destroy
-  reason. When not throwing, the
+  reason. Thrown errors carry the same `code`; `next` / `scan` reject with that error instead of
+  throwing synchronously. When not throwing, the
   call is skipped and returns an inert stub: `false` from `emit`, a no-op `Subscription` from
   subscribe/hook methods, the downstream from `pipe`, and a never-settling `CancelablePromise` from
   `next` / `scan`. Introspection is unaffected. See [Teardown](./README.md#teardown).

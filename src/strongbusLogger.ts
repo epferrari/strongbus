@@ -96,7 +96,7 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
     this.error(buildAsyncErrorHandlerFailed(details));
   }
 
-  /** Throws instead of logging when `level` is `'throw'`. */
+  /** Throws an `Error` carrying `record.code` instead of logging when `level` is `'throw'`. */
   public onInvokeAfterDestroy(
     method: string,
     reason: string|undefined,
@@ -104,7 +104,7 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
   ): void {
     const record = buildInvokeAfterDestroy(this.name, method, reason);
     if(level === 'throw') {
-      throw new Error(record.message);
+      throw Object.assign(new Error(record.message), {code: record.code});
     }
     this[level](record);
   }
