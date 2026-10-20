@@ -611,6 +611,19 @@ bus.clear();
 bus.on('foo', handler); // works as on a fresh bus
 ```
 
+`clear` takes the same options shape as the introspection methods, with different defaults
+(`scope: ListenerScope.ANY`, `includeIncognito: true`):
+
+- `ListenerScope.OWN` — cancel pending `next` / `scan` promises and release this bus's subscribers.
+- `ListenerScope.DOWNSTREAM` — sever edges to buses this bus pipes into.
+- `ListenerScope.ANY` — both, and detach from upstreams that pipe into this bus.
+- `includeIncognito: false` — leave incognito subscriptions, `next` / `scan` promises, and pipe edges in place.
+
+```typescript
+bus.clear({scope: ListenerScope.DOWNSTREAM}); // unpipe everything, keep own listeners
+bus.clear({includeIncognito: false});         // reset, but keep incognito plumbing
+```
+
 By default a destroyed bus still accepts calls, so a consumer that outlives the bus's owner keeps subscribing without
 any sign of trouble. Set `onUseAfterDestroy` to catch this:
 

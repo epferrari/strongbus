@@ -157,7 +157,8 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   protected readonly introspection!: IntrospectionManager<TEventMap>;
   private readonly subscriptions!: SubscriptionManager<TEventMap>;
   private readonly scanners!: ScannerPools<TEventMap>;
-  private readonly inFlight = new Set<CancelablePromise<unknown>>();
+  /** Pending `next` / `scan` promises, mapped to whether they were registered incognito. */
+  private readonly inFlight = new Map<CancelablePromise<unknown>, boolean>();
   private destroyReason: string | typeof Bus.DESTROYED | undefined;
 
   constructor(options?: Options) {
@@ -431,7 +432,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
 
     willDestroyListener = this.hook('willDestroy', () => p.cancel(`${this.name} destroyed`));
 
-    return this.trackInFlight(p);
+    return this.trackInFlight(p, options?.incognito === true);
   }) as SubscriptionSurfaceNext<TEventMap>;
 
   /**
@@ -481,7 +482,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
           [INTERNAL_PROMISE]: scanner,
           cancel: (err: any) => scanner.cancel(err)
         }
-      ));
+      ), params.incognito === true);
     } else if(params.pool === false) {
       const scanner = new Scanner<any>(scanParams);
       scanner.scan<TEventMap>(this, params.trigger, subscribeOptions);
@@ -489,11 +490,11 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
       return this.trackInFlight(Object.assign(
         scanner,
         {[INTERNAL_PROMISE]: scanner}
-      ));
+      ), params.incognito === true);
 
     }
 
-    return this.trackInFlight(this.scanners.scan<any>(this, scanParams));
+    return this.trackInFlight(this.scanners.scan<any>(this, scanParams), params.incognito === true);
   }) as SubscriptionSurfaceScan<TEventMap>;
 
   /**
@@ -594,27 +595,44 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   }
 
   /**
-   * Cancel pending {@link Bus.next} / {@link Bus.scan} promises, remove all event subscribers,
-   * and sever every pipe edge in both directions. Unlike {@link Bus.destroy}, lifecycle hooks
-   * stay registered (and see the listener removals), and the bus remains usable.
+   * Remove listeners and pipe edges without destroying the bus. Unlike {@link Bus.destroy},
+   * lifecycle hooks stay registered (and see the removals), and the bus remains usable.
+   *
+   * - `ListenerScope.OWN` cancels pending {@link Bus.next} / {@link Bus.scan} promises and
+   *   removes this bus's event subscribers.
+   * - `ListenerScope.DOWNSTREAM` severs edges to buses this bus pipes into.
+   * - `ListenerScope.ANY` does both, and also detaches from upstreams that pipe into this bus.
+   *
+   * @param options.scope - default `ListenerScope.ANY`
+   * @param options.includeIncognito - when `false`, incognito subscriptions, `next` / `scan`
+   *   promises, and pipe edges are left in place. Default `true`.
    */
-  public clear(): void {
+  public clear(options: IntrospectionOptions = {}): void {
     if(this.inertAfterDestroy) {
       return;
     }
-    for(const p of [...this.inFlight]) {
-      p.cancel(`${this.name} cleared`);
+    const {scope = ListenerScope.ANY, includeIncognito = true} = options;
+    if((scope & ListenerScope.OWN) === ListenerScope.OWN) {
+      for(const [p, incognito] of [...this.inFlight]) {
+        if(includeIncognito || !incognito) {
+          p.cancel(`${this.name} cleared`);
+        }
+      }
+      this.subscriptions.releaseAll(includeIncognito);
     }
-    this.subscriptions.releaseAll();
-    this.disconnectAllDownstreamNodes();
-    this.releaseAllUpstreamEdges();
+    if((scope & ListenerScope.DOWNSTREAM) === ListenerScope.DOWNSTREAM) {
+      this.disconnectAllDownstreamNodes(includeIncognito);
+    }
+    if((scope & ListenerScope.ANY) === ListenerScope.ANY) {
+      this.releaseAllUpstreamEdges(includeIncognito);
+    }
   }
 
-  private trackInFlight<P extends CancelablePromise<any>>(p: P): P {
+  private trackInFlight<P extends CancelablePromise<any>>(p: P, incognito: boolean): P {
     const untrack = () => {
       this.inFlight.delete(p);
     };
-    this.inFlight.add(p);
+    this.inFlight.set(p, incognito);
     p.then(untrack, untrack);
     return p;
   }

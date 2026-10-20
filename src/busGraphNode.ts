@@ -173,18 +173,23 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
    * Disconnect every downstream via {@link BusGraphNode.disconnectDownstreamNode}, so
    * this node's lifecycle and listener accounting see each removal.
    */
-  protected disconnectAllDownstreamNodes(): void {
-    for(const downstream of [...this.graph.downstreams.keys()]) {
-      this.disconnectDownstreamNode(downstream);
+  protected disconnectAllDownstreamNodes(includeIncognito: boolean = true): void {
+    for(const [downstream, edge] of [...this.graph.downstreams]) {
+      if(includeIncognito || !edge.incognito) {
+        this.disconnectDownstreamNode(downstream);
+      }
     }
   }
 
   /**
    * Have every upstream drop its edge to this node.
+   * @param includeIncognito - when `false`, upstreams that pipe in incognito keep their edge
    */
-  protected releaseAllUpstreamEdges(): void {
+  protected releaseAllUpstreamEdges(includeIncognito: boolean = true): void {
     for(const upstream of [...this.graph.upstreams]) {
-      upstream.disconnectDownstreamNode(this);
+      if(includeIncognito || !upstream.graph.downstreams.get(this)?.incognito) {
+        upstream.disconnectDownstreamNode(this);
+      }
     }
   }
 

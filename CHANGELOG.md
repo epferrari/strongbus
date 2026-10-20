@@ -115,10 +115,13 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   first call. `Bus#destroyed` becomes `true` once teardown completes (still `false` inside
   `willDestroy` hooks). It is optional on `IntrospectionSurface` for now, so hand-rolled
   implementations need not add it.
-- **`clear()`** — on `Bus` and `ControlSurface`. Cancels pending `next` / `scan` promises, releases
-  all event subscribers, and severs every pipe edge in both directions, without destroying the bus.
-  Lifecycle hooks stay registered and see the listener removals; `destroyed` stays `false`. Under
-  `onUseAfterDestroy`, `clear()` on a destroyed bus is a silent no-op. Hand-rolled
+- **`clear(options?)`** — on `Bus` and `ControlSurface`. Resets a bus without destroying it:
+  lifecycle hooks stay registered and see the removals, and `destroyed` stays `false`. Takes
+  `IntrospectionOptions`, defaulting to `scope: ListenerScope.ANY` and `includeIncognito: true`.
+  `OWN` cancels pending `next` / `scan` promises and releases this bus's subscribers;
+  `DOWNSTREAM` severs edges to buses it pipes into; `ANY` does both and also detaches from
+  upstreams. `includeIncognito: false` leaves incognito subscriptions, promises, and edges in
+  place. Under `onUseAfterDestroy`, `clear()` on a destroyed bus is a silent no-op. Hand-rolled
   `ControlSurface` implementations must add it.
 - **`options.onUseAfterDestroy`** (default `false`) — `false` | `'debug'` | `'info'` | `'warn'` |
   `'error'` | `'throw'`. When set, calling any `MonitoringSurface` or `SubscriptionSurface` method

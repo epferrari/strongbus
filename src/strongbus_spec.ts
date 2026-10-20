@@ -3046,6 +3046,100 @@ describe('Strongbus.Bus', () => {
       await expectAsync(second).toBeResolvedTo('x');
     });
 
+    describe('options', () => {
+      let upstream: Strongbus.Bus<TestEventMap>;
+      let downstream: Strongbus.Bus<TestEventMap>;
+      let ownHandler: jasmine.Spy;
+      let downstreamHandler: jasmine.Spy;
+
+      async function isPending(p: Promise<unknown>): Promise<boolean> {
+        const pending = Symbol('pending');
+        const winner = await Promise.race([p.catch((): void => undefined), sleep(5).then(() => pending)]);
+        return winner === pending;
+      }
+
+      beforeEach(() => {
+        upstream = new Strongbus.Bus<TestEventMap>();
+        downstream = new Strongbus.Bus<TestEventMap>();
+        ownHandler = jasmine.createSpy('ownHandler');
+        downstreamHandler = jasmine.createSpy('downstreamHandler');
+        downstream.on('foo', downstreamHandler);
+      });
+
+      describe('given scope is OWN', () => {
+        it('removes own listeners and cancels next/scan, keeping pipe edges in both directions', async () => {
+          bus.on('foo', ownHandler);
+          bus.pipe(downstream);
+          upstream.pipe(bus);
+          const next = bus.next('bar');
+
+          bus.clear({scope: Strongbus.ListenerScope.OWN});
+          await expectAsync(next).toBeRejected();
+          bus.emit('foo', 'local');
+
+          expect(ownHandler).not.toHaveBeenCalled();
+          expect(downstreamHandler).toHaveBeenCalledWith('local');
+
+          bus.on('foo', singleEventHandler);
+          upstream.emit('foo', 'from upstream');
+          expect(singleEventHandler).toHaveBeenCalledWith('from upstream');
+        });
+      });
+
+      describe('given scope is DOWNSTREAM', () => {
+        it('severs downstream edges only, keeping own listeners, next/scan, and upstream edges', async () => {
+          bus.on('foo', ownHandler);
+          bus.pipe(downstream);
+          upstream.pipe(bus);
+          const next = bus.next('bar');
+
+          bus.clear({scope: Strongbus.ListenerScope.DOWNSTREAM});
+          bus.emit('foo', 'local');
+          upstream.emit('foo', 'from upstream');
+
+          expect(ownHandler.calls.allArgs()).toEqual([['local'], ['from upstream']]);
+          expect(downstreamHandler).not.toHaveBeenCalled();
+          expect(await isPending(next)).toBeTrue();
+          next.cancel();
+        });
+      });
+
+      describe('given includeIncognito is false', () => {
+        it('leaves incognito listeners, next/scan, and pipe edges in place', async () => {
+          const incognitoHandler = jasmine.createSpy('incognitoHandler');
+          const incognitoDownstreamHandler = jasmine.createSpy('incognitoDownstreamHandler');
+          const incognitoDownstream = new Strongbus.Bus<TestEventMap>();
+          incognitoDownstream.on('foo', incognitoDownstreamHandler);
+          const incognitoUpstream = new Strongbus.Bus<TestEventMap>();
+
+          bus.on('foo', ownHandler);
+          bus.on('foo', incognitoHandler, {incognito: true});
+          bus.pipe(downstream);
+          bus.pipe(incognitoDownstream, {incognito: true});
+          upstream.pipe(bus);
+          incognitoUpstream.pipe(bus, {incognito: true});
+          const next = bus.next('bar');
+          const incognitoNext = bus.next('bar', {incognito: true});
+          const incognitoScan = bus.scan('bar', () => undefined, {incognito: true});
+
+          bus.clear({includeIncognito: false});
+          await expectAsync(next).toBeRejected();
+          bus.emit('foo', 'local');
+          upstream.emit('foo', 'from upstream');
+          incognitoUpstream.emit('foo', 'from incognito upstream');
+
+          expect(ownHandler).not.toHaveBeenCalled();
+          expect(downstreamHandler).not.toHaveBeenCalled();
+          expect(incognitoHandler.calls.allArgs()).toEqual([['local'], ['from incognito upstream']]);
+          expect(incognitoDownstreamHandler).toHaveBeenCalledOnceWith('local');
+          expect(await isPending(incognitoNext)).toBeTrue();
+          expect(await isPending(incognitoScan)).toBeTrue();
+          incognitoNext.cancel();
+          incognitoScan.cancel();
+        });
+      });
+    });
+
     it('leaves the bus usable and not destroyed', () => {
       bus.clear();
       bus.on('foo', singleEventHandler);

@@ -1,5 +1,6 @@
 import type {Bus} from '../../strongbus';
 import type {EventMap} from '../events';
+import type {IntrospectionOptions} from '../listenerScope';
 import {brand, isObjectWithFunctions, unwrapSurface} from './utils';
 import type {EmittingSurface} from './emittingSurface';
 
@@ -18,10 +19,11 @@ export interface ControlSurface<TEventMap extends EventMap = EventMap>
   destroy(reason?: string): void;
 
   /**
-   * Remove all event listeners, sever all pipe edges, and cancel pending `next` / `scan`
-   * promises, leaving the bus usable. Lifecycle hooks stay registered.
+   * Remove listeners and pipe edges in `options.scope` (default `ListenerScope.ANY`), and cancel
+   * pending `next` / `scan` promises when the scope includes `OWN`, leaving the bus usable.
+   * Lifecycle hooks stay registered. `options.includeIncognito` defaults to `true`.
    */
-  clear(): void;
+  clear(options?: IntrospectionOptions): void;
 }
 
 type InferControlEventMap<S> =

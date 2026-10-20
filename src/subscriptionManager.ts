@@ -121,12 +121,17 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     return total;
   }
 
-  public releaseAll(): void {
+  /**
+   * @param includeIncognito - when `false`, incognito registrations are left in place
+   */
+  public releaseAll(includeIncognito: boolean = true): void {
     const pending: Subscription[] = [];
-    const collect = (intents: Map<GenericHandler, Map<any, {frames: Subscription[]}>>) => {
+    const collect = (intents: Map<GenericHandler, Map<any, HandlerIntent>>) => {
       for(const byKey of intents.values()) {
         for(const intent of byKey.values()) {
-          pending.push(...intent.frames);
+          if(includeIncognito || !intent.incognito) {
+            pending.push(...intent.frames);
+          }
         }
       }
     };
@@ -135,6 +140,9 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     collect(this.anyIntents);
     collect(this.tapIntents);
     over(pending)();
+    if(!includeIncognito) {
+      return;
+    }
     this.handlersByEvent.clear();
     this.incognitoByHandler.clear();
     this.stackedListenerSurplusByEvent.clear();
