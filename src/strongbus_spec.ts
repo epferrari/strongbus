@@ -2890,6 +2890,29 @@ describe('Strongbus.Bus', () => {
       expect(singleEventHandler).not.toHaveBeenCalled();
       expect(eventSink).not.toHaveBeenCalled();
     });
+
+    describe('#destroyed', () => {
+      it('is false before destroy', () => {
+        expect(bus.destroyed).toBeFalse();
+      });
+
+      it('is true after destroy, with or without a reason', () => {
+        const other = new Strongbus.Bus<TestEventMap>();
+        bus.destroy();
+        other.destroy('owner disposed');
+        expect(bus.destroyed).toBeTrue();
+        expect(other.destroyed).toBeTrue();
+      });
+
+      it('is still false inside willDestroy hooks', () => {
+        let observed: boolean;
+        bus.hook('willDestroy', () => {
+          observed = bus.destroyed;
+        });
+        bus.destroy();
+        expect(observed).toBeFalse();
+      });
+    });
   });
 
   describe('Reserved events', () => {

@@ -15,7 +15,7 @@ import type {EmittingSurface} from './emittingSurface';
  */
 export interface ControlSurface<TEventMap extends EventMap = EventMap>
   extends EmittingSurface<TEventMap> {
-  destroy(): void;
+  destroy(reason?: string): void;
 }
 
 type InferControlEventMap<S> =

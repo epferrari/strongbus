@@ -51,6 +51,9 @@ export interface IntrospectionSurface<TEventMap extends EventMap = EventMap> {
   getListenersFor: IntrospectionSurfaceListenerForEvent<TEventMap>;
 
   forEach: IntrospectionSurfaceListenerForEach<TEventMap>;
+
+  /** Whether {@link ControlSurface.destroy} has been called. */
+  readonly destroyed: boolean;
 }
 
 /**

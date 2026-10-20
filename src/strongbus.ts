@@ -143,6 +143,8 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
       })
     };
   }
+  private static readonly DESTROYED: unique symbol = Symbol('destroyed');
+
   public readonly name!: string;
   public readonly hook!: MonitoringHook<TEventMap>;
 
@@ -153,6 +155,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   protected readonly introspection!: IntrospectionManager<TEventMap>;
   private readonly subscriptions!: SubscriptionManager<TEventMap>;
   private readonly scanners!: ScannerPools<TEventMap>;
+  private destroyReason: string | typeof Bus.DESTROYED | undefined;
 
   constructor(options?: Options) {
     super();
@@ -520,14 +523,24 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   }) as IntrospectionSurfaceListenerForEach<TEventMap>;
 
   /**
+   * Whether {@link Bus.destroy} has been called. Becomes `true` once teardown completes,
+   * so it is still `false` inside {@link Lifecycle.willDestroy} hooks.
+   */
+  public get destroyed(): boolean {
+    return this.destroyReason !== undefined;
+  }
+
+  /**
    * Remove all event subscribers, lifecycle subscribers, and downstreams.
    * Triggers lifecycle meta events for all subscribed events before removing
    * lifecycle subscribers, emitting {@link Lifecycle.willDestroy} during teardown.
+   * The first `reason` given is retained.
    */
-  public destroy() {
+  public destroy(reason?: string) {
     this.subscriptions.releaseAll();
     this.lifecycle.destroy();
     this.releaseAllDownstreamEdges();
+    this.destroyReason ??= reason ?? Bus.DESTROYED;
   }
 
   private createSubscriptionHost(): SubscriptionHost {
