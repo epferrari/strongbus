@@ -2915,13 +2915,13 @@ describe('Strongbus.Bus', () => {
     });
   });
 
-  describe('options.strictDestroy', () => {
+  describe('options.onUseAfterDestroy', () => {
     let logger: jasmine.SpyObj<Logger>;
     let onUnhandledEvent: jasmine.Spy;
     let downstream: Strongbus.Bus<TestEventMap>;
 
-    function strictBus(strictDestroy: Strongbus.Options['strictDestroy']): Strongbus.Bus<TestEventMap> {
-      return new Strongbus.Bus<TestEventMap>({name: 'Strict', logger, onUnhandledEvent, strictDestroy});
+    function guardedBus(onUseAfterDestroy: Strongbus.Options['onUseAfterDestroy']): Strongbus.Bus<TestEventMap> {
+      return new Strongbus.Bus<TestEventMap>({name: 'Guarded', logger, onUnhandledEvent, onUseAfterDestroy});
     }
 
     async function isPending(p: Promise<unknown>): Promise<boolean> {
@@ -2937,9 +2937,9 @@ describe('Strongbus.Bus', () => {
       downstream.on('foo', singleEventHandler);
     });
 
-    describe('given strictDestroy is false (default)', () => {
+    describe('given onUseAfterDestroy is false (default)', () => {
       it('runs methods on a destroyed bus as before, without logging', () => {
-        bus = strictBus(undefined);
+        bus = guardedBus(undefined);
         bus.destroy();
 
         bus.on('foo', singleEventHandler);
@@ -2951,9 +2951,9 @@ describe('Strongbus.Bus', () => {
       });
     });
 
-    describe('given strictDestroy is a LogLevel', () => {
+    describe('given onUseAfterDestroy is a LogLevel', () => {
       beforeEach(() => {
-        bus = strictBus('warn');
+        bus = guardedBus('warn');
       });
 
       it('does not interfere before destroy', () => {
@@ -3105,9 +3105,9 @@ describe('Strongbus.Bus', () => {
       });
     });
 
-    describe('given strictDestroy is \'never\'', () => {
+    describe('given onUseAfterDestroy is \'never\'', () => {
       it('makes methods inert without logging', () => {
-        bus = strictBus('never');
+        bus = guardedBus('never');
         bus.destroy();
 
         bus.on('foo', singleEventHandler);
@@ -3121,9 +3121,9 @@ describe('Strongbus.Bus', () => {
       });
     });
 
-    describe('given strictDestroy is \'throw\'', () => {
+    describe('given onUseAfterDestroy is \'throw\'', () => {
       beforeEach(() => {
-        bus = strictBus('throw');
+        bus = guardedBus('throw');
       });
 
       it('throws the log message, without logging', () => {

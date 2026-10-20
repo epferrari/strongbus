@@ -602,10 +602,10 @@ bus.destroy('session closed');
 ```
 
 By default a destroyed bus still accepts calls, so a consumer that outlives the bus's owner keeps subscribing and
-emitting without any sign of trouble. Set `strictDestroy` to catch this:
+emitting without any sign of trouble. Set `onUseAfterDestroy` to catch this:
 
 ```typescript
-const bus = new Bus<Events>({strictDestroy: 'warn'});
+const bus = new Bus<Events>({onUseAfterDestroy: 'warn'});
 bus.destroy('session closed');
 
 bus.on('foo', handler);
@@ -635,7 +635,7 @@ Introspection methods (`hasListeners`, `getListenerCount`, `destroyed`, etc.) ar
 - `logger` — a `Logger`, or a `() => Logger` provider.
 - `verbose` — log on every listener past a threshold (`true`), or only at threshold boundaries
   (`false`, default).
-- `strictDestroy` — `false` (default), a log level, or `'throw'`: how to treat calls on a destroyed bus.
+- `onUseAfterDestroy` — `false` (default), a log level, or `'throw'`: how to treat calls on a destroyed bus.
   See [Teardown](#teardown).
 - `duplicateSubscriptionStrategy` — how duplicate listenable+handler registrations behave for
   `on`, `any`, and `tap` across four axes:

@@ -87,7 +87,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     coalesceDownstreamLifecycleEvents: true,
     duplicateSubscriptionStrategy: resolveDuplicateSubscriptionStrategy(),
     onUnhandledEvent: 'ignore',
-    strictDestroy: false
+    onUseAfterDestroy: false
   };
 
   /**
@@ -573,7 +573,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * Remove all event subscribers, lifecycle subscribers, and downstreams.
    * Triggers lifecycle meta events for all subscribed events before removing
    * lifecycle subscribers, emitting {@link Lifecycle.willDestroy} during teardown.
-   * The first `reason` given is retained and reported by {@link Options.strictDestroy}.
+   * The first `reason` given is retained and reported by {@link Options.onUseAfterDestroy}.
    */
   public destroy(reason?: string) {
     if(this.isInertAfterDestroy('destroy')) {
@@ -621,16 +621,16 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   }
 
   /**
-   * Under {@link Options.strictDestroy}, report a call to `method` on a destroyed bus.
+   * Under {@link Options.onUseAfterDestroy}, report a call to `method` on a destroyed bus.
    * @returns `true` when the caller should return its inert stub instead of running
    */
   private isInertAfterDestroy(method: string): boolean {
-    const {strictDestroy} = this.options;
-    if(!strictDestroy || !this.destroyed) {
+    const {onUseAfterDestroy} = this.options;
+    if(!onUseAfterDestroy || !this.destroyed) {
       return false;
     }
     const reason = this.destroyReason === Bus.DESTROYED ? undefined : this.destroyReason;
-    this.logger.onInvokeAfterDestroy(method, reason, strictDestroy);
+    this.logger.onInvokeAfterDestroy(method, reason, onUseAfterDestroy);
     return true;
   }
 
