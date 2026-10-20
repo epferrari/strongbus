@@ -160,6 +160,8 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   /** Pending `next` / `scan` promises, mapped to whether they were registered incognito. */
   private readonly inFlight = new Map<CancelablePromise<unknown>, boolean>();
   private destroyReason: string | typeof Bus.DESTROYED | undefined;
+  /** `true` only while {@link Bus.destroy} is running, including its lifecycle hooks. */
+  private destroying: boolean = false;
 
   constructor(options?: Options) {
     super();
@@ -582,16 +584,25 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * Triggers lifecycle meta events for all subscribed events before removing
    * lifecycle subscribers, emitting {@link Lifecycle.willDestroy} during teardown.
    * The first `reason` given is retained and reported by {@link Options.onUseAfterDestroy}.
+   *
+   * Not reentrant. While teardown runs, `destroy` and `clear` are ignored, and the methods
+   * {@link Options.onUseAfterDestroy} guards are ignored with a debug log under any setting;
+   * `next` / `scan` return an already-canceled promise. `emit` still runs.
    */
   public destroy(reason?: string) {
-    if(this.inertAfterDestroy) {
+    if(this.destroying || this.inertAfterDestroy) {
       return;
     }
-    this.subscriptions.releaseAll();
-    this.lifecycle.destroy();
-    this.releaseAllDownstreamEdges();
-    this.releaseAllUpstreamEdges();
-    this.destroyReason ??= reason ?? Bus.DESTROYED;
+    this.destroying = true;
+    try {
+      this.subscriptions.releaseAll();
+      this.lifecycle.destroy();
+      this.releaseAllDownstreamEdges();
+      this.releaseAllUpstreamEdges();
+      this.destroyReason ??= reason ?? Bus.DESTROYED;
+    } finally {
+      this.destroying = false;
+    }
   }
 
   /**
@@ -608,7 +619,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    *   promises, and pipe edges are left in place. Default `true`.
    */
   public clear(options: IntrospectionOptions = {}): void {
-    if(this.inertAfterDestroy) {
+    if(this.destroying || this.inertAfterDestroy) {
       return;
     }
     const {scope = ListenerScope.ANY, includeIncognito = true} = options;
@@ -674,9 +685,13 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
 
   /**
    * Under {@link Options.onUseAfterDestroy}, report a call to `method` on a destroyed bus.
+   * Calls made while {@link Bus.destroy} is running are logged at debug under any setting.
    * @returns `true` when the caller should return its inert stub instead of running
    */
   private isInertAfterDestroy(method: string): boolean {
+    if(this.isInertDuringDestroy(method)) {
+      return true;
+    }
     const {onUseAfterDestroy} = this.options;
     if(!onUseAfterDestroy || !this.destroyed) {
       return false;
@@ -712,11 +727,21 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * @returns the stub to return, or `null` when the caller should run
    */
   private inertPromiseAfterDestroy<T>(method: string): CancelablePromise<T> | null {
+    if(this.isInertDuringDestroy(method)) {
+      return canceledPromise<T>(`${this.name} destroyed`);
+    }
     try {
       return this.isInertAfterDestroy(method) ? pendingPromise<T>() : null;
     } catch(e) {
       return cancelable<T>(() => Promise.reject(e));
     }
+  }
+
+  private isInertDuringDestroy(method: string): boolean {
+    if(this.destroying) {
+      this.logger.onUseDuringDestroy(method);
+    }
+    return this.destroying;
   }
 
   private accountForDownstreamListeners(_event: EventKeys<TEventMap>|WILDCARD, _count: number): void {
@@ -749,4 +774,12 @@ function inertFilteredPipeHandle<TEventMap extends EventMap>(): FilteredPipeHand
 /** Never settles on its own; `cancel()` still rejects it. */
 function pendingPromise<T>(): CancelablePromise<T> {
   return cancelable<T>(() => new Promise<T>(() => undefined));
+}
+
+/** Rejected the same way {@link Bus.destroy} cancels pending `next` / `scan` promises. */
+function canceledPromise<T>(reason: string): CancelablePromise<T> {
+  const p = pendingPromise<T>();
+  p.catch((): void => undefined);
+  p.cancel(reason);
+  return p;
 }

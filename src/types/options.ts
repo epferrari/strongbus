@@ -30,7 +30,8 @@ export interface ListenerThresholds {
  * after `destroy()`: `false` runs it as usual; a {@link LogLevel} logs
  * `StrongbusLogCode.UseAfterDestroy`, then skips it and returns an inert stub;
  * `'throw'` throws instead. When set to any of these, `emit` and `destroy` become silent no-ops.
- * Introspection is never affected.
+ * Introspection is never affected. Calls made while `destroy()` is still running are skipped and
+ * logged at debug under every setting, including `false`.
  */
 export interface Options {
   name?: string;

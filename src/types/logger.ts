@@ -19,7 +19,8 @@ export const StrongbusLogCode = {
   UnsoundPipeEdgeFilterUpgrade: 1012,
   ErrorHandlerFailed: 1013,
   AsyncErrorHandlerFailed: 1014,
-  UseAfterDestroy: 1015
+  UseAfterDestroy: 1015,
+  UseDuringDestroy: 1016
 } as const;
 
 export type StrongbusLogCode = typeof StrongbusLogCode[keyof typeof StrongbusLogCode];

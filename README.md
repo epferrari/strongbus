@@ -653,6 +653,12 @@ they quietly do nothing (`emit` returns `false`). Introspection methods (`hasLis
 Piping a live bus into a destroyed one counts as using the destroyed bus: it is reported under the destroyed bus's
 `onUseAfterDestroy` (as `<live name>.pipe()`), and no edge is created.
 
+While `destroy()` is running, including inside `willDestroy` and the remove-listener hooks it fires, the bus is
+already off-limits regardless of `onUseAfterDestroy`: those same methods are skipped and logged at `debug` as
+`StrongbusLogCode.UseDuringDestroy`, returning the stubs above, except that `next` and `scan` return an
+already-canceled promise. A nested `destroy()` or `clear()` does nothing. `emit` still runs, so a `willDestroy`
+hook can send a final event to downstreams that are still attached.
+
 ## Options
 
 `new Bus<Events>(options)` accepts:

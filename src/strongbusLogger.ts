@@ -104,6 +104,10 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
     this[level](buildUseAfterDestroy(this.name, method, reason));
   }
 
+  public onUseDuringDestroy(method: string): void {
+    this.debug(buildUseDuringDestroy(this.name, method));
+  }
+
   private onAddListenerNonVerbose(event: EventKeys<TEventMap>|WILDCARD, n: number) {
     const {thresholds} = this;
     if(n === thresholds.info) {
@@ -319,6 +323,13 @@ function buildUseAfterDestroy(name: string, method: string, reason?: string): St
   };
 }
 
+function buildUseDuringDestroy(name: string, method: string): StrongbusLogRecord {
+  return {
+    code: StrongbusLogCode.UseDuringDestroy,
+    message: `${name}: ${method}() invoked during destroy; ignored`
+  };
+}
+
 /**
  * Builders for the {@link StrongbusLogRecord} behind each {@link StrongbusLogCode}.
  * Specs assert against these instead of hard-coding message text; {@link Bus} uses
@@ -342,6 +353,7 @@ export class StrongbusLogMessages {
   public static errorHandlerFailed = buildErrorHandlerFailed;
   public static asyncErrorHandlerFailed = buildAsyncErrorHandlerFailed;
   public static useAfterDestroy = buildUseAfterDestroy;
+  public static useDuringDestroy = buildUseDuringDestroy;
 }
 
 /**

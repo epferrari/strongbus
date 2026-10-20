@@ -3140,6 +3140,91 @@ describe('Strongbus.Bus', () => {
         expect(upstream.active).toBeFalse();
       });
     });
+
+    describe('while teardown is running', () => {
+      let logger: jasmine.SpyObj<Logger>;
+
+      beforeEach(() => {
+        logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+      });
+
+      ([undefined, 'warn', 'throw'] as const).forEach((onUseAfterDestroy) => {
+        describe(`given onUseAfterDestroy is ${onUseAfterDestroy}`, () => {
+          beforeEach(() => {
+            bus = new Strongbus.Bus<TestEventMap>({name: 'Destroying', logger, onUseAfterDestroy});
+          });
+
+          it('is not reentrant, and retains the outer reason', () => {
+            const willDestroy = jasmine.createSpy('willDestroy').and.callFake(() => bus.destroy('inner'));
+            bus.hook('willDestroy', willDestroy);
+            bus.on('foo', singleEventHandler);
+
+            bus.destroy('outer');
+
+            expect(willDestroy).toHaveBeenCalledTimes(1);
+            expect(bus.destroyed).toBeTrue();
+            const {message} = StrongbusLogMessages.useAfterDestroy(bus.name, 'on', 'outer');
+            if(onUseAfterDestroy === 'throw') {
+              expect(() => bus.on('foo', singleEventHandler)).toThrowError(message);
+            } else if(onUseAfterDestroy === 'warn') {
+              bus.on('foo', singleEventHandler);
+              expect(logger.warn).toHaveBeenCalledWith(jasmine.objectContaining({message}));
+            }
+          });
+
+          it('ignores guarded subscription methods called from willDestroy hooks, logging at debug', () => {
+            const downstream = new Strongbus.Bus<TestEventMap>();
+            const upstream = new Strongbus.Bus<TestEventMap>();
+            const lifecycleSpy = jasmine.createSpy('lifecycle');
+            bus.hook('willDestroy', () => {
+              bus.on('foo', singleEventHandler);
+              bus.tap(eventSink);
+              bus.hook('error', lifecycleSpy);
+              bus.monitor(lifecycleSpy);
+              bus.pipe(downstream);
+              upstream.pipe(bus);
+            });
+
+            expect(() => bus.destroy()).not.toThrow();
+
+            expect(bus.getListenerCount()).toBe(0);
+            expect(downstream.getListenerCount()).toBe(0);
+            expect(upstream.getListenerCount()).toBe(0);
+            ['on', 'tap', 'hook', 'monitor', 'pipe', `${upstream.name}.pipe`].forEach((method) => {
+              expect(logger.debug).toHaveBeenCalledWith(StrongbusLogMessages.useDuringDestroy(bus.name, method));
+            });
+          });
+
+          it('returns already-canceled next/scan promises from willDestroy hooks', async () => {
+            let next: Promise<unknown>;
+            let scan: Promise<unknown>;
+            bus.hook('willDestroy', () => {
+              next = bus.next('foo');
+              scan = bus.scan('foo', () => undefined);
+            });
+
+            bus.destroy();
+
+            await expectAsync(next).toBeRejected();
+            await expectAsync(scan).toBeRejected();
+            expect(bus.getListenerCount()).toBe(0);
+            expect(logger.debug).toHaveBeenCalledWith(StrongbusLogMessages.useDuringDestroy(bus.name, 'next'));
+            expect(logger.debug).toHaveBeenCalledWith(StrongbusLogMessages.useDuringDestroy(bus.name, 'scan'));
+          });
+
+          it('still emits from willDestroy hooks to attached downstreams', () => {
+            const downstream = new Strongbus.Bus<TestEventMap>();
+            downstream.on('foo', singleEventHandler);
+            bus.pipe(downstream);
+            bus.hook('willDestroy', () => bus.emit('foo', 'last words'));
+
+            bus.destroy();
+
+            expect(singleEventHandler).toHaveBeenCalledOnceWith('last words');
+          });
+        });
+      });
+    });
   });
 
   describe('#destroyed', () => {

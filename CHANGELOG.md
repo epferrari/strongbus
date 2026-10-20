@@ -238,6 +238,14 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   received events without updating the upstream's `active` state or lifecycle hooks, and its
   listener counts went stale until something else refreshed them. `destroy()` now detaches the
   bus from every upstream, so upstreams stop forwarding to it.
+- **Calls made during `destroy()`** — `destroy()` released subscribers before firing
+  `willDestroy`, so a hook (or any lifecycle hook fired by the teardown) that subscribed or
+  called `next` / `scan` left listeners behind on the destroyed bus, and those promises never
+  settled. A hook that called `destroy()` re-entered teardown and recursed. While teardown
+  runs, `destroy` and `clear` are now ignored, and `MonitoringSurface` / `SubscriptionSurface`
+  methods are skipped under any `onUseAfterDestroy` setting, logging
+  `StrongbusLogCode.UseDuringDestroy` (`1016`) at `debug`. They return the same inert stubs,
+  except that `next` / `scan` return an already-canceled promise. `emit` still runs.
 - **Downstream listeners before `pipe()`** — when a downstream already has listeners
   (including via nested `pipe` links) at the moment `pipe(bus)` runs, the upstream
   bus now bubbles the corresponding add-listener lifecycle hooks, updates listener
