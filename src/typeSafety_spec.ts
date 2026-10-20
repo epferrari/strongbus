@@ -745,7 +745,6 @@ describe('type safety', () => {
       public getListenerCountFor = this.bus.getListenerCountFor;
       public getListenersFor = this.bus.getListenersFor;
       public forEach = this.bus.forEach;
-      public get destroyed() { return this.bus.destroyed; }
       public destroy = this.bus.destroy;
       public emit = this.bus.emit;
     }

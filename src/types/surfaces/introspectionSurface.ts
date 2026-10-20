@@ -52,8 +52,11 @@ export interface IntrospectionSurface<TEventMap extends EventMap = EventMap> {
 
   forEach: IntrospectionSurfaceListenerForEach<TEventMap>;
 
-  /** Whether {@link ControlSurface.destroy} has been called. */
-  readonly destroyed: boolean;
+  /**
+   * Whether {@link ControlSurface.destroy} has been called. Always present on {@link Bus};
+   * optional so hand-rolled surfaces need not provide it yet.
+   */
+  readonly destroyed?: boolean;
 }
 
 /**

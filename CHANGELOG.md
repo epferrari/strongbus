@@ -112,9 +112,9 @@ See the [Migration guide](#migrating-from-v2-to-v3) for step-by-step changes.
   after the link is established still emit hooks per listener. Set to `false` for one
   hook pair per listener during reconcile (see [Lifecycle hook ordering](./README.md#lifecycle-hook-ordering)).
 - **`destroy(reason?)`** and **`destroyed`** — `destroy` accepts an optional reason, kept from the
-  first call. `IntrospectionSurface` gains a readonly `destroyed` getter, which becomes `true` once
-  teardown completes (still `false` inside `willDestroy` hooks). Hand-rolled
-  `IntrospectionSurface` implementations must add it.
+  first call. `Bus#destroyed` becomes `true` once teardown completes (still `false` inside
+  `willDestroy` hooks). It is optional on `IntrospectionSurface` for now, so hand-rolled
+  implementations need not add it.
 - **`options.onUseAfterDestroy`** (default `false`) — `false` | `'debug'` | `'info'` | `'warn'` |
   `'error'` | `'throw'`. When set, calling any `ControlSurface`, `EmittingSurface`,
   `MonitoringSurface`, or `SubscriptionSurface` method on a destroyed bus throws, or logs
