@@ -179,7 +179,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
       logger: this.logger
     });
     this.hook = ((event, handler) => {
-      if(this.isInertAfterDestroy('hook')) {
+      if(this.guard('hook')) {
         return inertSubscription();
       }
       return this.lifecycle.hook(event, handler);
@@ -216,7 +216,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     event: EventKeys<TEventMap>,
     payload?: TEventMap[EventKeys<TEventMap>]
   ): boolean {
-    if(this.inertAfterDestroy) {
+    if(this.ignoresCalls) {
       return false;
     }
     return this.dispatcher.dispatchEvent(event, payload);
@@ -231,7 +231,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     handler: EventHandler<TEventMap, T>,
     options?: SubscribeOptions
   ): Subscription {
-    if(this.isInertAfterDestroy('on')) {
+    if(this.guard('on')) {
       return inertSubscription();
     }
     return this.subscriptions.on(event, handler, options);
@@ -245,7 +245,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * {@link Bus.any} / {@link Bus.tap} intent.
    */
   public off<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): void {
-    if(this.isInertAfterDestroy('off')) {
+    if(this.guard('off')) {
       return;
     }
     this.subscriptions.off(event, handler);
@@ -261,7 +261,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     handler: EventHandler<TEventMap, T>,
     options?: SubscribeOptions
   ): Subscription {
-    if(this.isInertAfterDestroy('once')) {
+    if(this.guard('once')) {
       return inertSubscription();
     }
     return this.subscriptions.once(event, handler, options);
@@ -278,7 +278,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     handler,
     options?: SubscribeOptions
   ) => {
-    if(this.isInertAfterDestroy('any')) {
+    if(this.guard('any')) {
       return inertSubscription();
     }
     return this.subscriptions.any(
@@ -296,7 +296,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     handler: TapHandler<TEventMap>,
     options?: SubscribeOptions
   ) => {
-    if(this.isInertAfterDestroy('tap')) {
+    if(this.guard('tap')) {
       return inertSubscription();
     }
     return this.subscriptions.tap(handler, options);
@@ -317,11 +317,11 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     dest: PipePredicate<TEventMap> | Bus<any>,
     options?: SubscribeOptions
   ): FilteredPipeHandle<TEventMap> | Bus<any> => {
-    if(this.isInertAfterDestroy('pipe')) {
+    if(this.guard('pipe')) {
       return typeof dest === 'function' ? inertFilteredPipeHandle() : dest;
     } else if(typeof dest === 'function') {
       return this.createFilteredPipeHandle(dest as PipePredicate<TEventMap>);
-    } else if(dest.isInertPipeTarget(this.name)) {
+    } else if(dest.guardAsPipeTarget(this.name)) {
       return dest;
     }
     return this.connectDownstreamNode(dest, options) as Bus<any>;
@@ -333,7 +333,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   public unpipe: SubscriptionSurfaceUnpipe<TEventMap> = ((
     dest: Bus<any>
   ) => {
-    if(this.isInertAfterDestroy('unpipe')) {
+    if(this.guard('unpipe')) {
       return;
     }
     this.disconnectDownstreamNode(dest);
@@ -369,9 +369,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   ) => {
     type T = typeof resolutionTrigger;
     type TResult = NextResult<TEventMap, T>;
-    const inert = this.inertPromiseAfterDestroy<TResult>('next');
-    if(inert) {
-      return inert;
+    const stub = this.guardPromise<TResult>('next');
+    if(stub) {
+      return stub;
     }
     let settled: boolean = false;
     let resolveInternalPromise: (value: TResult) => void;
@@ -455,9 +455,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   public scan: SubscriptionSurfaceScan<TEventMap> = ((
     ...args: unknown[]
   ): CancelablePromise<any> => {
-    const inert = this.inertPromiseAfterDestroy('scan');
-    if(inert) {
-      return inert;
+    const stub = this.guardPromise('scan');
+    if(stub) {
+      return stub;
     }
     const params = normalizeScanParams<TEventMap>(args);
     const scanParams = params as unknown as ScanParams<any, TEventMap>;
@@ -505,7 +505,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * The handler receives a `boolean` indicating if the bus is active (`true`) or idle (`false`)
    */
   public monitor(handler: (activeState: boolean) => void): Subscription {
-    if(this.isInertAfterDestroy('monitor')) {
+    if(this.guard('monitor')) {
       return inertSubscription();
     }
     return this.lifecycle.monitor(handler);
@@ -590,7 +590,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * `next` / `scan` return an already-canceled promise. `emit` still runs.
    */
   public destroy(reason?: string) {
-    if(this.destroying || this.inertAfterDestroy) {
+    if(this.destroying || this.ignoresCalls) {
       return;
     }
     this.destroying = true;
@@ -619,7 +619,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    *   promises, and pipe edges are left in place. Default `true`.
    */
   public clear(options: IntrospectionOptions = {}): void {
-    if(this.destroying || this.inertAfterDestroy) {
+    if(this.destroying || this.ignoresCalls) {
       return;
     }
     const {scope = ListenerScope.ANY, includeIncognito = true} = options;
@@ -675,7 +675,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   ): FilteredPipeHandle<TEventMap> {
     return {
       pipe: ((downstream: Bus<any>, options?: SubscribeOptions) => {
-        if(this.isInertAfterDestroy('pipe') || downstream.isInertPipeTarget(this.name)) {
+        if(this.guard('pipe') || downstream.guardAsPipeTarget(this.name)) {
           return downstream;
         }
         return this.connectDownstreamNode(downstream, {...options, filter}) as Bus<any>;
@@ -688,8 +688,8 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * Calls made while {@link Bus.destroy} is running are logged at debug under any setting.
    * @returns `true` when the caller should return its inert stub instead of running
    */
-  private isInertAfterDestroy(method: string): boolean {
-    if(this.isInertDuringDestroy(method)) {
+  private guard(method: string): boolean {
+    if(this.guardDuringDestroy(method)) {
       return true;
     }
     const {onUseAfterDestroy} = this.options;
@@ -707,37 +707,37 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
 
   /**
    * Whether {@link Options.onUseAfterDestroy} skips calls now, without reporting them.
-   * Used by `emit` and `destroy`, which skip silently.
+   * Used by `emit`, `destroy`, and `clear`, which skip silently.
    */
-  private get inertAfterDestroy(): boolean {
+  private get ignoresCalls(): boolean {
     return Boolean(this.options.onUseAfterDestroy) && this.destroyed;
   }
 
   /**
-   * {@link Bus.isInertAfterDestroy} for an upstream piping into this bus, reported under
+   * {@link Bus.guard} for an upstream piping into this bus, reported under
    * this bus's {@link Options.onUseAfterDestroy}.
    */
-  private isInertPipeTarget(upstreamName: string): boolean {
-    return this.isInertAfterDestroy(`${upstreamName}.pipe`);
+  private guardAsPipeTarget(upstreamName: string): boolean {
+    return this.guard(`${upstreamName}.pipe`);
   }
 
   /**
-   * {@link Bus.isInertAfterDestroy} for promise-returning methods: under `'throw'`, rejects
+   * {@link Bus.guard} for promise-returning methods: under `'throw'`, rejects
    * rather than throwing synchronously.
    * @returns the stub to return, or `null` when the caller should run
    */
-  private inertPromiseAfterDestroy<T>(method: string): CancelablePromise<T> | null {
-    if(this.isInertDuringDestroy(method)) {
+  private guardPromise<T>(method: string): CancelablePromise<T> | null {
+    if(this.guardDuringDestroy(method)) {
       return canceledPromise<T>(`${this.name} destroyed`);
     }
     try {
-      return this.isInertAfterDestroy(method) ? pendingPromise<T>() : null;
+      return this.guard(method) ? pendingPromise<T>() : null;
     } catch(e) {
       return cancelable<T>(() => Promise.reject(e));
     }
   }
 
-  private isInertDuringDestroy(method: string): boolean {
+  private guardDuringDestroy(method: string): boolean {
     if(this.destroying) {
       this.logger.onUseDuringDestroy(method);
     }
