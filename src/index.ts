@@ -1,5 +1,5 @@
 export {Bus} from './strongbus';
-export {Scanner} from './scanner';
+export type {Scanner} from './scanner';
 export {subscriptionWrapper} from './utils/subscriptionWrapper';
 export {
   StrongbusLogCode,

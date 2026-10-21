@@ -4,7 +4,7 @@ import {type CancelablePromise, cancelable, timeout} from 'jaasync';
 
 import {Scanner} from './scanner';
 import {normalizeScanParams, ScannerPools, type ScanParams} from './scannerPools';
-import {StrongbusLogger} from './strongbusLogger';
+import {StrongbusLogger, StrongbusLogMessages} from './strongbusLogger';
 import {LifecycleManager, type LifecycleHost} from './lifecycleManager';
 import {type Subscription, type EventMap, WILDCARD} from './types/events';
 import type {
@@ -51,6 +51,7 @@ import type {
 import type {MonitoringSurface, MonitoringHook} from './types/surfaces/monitoringSurface';
 import type {EventKeys, SubscribableEventKeys, VoidEventKeys} from './types/utility';
 import {subscribeListenable} from './utils/subscribeListenable';
+import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import {isSubscribeOptions} from './utils/isSubscribeOptions';
 import {BusGraphNode} from './busGraphNode';
@@ -85,7 +86,8 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     verbose: false,
     coalesceDownstreamLifecycleEvents: true,
     duplicateSubscriptionStrategy: resolveDuplicateSubscriptionStrategy(),
-    onUnhandledEvent: 'ignore'
+    onUnhandledEvent: 'ignore',
+    onUseAfterDestroy: false
   };
 
   /**
@@ -143,6 +145,8 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
       })
     };
   }
+  private static readonly DESTROYED: unique symbol = Symbol('destroyed');
+
   public readonly name!: string;
   public readonly hook!: MonitoringHook<TEventMap>;
 
@@ -153,22 +157,33 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   protected readonly introspection!: IntrospectionManager<TEventMap>;
   private readonly subscriptions!: SubscriptionManager<TEventMap>;
   private readonly scanners!: ScannerPools<TEventMap>;
+  /** Pending `next` / `scan` promises, mapped to whether they were registered incognito. */
+  private readonly inFlight = new Map<CancelablePromise<unknown>, boolean>();
+  private destroyReason: string | typeof Bus.DESTROYED | undefined;
+  /** `true` only while {@link Bus.destroy} is running, including its lifecycle hooks. */
+  private destroying: boolean = false;
 
   constructor(options?: Options) {
     super();
     this.options = Bus.mergeOptions(Bus.defaultOptions, options);
     this.name = `${uniqueName(this.options.name)} ${this.constructor.name}`;
     this.logger = new StrongbusLogger<TEventMap>({
-      ...this.options,
+      name: this.name,
       provider: this.options.logger,
-      name: this.name
+      thresholds: this.options.thresholds,
+      verbose: this.options.verbose
     });
     this.lifecycle = new LifecycleManager<TEventMap>({
       host: this.createLifecycleHost(),
       options: this.options,
       logger: this.logger
     });
-    this.hook = this.lifecycle.hook;
+    this.hook = ((event, handler) => {
+      if(this.guard('hook')) {
+        return inertSubscription();
+      }
+      return this.lifecycle.hook(event, handler);
+    }) as MonitoringHook<TEventMap>;
     this.subscriptions = new SubscriptionManager({
       host: this.createSubscriptionHost(),
       options: this.options,
@@ -201,6 +216,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     event: EventKeys<TEventMap>,
     payload?: TEventMap[EventKeys<TEventMap>]
   ): boolean {
+    if(this.ignoresCalls) {
+      return false;
+    }
     return this.dispatcher.dispatchEvent(event, payload);
   }
 
@@ -213,6 +231,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     handler: EventHandler<TEventMap, T>,
     options?: SubscribeOptions
   ): Subscription {
+    if(this.guard('on')) {
+      return inertSubscription();
+    }
     return this.subscriptions.on(event, handler, options);
   }
 
@@ -224,6 +245,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * {@link Bus.any} / {@link Bus.tap} intent.
    */
   public off<T extends SubscribableEventKeys<TEventMap>>(event: T, handler: EventHandler<TEventMap, T>): void {
+    if(this.guard('off')) {
+      return;
+    }
     this.subscriptions.off(event, handler);
   }
 
@@ -237,6 +261,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     handler: EventHandler<TEventMap, T>,
     options?: SubscribeOptions
   ): Subscription {
+    if(this.guard('once')) {
+      return inertSubscription();
+    }
     return this.subscriptions.once(event, handler, options);
   }
 
@@ -251,6 +278,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     handler,
     options?: SubscribeOptions
   ) => {
+    if(this.guard('any')) {
+      return inertSubscription();
+    }
     return this.subscriptions.any(
       events as EventKeys<TEventMap>[],
       handler as unknown as EventSink<TEventMap>,
@@ -266,6 +296,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     handler: TapHandler<TEventMap>,
     options?: SubscribeOptions
   ) => {
+    if(this.guard('tap')) {
+      return inertSubscription();
+    }
     return this.subscriptions.tap(handler, options);
   }) as SubscriptionSurfaceTap<TEventMap>;
 
@@ -284,8 +317,12 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     dest: PipePredicate<TEventMap> | Bus<any>,
     options?: SubscribeOptions
   ): FilteredPipeHandle<TEventMap> | Bus<any> => {
-    if(typeof dest === 'function') {
+    if(this.guard('pipe')) {
+      return typeof dest === 'function' ? inertFilteredPipeHandle() : dest;
+    } else if(typeof dest === 'function') {
       return this.createFilteredPipeHandle(dest as PipePredicate<TEventMap>);
+    } else if(dest.guardAsPipeTarget(this.name)) {
+      return dest;
     }
     return this.connectDownstreamNode(dest, options) as Bus<any>;
   }) as SubscriptionSurfacePipe<TEventMap>;
@@ -296,6 +333,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   public unpipe: SubscriptionSurfaceUnpipe<TEventMap> = ((
     dest: Bus<any>
   ) => {
+    if(this.guard('unpipe')) {
+      return;
+    }
     this.disconnectDownstreamNode(dest);
   }) as SubscriptionSurfaceUnpipe<TEventMap>;
 
@@ -329,6 +369,10 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   ) => {
     type T = typeof resolutionTrigger;
     type TResult = NextResult<TEventMap, T>;
+    const stub = this.guardPromise<TResult>('next');
+    if(stub) {
+      return stub;
+    }
     let settled: boolean = false;
     let resolveInternalPromise: (value: TResult) => void;
     let rejectInternalPromise: (err?: Error) => void;
@@ -390,7 +434,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
 
     willDestroyListener = this.hook('willDestroy', () => p.cancel(`${this.name} destroyed`));
 
-    return p;
+    return this.trackInFlight(p, options?.incognito === true);
   }) as SubscriptionSurfaceNext<TEventMap>;
 
   /**
@@ -411,6 +455,10 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   public scan: SubscriptionSurfaceScan<TEventMap> = ((
     ...args: unknown[]
   ): CancelablePromise<any> => {
+    const stub = this.guardPromise('scan');
+    if(stub) {
+      return stub;
+    }
     const params = normalizeScanParams<TEventMap>(args);
     const scanParams = params as unknown as ScanParams<any, TEventMap>;
 
@@ -430,25 +478,25 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
         );
       }
       // tslint:disable-next-line:prefer-object-spread
-      return Object.assign(
+      return this.trackInFlight(Object.assign(
         timeout(scanner, {ms: params.timeout, cancelUnderlyingPromiseOnTimeout: true}),
         {
           [INTERNAL_PROMISE]: scanner,
           cancel: (err: any) => scanner.cancel(err)
         }
-      );
+      ), params.incognito === true);
     } else if(params.pool === false) {
       const scanner = new Scanner<any>(scanParams);
       scanner.scan<TEventMap>(this, params.trigger, subscribeOptions);
       // tslint:disable-next-line:prefer-object-spread
-      return Object.assign(
+      return this.trackInFlight(Object.assign(
         scanner,
         {[INTERNAL_PROMISE]: scanner}
-      );
+      ), params.incognito === true);
 
     }
 
-    return this.scanners.scan<any>(this, scanParams);
+    return this.trackInFlight(this.scanners.scan<any>(this, scanParams), params.incognito === true);
   }) as SubscriptionSurfaceScan<TEventMap>;
 
   /**
@@ -457,6 +505,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * The handler receives a `boolean` indicating if the bus is active (`true`) or idle (`false`)
    */
   public monitor(handler: (activeState: boolean) => void): Subscription {
+    if(this.guard('monitor')) {
+      return inertSubscription();
+    }
     return this.lifecycle.monitor(handler);
   }
 
@@ -520,14 +571,81 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   }) as IntrospectionSurfaceListenerForEach<TEventMap>;
 
   /**
-   * Remove all event subscribers, lifecycle subscribers, and downstreams.
+   * Whether {@link Bus.destroy} has been called. Becomes `true` once teardown completes,
+   * so it is still `false` inside {@link Lifecycle.willDestroy} hooks.
+   */
+  public get destroyed(): boolean {
+    return this.destroyReason !== undefined;
+  }
+
+  /**
+   * Remove all event subscribers, lifecycle subscribers, and downstreams, and detach
+   * from every upstream that pipes into this bus.
    * Triggers lifecycle meta events for all subscribed events before removing
    * lifecycle subscribers, emitting {@link Lifecycle.willDestroy} during teardown.
+   * The first `reason` given is retained and reported by {@link Options.onUseAfterDestroy}.
+   *
+   * Not reentrant. While teardown runs, `destroy` and `clear` are ignored, and the methods
+   * {@link Options.onUseAfterDestroy} guards are ignored with a debug log under any setting;
+   * `next` / `scan` return an already-canceled promise. `emit` still runs.
    */
-  public destroy() {
-    this.subscriptions.releaseAll();
-    this.lifecycle.destroy();
-    this.releaseAllDownstreamEdges();
+  public destroy(reason?: string) {
+    if(this.destroying || this.ignoresCalls) {
+      return;
+    }
+    this.destroying = true;
+    try {
+      this.subscriptions.releaseAll();
+      this.lifecycle.destroy();
+      this.releaseAllDownstreamEdges();
+      this.releaseAllUpstreamEdges();
+      this.destroyReason ??= reason ?? Bus.DESTROYED;
+    } finally {
+      this.destroying = false;
+    }
+  }
+
+  /**
+   * Remove listeners and pipe edges without destroying the bus. Unlike {@link Bus.destroy},
+   * lifecycle hooks stay registered (and see the removals), and the bus remains usable.
+   *
+   * - `ListenerScope.OWN` cancels pending {@link Bus.next} / {@link Bus.scan} promises and
+   *   removes this bus's event subscribers.
+   * - `ListenerScope.DOWNSTREAM` severs edges to buses this bus pipes into.
+   * - `ListenerScope.ANY` does both, and also detaches from upstreams that pipe into this bus.
+   *
+   * @param options.scope - default `ListenerScope.ANY`
+   * @param options.includeIncognito - when `false`, incognito subscriptions, `next` / `scan`
+   *   promises, and pipe edges are left in place. Default `true`.
+   */
+  public clear(options: IntrospectionOptions = {}): void {
+    if(this.destroying || this.ignoresCalls) {
+      return;
+    }
+    const {scope = ListenerScope.ANY, includeIncognito = true} = options;
+    if((scope & ListenerScope.OWN) === ListenerScope.OWN) {
+      for(const [p, incognito] of [...this.inFlight]) {
+        if(includeIncognito || !incognito) {
+          p.cancel(`${this.name} cleared`);
+        }
+      }
+      this.subscriptions.releaseAll(includeIncognito);
+    }
+    if((scope & ListenerScope.DOWNSTREAM) === ListenerScope.DOWNSTREAM) {
+      this.disconnectAllDownstreamNodes(includeIncognito);
+    }
+    if((scope & ListenerScope.ANY) === ListenerScope.ANY) {
+      this.releaseAllUpstreamEdges(includeIncognito);
+    }
+  }
+
+  private trackInFlight<P extends CancelablePromise<any>>(p: P, incognito: boolean): P {
+    const untrack = () => {
+      this.inFlight.delete(p);
+    };
+    this.inFlight.set(p, incognito);
+    p.then(untrack, untrack);
+    return p;
   }
 
   private createSubscriptionHost(): SubscriptionHost {
@@ -557,9 +675,73 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   ): FilteredPipeHandle<TEventMap> {
     return {
       pipe: ((downstream: Bus<any>, options?: SubscribeOptions) => {
+        if(this.guard('pipe') || downstream.guardAsPipeTarget(this.name)) {
+          return downstream;
+        }
         return this.connectDownstreamNode(downstream, {...options, filter}) as Bus<any>;
       }) as FilteredPipeHandle<TEventMap>['pipe']
     };
+  }
+
+  /**
+   * Under {@link Options.onUseAfterDestroy}, report a call to `method` on a destroyed bus.
+   * Calls made while {@link Bus.destroy} is running are logged at debug under any setting.
+   * @returns `true` when the caller should return its inert stub instead of running
+   */
+  private guard(method: string): boolean {
+    if(this.guardDuringDestroy(method)) {
+      return true;
+    }
+    const {onUseAfterDestroy} = this.options;
+    if(!onUseAfterDestroy || !this.destroyed) {
+      return false;
+    }
+    const reason = this.destroyReason === Bus.DESTROYED ? undefined : this.destroyReason;
+    if(onUseAfterDestroy === 'throw') {
+      const {message, code} = StrongbusLogMessages.useAfterDestroy(this.name, method, reason);
+      throw Object.assign(new Error(message), {code});
+    }
+    this.logger.onUseAfterDestroy(method, reason, onUseAfterDestroy);
+    return true;
+  }
+
+  /**
+   * Whether {@link Options.onUseAfterDestroy} skips calls now, without reporting them.
+   * Used by `emit`, `destroy`, and `clear`, which skip silently.
+   */
+  private get ignoresCalls(): boolean {
+    return Boolean(this.options.onUseAfterDestroy) && this.destroyed;
+  }
+
+  /**
+   * {@link Bus.guard} for an upstream piping into this bus, reported under
+   * this bus's {@link Options.onUseAfterDestroy}.
+   */
+  private guardAsPipeTarget(upstreamName: string): boolean {
+    return this.guard(`${upstreamName}.pipe`);
+  }
+
+  /**
+   * {@link Bus.guard} for promise-returning methods: under `'throw'`, rejects
+   * rather than throwing synchronously.
+   * @returns the stub to return, or `null` when the caller should run
+   */
+  private guardPromise<T>(method: string): CancelablePromise<T> | null {
+    if(this.guardDuringDestroy(method)) {
+      return canceledPromise<T>(`${this.name} destroyed`);
+    }
+    try {
+      return this.guard(method) ? pendingPromise<T>() : null;
+    } catch(e) {
+      return cancelable<T>(() => Promise.reject(e));
+    }
+  }
+
+  private guardDuringDestroy(method: string): boolean {
+    if(this.destroying) {
+      this.logger.onUseDuringDestroy(method);
+    }
+    return this.destroying;
   }
 
   private accountForDownstreamListeners(_event: EventKeys<TEventMap>|WILDCARD, _count: number): void {
@@ -577,4 +759,27 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   private invalidateOwnListenerCache(): void {
     this.introspection.invalidateOwnListenerCache();
   }
+}
+
+function inertSubscription(): Subscription {
+  return subscriptionWrapper(() => undefined);
+}
+
+function inertFilteredPipeHandle<TEventMap extends EventMap>(): FilteredPipeHandle<TEventMap> {
+  return {
+    pipe: ((downstream: Bus<any>) => downstream) as FilteredPipeHandle<TEventMap>['pipe']
+  };
+}
+
+/** Never settles on its own; `cancel()` still rejects it. */
+function pendingPromise<T>(): CancelablePromise<T> {
+  return cancelable<T>(() => new Promise<T>(() => undefined));
+}
+
+/** Rejected the same way {@link Bus.destroy} cancels pending `next` / `scan` promises. */
+function canceledPromise<T>(reason: string): CancelablePromise<T> {
+  const p = pendingPromise<T>();
+  p.catch((): void => undefined);
+  p.cancel(reason);
+  return p;
 }

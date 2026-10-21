@@ -93,13 +93,13 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
     } else {
       downstreams.set(downstream, {
         unlink: over([
-          downstream.hook(Lifecycle.willAddListener, (event) =>
+          downstream.lifecycle.hook(Lifecycle.willAddListener, (event) =>
             this.lifecycle.onDownstreamWillAdd(event as EventKeys<TEventMap>|WILDCARD)),
-          downstream.hook(Lifecycle.didAddListener, (event) =>
+          downstream.lifecycle.hook(Lifecycle.didAddListener, (event) =>
             this.lifecycle.onDownstreamDidAdd(event as EventKeys<TEventMap>|WILDCARD)),
-          downstream.hook(Lifecycle.willRemoveListener, (event) =>
+          downstream.lifecycle.hook(Lifecycle.willRemoveListener, (event) =>
             this.lifecycle.onDownstreamWillRemove(event as EventKeys<TEventMap>|WILDCARD)),
-          downstream.hook(Lifecycle.didRemoveListener, (event) =>
+          downstream.lifecycle.hook(Lifecycle.didRemoveListener, (event) =>
             this.lifecycle.onDownstreamDidRemove(event as EventKeys<TEventMap>|WILDCARD))
         ]),
         incognito: false,
@@ -167,6 +167,30 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
       this.resolveWarnedPathsTo(downstream);
     }
     this.graph.downstreams.clear();
+  }
+
+  /**
+   * Disconnect every downstream via {@link BusGraphNode.disconnectDownstreamNode}, so
+   * this node's lifecycle and listener accounting see each removal.
+   */
+  protected disconnectAllDownstreamNodes(includeIncognito: boolean = true): void {
+    for(const [downstream, edge] of [...this.graph.downstreams]) {
+      if(includeIncognito || !edge.incognito) {
+        this.disconnectDownstreamNode(downstream);
+      }
+    }
+  }
+
+  /**
+   * Have every upstream drop its edge to this node.
+   * @param includeIncognito - when `false`, upstreams that pipe in incognito keep their edge
+   */
+  protected releaseAllUpstreamEdges(includeIncognito: boolean = true): void {
+    for(const upstream of [...this.graph.upstreams]) {
+      if(includeIncognito || !upstream.graph.downstreams.get(this)?.incognito) {
+        upstream.disconnectDownstreamNode(this);
+      }
+    }
   }
 
   protected forEachDownstream(

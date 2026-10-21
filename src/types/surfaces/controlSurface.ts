@@ -1,21 +1,29 @@
 import type {Bus} from '../../strongbus';
 import type {EventMap} from '../events';
+import type {IntrospectionOptions} from '../listenerScope';
 import {brand, isObjectWithFunctions, unwrapSurface} from './utils';
 import type {EmittingSurface} from './emittingSurface';
 
 /**
  * Emit events and tear down a {@link Bus} instance.
  *
- * Extends {@link EmittingSurface} with {@link ControlSurface.destroy}. Prefer
- * {@link EmittingSurface} when a dependency may raise events but must not
- * destroy the bus.
+ * Extends {@link EmittingSurface} with {@link ControlSurface.destroy} and
+ * {@link ControlSurface.clear}. Prefer {@link EmittingSurface} when a dependency
+ * may raise events but must not destroy or clear the bus.
  *
  * Event-map typing is bivariant (no `in out`) so a surface over a wider map is
  * assignable to a narrower view — the same Wide→Narrow shape as {@link Bus}.
  */
 export interface ControlSurface<TEventMap extends EventMap = EventMap>
   extends EmittingSurface<TEventMap> {
-  destroy(): void;
+  destroy(reason?: string): void;
+
+  /**
+   * Remove listeners and pipe edges in `options.scope` (default `ListenerScope.ANY`), and cancel
+   * pending `next` / `scan` promises when the scope includes `OWN`, leaving the bus usable.
+   * Lifecycle hooks stay registered. `options.includeIncognito` defaults to `true`.
+   */
+  clear(options?: IntrospectionOptions): void;
 }
 
 type InferControlEventMap<S> =

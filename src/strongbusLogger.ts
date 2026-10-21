@@ -96,6 +96,18 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
     this.error(buildAsyncErrorHandlerFailed(details));
   }
 
+  public onUseAfterDestroy(
+    method: string,
+    reason: string|undefined,
+    level: Exclude<LogLevel, 'never'>
+  ): void {
+    this[level](buildUseAfterDestroy(this.name, method, reason));
+  }
+
+  public onUseDuringDestroy(method: string): void {
+    this.debug(buildUseDuringDestroy(this.name, method));
+  }
+
   private onAddListenerNonVerbose(event: EventKeys<TEventMap>|WILDCARD, n: number) {
     const {thresholds} = this;
     if(n === thresholds.info) {
@@ -304,10 +316,24 @@ function buildAsyncErrorHandlerFailed(context: ErrorHandlerFailureDetails): Stro
   };
 }
 
+function buildUseAfterDestroy(name: string, method: string, reason?: string): StrongbusLogRecord {
+  return {
+    code: StrongbusLogCode.UseAfterDestroy,
+    message: `${name}: ${method}() invoked after destroy${reason === undefined ? '' : ` (reason: ${reason})`}`
+  };
+}
+
+function buildUseDuringDestroy(name: string, method: string): StrongbusLogRecord {
+  return {
+    code: StrongbusLogCode.UseDuringDestroy,
+    message: `${name}: ${method}() invoked during destroy; ignored`
+  };
+}
+
 /**
- * Expected {@link StrongbusLogRecord} fixtures for specs. Prefer asserting against
- * these rather than hard-coding message text. Production call sites should use
- * {@link StrongbusLogger} domain methods instead.
+ * Builders for the {@link StrongbusLogRecord} behind each {@link StrongbusLogCode}.
+ * Specs assert against these instead of hard-coding message text; {@link Bus} uses
+ * `useAfterDestroy` to build the error it throws under `onUseAfterDestroy: 'throw'`.
  * @internal
  */
 export class StrongbusLogMessages {
@@ -326,6 +352,8 @@ export class StrongbusLogMessages {
   public static unsoundPipeEdgeFilterUpgrade = buildUnsoundPipeEdgeFilterUpgrade;
   public static errorHandlerFailed = buildErrorHandlerFailed;
   public static asyncErrorHandlerFailed = buildAsyncErrorHandlerFailed;
+  public static useAfterDestroy = buildUseAfterDestroy;
+  public static useDuringDestroy = buildUseDuringDestroy;
 }
 
 /**

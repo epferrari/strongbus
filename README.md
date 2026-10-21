@@ -455,12 +455,12 @@ hooks per listener; coalescing applies only to the initial `pipe()` / final
 | Surface | Methods | Use when |
 |---------|---------|----------|
 | **`EmittingSurface`** | `emit` | Raising events without teardown |
-| **`ControlSurface`** | `emit`, `destroy` | Raising events or tearing down a bus |
+| **`ControlSurface`** | `emit`, `destroy`, `clear` | Raising events, or clearing or tearing down a bus |
 | **`SubscriptionSurface`** | `on`, `once`, `any`, `next`, `scan`, `tap`, `pipe`, `unpipe` | Subscribing, awaiting, or forwarding events |
 | **`IntrospectionSurface`** | `hasListeners`, `getListeners`, `getListenerCount`, `hasListenersFor`, `getEventCount`, `getListenerCountFor`, `getListenersFor`, `forEach` | Inspecting listener state |
 | **`MonitoringSurface`** | `monitor`, `hook`, `active` | Observing lifecycle and active/idle state |
 
-`ControlSurface` extends `EmittingSurface`. Prefer `EmittingSurface` when a dependency may raise events but must not destroy the bus.
+`ControlSurface` extends `EmittingSurface`. Prefer `EmittingSurface` when a dependency may raise events but must not destroy or clear the bus.
 
 A `Bus<Wide>` is assignable to any narrower view (for example `SubscriptionSurface<Narrow>`) so consumers can declare only the events and capabilities they need. The same Wide→Narrow assignability holds surface-to-surface (`SubscriptionSurface<Wide>` → `SubscriptionSurface<Narrow>`), matching the flattened method picks domain objects used to expose.
 
@@ -594,11 +594,70 @@ bus.hasListeners({includeIncognito: true});
 
 ## Teardown
 
-`destroy()` releases all event subscribers, fires `willDestroy`, removes all hooks, and detaches all downstreams.
+`destroy(reason?)` releases all event subscribers, fires `willDestroy`, removes all hooks, detaches all downstreams,
+and detaches it from every upstream that pipes into it.
+Afterwards, `bus.destroyed` is `true`.
 
 ```typescript
-bus.destroy();
+bus.destroy('session closed');
 ```
+
+To start over without destroying the bus, `clear()` cancels pending `next` / `scan` promises, releases all event
+subscribers, and severs every pipe edge in both directions. Lifecycle hooks stay registered and fire for the removed
+listeners (including `idle`), and the bus stays usable: `destroyed` remains `false`.
+
+```typescript
+bus.clear();
+bus.on('foo', handler); // works as on a fresh bus
+```
+
+`clear` takes the same options shape as the introspection methods, with different defaults
+(`scope: ListenerScope.ANY`, `includeIncognito: true`):
+
+- `ListenerScope.OWN` — cancel pending `next` / `scan` promises and release this bus's subscribers.
+- `ListenerScope.DOWNSTREAM` — sever edges to buses this bus pipes into.
+- `ListenerScope.ANY` — both, and detach from upstreams that pipe into this bus.
+- `includeIncognito: false` — leave incognito subscriptions, `next` / `scan` promises, and pipe edges in place.
+
+```typescript
+bus.clear({scope: ListenerScope.DOWNSTREAM}); // unpipe everything, keep own listeners
+bus.clear({includeIncognito: false});         // reset, but keep incognito plumbing
+```
+
+By default a destroyed bus still accepts calls, so a consumer that outlives the bus's owner keeps subscribing without
+any sign of trouble. Set `onUseAfterDestroy` to catch this:
+
+```typescript
+const bus = new Bus<Events>({onUseAfterDestroy: 'warn'});
+bus.destroy('session closed');
+
+bus.on('foo', handler);
+// logs StrongbusLogCode.UseAfterDestroy:
+// "<name> Bus: on() invoked after destroy (reason: session closed)"
+// and returns a no-op Subscription without registering `handler`
+```
+
+- `false` (default) — calls run as usual.
+- a log level (`'debug'` | `'info'` | `'warn'` | `'error'`) — log, then skip the call and return an inert stub.
+- `'throw'` — throw an `Error` with the same message and `code`. `next` and `scan` return a rejected
+  `CancelablePromise` instead of throwing.
+
+Stubs: `on`, `once`, `any`, `tap`, `hook`, and `monitor` return a no-op `Subscription`; `pipe(bus)` returns `bus`
+without linking; `pipe(predicate)` returns a handle whose `pipe` does nothing; `next` and `scan` return a
+`CancelablePromise` that never settles unless canceled; `off` and `unpipe` return.
+
+`emit` and `destroy` are exempt from logging and throwing: under any `onUseAfterDestroy` setting other than `false`,
+they quietly do nothing (`emit` returns `false`). Introspection methods (`hasListeners`, `getListenerCount`,
+`destroyed`, etc.) are never affected.
+
+Piping a live bus into a destroyed one counts as using the destroyed bus: it is reported under the destroyed bus's
+`onUseAfterDestroy` (as `<live name>.pipe()`), and no edge is created.
+
+While `destroy()` is running, including inside `willDestroy` and the remove-listener hooks it fires, the bus is
+already off-limits regardless of `onUseAfterDestroy`: those same methods are skipped and logged at `debug` as
+`StrongbusLogCode.UseDuringDestroy`, returning the stubs above, except that `next` and `scan` return an
+already-canceled promise. A nested `destroy()` or `clear()` does nothing. `emit` still runs, so a `willDestroy`
+hook can send a final event to downstreams that are still attached.
 
 ## Options
 
@@ -611,6 +670,8 @@ bus.destroy();
 - `logger` — a `Logger`, or a `() => Logger` provider.
 - `verbose` — log on every listener past a threshold (`true`), or only at threshold boundaries
   (`false`, default).
+- `onUseAfterDestroy` — `false` (default), a log level, or `'throw'`: how to treat calls on a destroyed bus.
+  See [Teardown](#teardown).
 - `duplicateSubscriptionStrategy` — how duplicate listenable+handler registrations behave for
   `on`, `any`, and `tap` across four axes:
 

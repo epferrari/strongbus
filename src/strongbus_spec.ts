@@ -159,7 +159,7 @@ describe('Strongbus.Bus', () => {
     });
   });
 
-  describe('listener logging thresholds', () => {
+  describe('logging options', () => {
 
     describe('given options.logger is a Logger instance', () => {
       loggingSpecs(jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']));
@@ -696,7 +696,7 @@ describe('Strongbus.Bus', () => {
     });
   });
 
-  describe('duplicateSubscriptionStrategy', () => {
+  describe('options.duplicateSubscriptionStrategy', () => {
     it('defaults to collapse + warn', () => {
       const options: Strongbus.Options = (bus as any).options;
       expect(options.duplicateSubscriptionStrategy).toEqual({
@@ -2833,6 +2833,219 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('#clear', () => {
+    it('removes all event listeners, including incognito ones', () => {
+      bus.on('foo', singleEventHandler);
+      bus.once('bar', singleEventHandler);
+      bus.any(['foo', 'baz'], eventSink);
+      bus.tap(eventSink);
+      bus.on('baz', singleEventHandler, {incognito: true});
+
+      bus.clear();
+      bus.emit('foo', 'x');
+      bus.emit('bar', true);
+      bus.emit('baz', 1);
+
+      expect(singleEventHandler).not.toHaveBeenCalled();
+      expect(eventSink).not.toHaveBeenCalled();
+      expect(bus.getListenerCount({includeIncognito: true})).toBe(0);
+    });
+
+    it('keeps lifecycle hooks, which see the removals and later additions', () => {
+      const didRemoveListener = jasmine.createSpy('didRemoveListener');
+      const didAddListener = jasmine.createSpy('didAddListener');
+      const onIdle = jasmine.createSpy('idle');
+      bus.on('foo', singleEventHandler);
+      bus.hook('didRemoveListener', didRemoveListener);
+      bus.hook('didAddListener', didAddListener);
+      bus.hook('idle', onIdle);
+
+      bus.clear();
+      expect(didRemoveListener).toHaveBeenCalledWith('foo');
+      expect(onIdle).toHaveBeenCalled();
+      expect(bus.active).toBeFalse();
+
+      bus.on('bar', singleEventHandler);
+      expect(didAddListener).toHaveBeenCalledWith('bar');
+    });
+
+    it('severs downstream edges and stops counting downstream listeners', () => {
+      const downstream = new Strongbus.Bus<TestEventMap>();
+      downstream.on('foo', singleEventHandler);
+      bus.pipe(downstream);
+      expect(bus.active).toBeTrue();
+
+      bus.clear();
+      bus.emit('foo', 'x');
+
+      expect(singleEventHandler).not.toHaveBeenCalled();
+      expect(bus.getListenerCount()).toBe(0);
+      expect(bus.active).toBeFalse();
+    });
+
+    it('severs upstream edges', () => {
+      const upstream = new Strongbus.Bus<TestEventMap>();
+      bus.on('foo', singleEventHandler);
+      upstream.pipe(bus);
+
+      bus.clear();
+      bus.on('foo', singleEventHandler);
+      upstream.emit('foo', 'x');
+
+      expect(singleEventHandler).not.toHaveBeenCalled();
+      expect(upstream.getListenerCount()).toBe(0);
+    });
+
+    it('cancels pending next and scan promises', async () => {
+      const evaluator = (): void => undefined;
+      const pending = [
+        bus.next('foo'),
+        bus.scan('foo', evaluator),
+        bus.scan('bar', evaluator, {pool: false}),
+        bus.scan('baz', evaluator, {timeout: 10000})
+      ];
+
+      bus.clear();
+
+      for(const p of pending) {
+        await expectAsync(p).toBeRejected();
+      }
+    });
+
+    it('does not leave an orphaned pooled scanner for later scans', async () => {
+      const evaluator: Scanner.Evaluator<string, TestEventMap> = (resolve, reject) => {
+        if(resolve.trigger.type === 'event' && resolve.trigger.event === 'foo') {
+          resolve(resolve.trigger.payload as string);
+        }
+      };
+      const first = bus.scan('foo', evaluator);
+      bus.clear();
+      await expectAsync(first).toBeRejected();
+
+      const second = bus.scan('foo', evaluator);
+      bus.emit('foo', 'x');
+      await expectAsync(second).toBeResolvedTo('x');
+    });
+
+    describe('options', () => {
+      let upstream: Strongbus.Bus<TestEventMap>;
+      let downstream: Strongbus.Bus<TestEventMap>;
+      let ownHandler: jasmine.Spy;
+      let downstreamHandler: jasmine.Spy;
+
+      async function isPending(p: Promise<unknown>): Promise<boolean> {
+        const pending = Symbol('pending');
+        const winner = await Promise.race([p.catch((): void => undefined), sleep(5).then(() => pending)]);
+        return winner === pending;
+      }
+
+      beforeEach(() => {
+        upstream = new Strongbus.Bus<TestEventMap>();
+        downstream = new Strongbus.Bus<TestEventMap>();
+        ownHandler = jasmine.createSpy('ownHandler');
+        downstreamHandler = jasmine.createSpy('downstreamHandler');
+        downstream.on('foo', downstreamHandler);
+      });
+
+      describe('given scope is OWN', () => {
+        it('removes own listeners and cancels next/scan, keeping pipe edges in both directions', async () => {
+          bus.on('foo', ownHandler);
+          bus.pipe(downstream);
+          upstream.pipe(bus);
+          const next = bus.next('bar');
+
+          bus.clear({scope: Strongbus.ListenerScope.OWN});
+          await expectAsync(next).toBeRejected();
+          bus.emit('foo', 'local');
+
+          expect(ownHandler).not.toHaveBeenCalled();
+          expect(downstreamHandler).toHaveBeenCalledWith('local');
+
+          bus.on('foo', singleEventHandler);
+          upstream.emit('foo', 'from upstream');
+          expect(singleEventHandler).toHaveBeenCalledWith('from upstream');
+        });
+      });
+
+      describe('given scope is DOWNSTREAM', () => {
+        it('severs downstream edges only, keeping own listeners, next/scan, and upstream edges', async () => {
+          bus.on('foo', ownHandler);
+          bus.pipe(downstream);
+          upstream.pipe(bus);
+          const next = bus.next('bar');
+
+          bus.clear({scope: Strongbus.ListenerScope.DOWNSTREAM});
+          bus.emit('foo', 'local');
+          upstream.emit('foo', 'from upstream');
+
+          expect(ownHandler.calls.allArgs()).toEqual([['local'], ['from upstream']]);
+          expect(downstreamHandler).not.toHaveBeenCalled();
+          expect(await isPending(next)).toBeTrue();
+          next.cancel();
+        });
+      });
+
+      describe('given includeIncognito is false', () => {
+        it('leaves incognito listeners, next/scan, and pipe edges in place', async () => {
+          const incognitoHandler = jasmine.createSpy('incognitoHandler');
+          const incognitoDownstreamHandler = jasmine.createSpy('incognitoDownstreamHandler');
+          const incognitoDownstream = new Strongbus.Bus<TestEventMap>();
+          incognitoDownstream.on('foo', incognitoDownstreamHandler);
+          const incognitoUpstream = new Strongbus.Bus<TestEventMap>();
+
+          bus.on('foo', ownHandler);
+          bus.on('foo', incognitoHandler, {incognito: true});
+          bus.pipe(downstream);
+          bus.pipe(incognitoDownstream, {incognito: true});
+          upstream.pipe(bus);
+          incognitoUpstream.pipe(bus, {incognito: true});
+          const next = bus.next('bar');
+          const incognitoNext = bus.next('bar', {incognito: true});
+          const incognitoScan = bus.scan('bar', (resolve) => {
+            if(resolve.trigger.type === 'event') {
+              resolve(resolve.trigger.payload);
+            }
+          }, {incognito: true});
+
+          bus.clear({includeIncognito: false});
+          await expectAsync(next).toBeRejected();
+          bus.emit('foo', 'local');
+          upstream.emit('foo', 'from upstream');
+          incognitoUpstream.emit('foo', 'from incognito upstream');
+
+          expect(ownHandler).not.toHaveBeenCalled();
+          expect(downstreamHandler).not.toHaveBeenCalled();
+          expect(incognitoHandler.calls.allArgs()).toEqual([['local'], ['from incognito upstream']]);
+          expect(incognitoDownstreamHandler).toHaveBeenCalledOnceWith('local');
+
+          bus.emit('bar', true);
+          await expectAsync(incognitoNext).toBeResolvedTo({event: 'bar', payload: true});
+          await expectAsync(incognitoScan).toBeResolvedTo(true);
+        });
+      });
+    });
+
+    it('leaves the bus usable and not destroyed', () => {
+      bus.clear();
+      bus.on('foo', singleEventHandler);
+      bus.emit('foo', 'x');
+
+      expect(singleEventHandler).toHaveBeenCalledWith('x');
+      expect(bus.destroyed).toBeFalse();
+    });
+
+    describe('given onUseAfterDestroy is set and the bus is destroyed', () => {
+      it('silently does nothing', () => {
+        const logger = jasmine.createSpyObj<Logger>('logger', ['info', 'warn', 'error', 'debug']);
+        bus = new Strongbus.Bus<TestEventMap>({logger, onUseAfterDestroy: 'throw'});
+        bus.destroy();
+
+        expect(() => bus.clear()).not.toThrow();
+        expect(logger.error).not.toHaveBeenCalled();
+      });
+    });
+  });
+
   describe('#destroy', () => {
     it('removes all event listeners, triggering proper lifecycle events', () => {
       const onUnhandledEvent = jasmine.createSpy('onUnhandledEvent');
@@ -2889,6 +3102,433 @@ describe('Strongbus.Bus', () => {
       bus.emit('foo', null);
       expect(singleEventHandler).not.toHaveBeenCalled();
       expect(eventSink).not.toHaveBeenCalled();
+    });
+
+    describe('given the bus is piped into by an upstream', () => {
+      let upstream: Strongbus.Bus<TestEventMap>;
+      let onUnhandledEvent: jasmine.Spy;
+
+      beforeEach(() => {
+        onUnhandledEvent = jasmine.createSpy('onUnhandledEvent');
+        upstream = new Strongbus.Bus<TestEventMap>();
+        bus = new Strongbus.Bus<TestEventMap>({onUnhandledEvent});
+        bus.on('foo', singleEventHandler);
+      });
+
+      it('stops the upstream from forwarding to it', () => {
+        upstream.pipe(bus);
+        bus.destroy();
+
+        expect(upstream.emit('foo', 'x')).toBeFalse();
+        expect(onUnhandledEvent).not.toHaveBeenCalled();
+      });
+
+      it('detaches an incognito pipe too', () => {
+        upstream.pipe(bus, {incognito: true});
+        bus.destroy();
+
+        upstream.emit('foo', 'x');
+        expect(onUnhandledEvent).not.toHaveBeenCalled();
+      });
+
+      it('leaves the upstream unaffected by listeners added later', () => {
+        upstream.pipe(bus);
+        bus.destroy();
+        bus.on('foo', singleEventHandler);
+
+        expect(upstream.getListenerCount()).toBe(0);
+        expect(upstream.active).toBeFalse();
+      });
+    });
+
+    describe('while teardown is running', () => {
+      let logger: jasmine.SpyObj<Logger>;
+
+      beforeEach(() => {
+        logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+      });
+
+      ([undefined, 'warn', 'throw'] as const).forEach((onUseAfterDestroy) => {
+        describe(`given onUseAfterDestroy is ${onUseAfterDestroy}`, () => {
+          beforeEach(() => {
+            bus = new Strongbus.Bus<TestEventMap>({name: 'Destroying', logger, onUseAfterDestroy});
+          });
+
+          it('is not reentrant, and retains the outer reason', () => {
+            const willDestroy = jasmine.createSpy('willDestroy').and.callFake(() => bus.destroy('inner'));
+            bus.hook('willDestroy', willDestroy);
+            bus.on('foo', singleEventHandler);
+
+            bus.destroy('outer');
+
+            expect(willDestroy).toHaveBeenCalledTimes(1);
+            expect(bus.destroyed).toBeTrue();
+            const {message} = StrongbusLogMessages.useAfterDestroy(bus.name, 'on', 'outer');
+            if(onUseAfterDestroy === 'throw') {
+              expect(() => bus.on('foo', singleEventHandler)).toThrowError(message);
+            } else if(onUseAfterDestroy === 'warn') {
+              bus.on('foo', singleEventHandler);
+              expect(logger.warn).toHaveBeenCalledWith(jasmine.objectContaining({message}));
+            }
+          });
+
+          it('ignores guarded subscription methods called from willDestroy hooks, logging at debug', () => {
+            const downstream = new Strongbus.Bus<TestEventMap>();
+            const upstream = new Strongbus.Bus<TestEventMap>();
+            const lifecycleSpy = jasmine.createSpy('lifecycle');
+            bus.hook('willDestroy', () => {
+              bus.on('foo', singleEventHandler);
+              bus.tap(eventSink);
+              bus.hook('error', lifecycleSpy);
+              bus.monitor(lifecycleSpy);
+              bus.pipe(downstream);
+              upstream.pipe(bus);
+            });
+
+            expect(() => bus.destroy()).not.toThrow();
+
+            expect(bus.getListenerCount()).toBe(0);
+            expect(downstream.getListenerCount()).toBe(0);
+            expect(upstream.getListenerCount()).toBe(0);
+            ['on', 'tap', 'hook', 'monitor', 'pipe', `${upstream.name}.pipe`].forEach((method) => {
+              expect(logger.debug).toHaveBeenCalledWith(StrongbusLogMessages.useDuringDestroy(bus.name, method));
+            });
+          });
+
+          it('returns already-canceled next/scan promises from willDestroy hooks', async () => {
+            let next: Promise<unknown>;
+            let scan: Promise<unknown>;
+            bus.hook('willDestroy', () => {
+              next = bus.next('foo');
+              scan = bus.scan('foo', () => undefined);
+            });
+
+            bus.destroy();
+
+            await expectAsync(next).toBeRejected();
+            await expectAsync(scan).toBeRejected();
+            expect(bus.getListenerCount()).toBe(0);
+            expect(logger.debug).toHaveBeenCalledWith(StrongbusLogMessages.useDuringDestroy(bus.name, 'next'));
+            expect(logger.debug).toHaveBeenCalledWith(StrongbusLogMessages.useDuringDestroy(bus.name, 'scan'));
+          });
+
+          it('still emits from willDestroy hooks to attached downstreams', () => {
+            const downstream = new Strongbus.Bus<TestEventMap>();
+            downstream.on('foo', singleEventHandler);
+            bus.pipe(downstream);
+            bus.hook('willDestroy', () => bus.emit('foo', 'last words'));
+
+            bus.destroy();
+
+            expect(singleEventHandler).toHaveBeenCalledOnceWith('last words');
+          });
+        });
+      });
+    });
+  });
+
+  describe('#destroyed', () => {
+    it('is false before destroy', () => {
+      expect(bus.destroyed).toBeFalse();
+    });
+
+    it('is true after destroy, with or without a reason', () => {
+      const other = new Strongbus.Bus<TestEventMap>();
+      bus.destroy();
+      other.destroy('owner disposed');
+      expect(bus.destroyed).toBeTrue();
+      expect(other.destroyed).toBeTrue();
+    });
+
+    it('is still false inside willDestroy hooks', () => {
+      let observed: boolean;
+      bus.hook('willDestroy', () => {
+        observed = bus.destroyed;
+      });
+      bus.destroy();
+      expect(observed).toBeFalse();
+    });
+  });
+
+  describe('options.onUseAfterDestroy', () => {
+    let logger: jasmine.SpyObj<Logger>;
+    let onUnhandledEvent: jasmine.Spy;
+    let downstream: Strongbus.Bus<TestEventMap>;
+
+    function guardedBus(onUseAfterDestroy: Strongbus.Options['onUseAfterDestroy']): Strongbus.Bus<TestEventMap> {
+      return new Strongbus.Bus<TestEventMap>({name: 'Guarded', logger, onUnhandledEvent, onUseAfterDestroy});
+    }
+
+    async function isPending(p: Promise<unknown>): Promise<boolean> {
+      const pending = Symbol('pending');
+      const winner = await Promise.race([p.catch((): void => undefined), sleep(5).then(() => pending)]);
+      return winner === pending;
+    }
+
+    beforeEach(() => {
+      logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+      onUnhandledEvent = jasmine.createSpy('onUnhandledEvent');
+      downstream = new Strongbus.Bus<TestEventMap>();
+      downstream.on('foo', singleEventHandler);
+    });
+
+    describe('given onUseAfterDestroy is false (default)', () => {
+      it('runs methods on a destroyed bus as before, without logging', () => {
+        bus = guardedBus(undefined);
+        bus.destroy();
+
+        bus.on('foo', singleEventHandler);
+        bus.emit('foo', 'x');
+
+        expect(singleEventHandler).toHaveBeenCalledWith('x');
+        expect(bus.getListenerCount()).toBe(1);
+        expect(logger.warn).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('given onUseAfterDestroy is a LogLevel', () => {
+      beforeEach(() => {
+        bus = guardedBus('warn');
+      });
+
+      it('does not interfere before destroy', () => {
+        bus.on('foo', singleEventHandler);
+        bus.emit('foo', 'x');
+
+        expect(singleEventHandler).toHaveBeenCalledWith('x');
+        expect(logger.warn).not.toHaveBeenCalled();
+      });
+
+      describe('and the bus is destroyed', () => {
+        beforeEach(() => {
+          bus.destroy();
+        });
+
+        function expectLogged(method: string): void {
+          expect(logger.warn).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.useAfterDestroy(bus.name, method, undefined)
+          );
+          expect(logger.warn.calls.mostRecent().args[0].code).toBe(Strongbus.StrongbusLogCode.UseAfterDestroy);
+        }
+
+        function expectInertSubscription(sub: Strongbus.Subscription): void {
+          expect(bus.getListenerCount()).toBe(0);
+          expect(() => sub()).not.toThrow();
+          expect(() => sub.unsubscribe()).not.toThrow();
+        }
+
+        it('#emit returns false without dispatching or logging', () => {
+          expect(bus.emit('foo', 'x')).toBeFalse();
+          expect(onUnhandledEvent).not.toHaveBeenCalled();
+          expect(logger.warn).not.toHaveBeenCalled();
+        });
+
+        it('#destroy returns without logging', () => {
+          bus.destroy('again');
+          expect(bus.destroyed).toBeTrue();
+          expect(logger.warn).not.toHaveBeenCalled();
+        });
+
+        it('#on logs and returns an inert Subscription', () => {
+          expectInertSubscription(bus.on('foo', singleEventHandler));
+          expectLogged('on');
+        });
+
+        it('#once logs and returns an inert Subscription', () => {
+          expectInertSubscription(bus.once('foo', singleEventHandler));
+          expectLogged('once');
+        });
+
+        it('#any logs and returns an inert Subscription', () => {
+          expectInertSubscription(bus.any(['foo', 'bar'], eventSink));
+          expectLogged('any');
+        });
+
+        it('#tap logs and returns an inert Subscription', () => {
+          expectInertSubscription(bus.tap(eventSink));
+          expectLogged('tap');
+        });
+
+        it('#off logs and returns', () => {
+          bus.off('foo', singleEventHandler);
+          expectLogged('off');
+        });
+
+        it('#hook logs and returns an inert Subscription', () => {
+          expectInertSubscription(bus.hook('didAddListener', eventSink));
+          expectLogged('hook');
+        });
+
+        it('#monitor logs and returns an inert Subscription', () => {
+          expectInertSubscription(bus.monitor(eventSink));
+          expectLogged('monitor');
+        });
+
+        it('#pipe(bus) logs and returns the downstream without linking it', () => {
+          expect(bus.pipe(downstream)).toBe(downstream);
+          expect(bus.getListenerCount()).toBe(0);
+          expectLogged('pipe');
+        });
+
+        it('#pipe(predicate) logs once and returns a handle that does not link', () => {
+          const handle = bus.pipe(() => true);
+          expect(handle.pipe(downstream)).toBe(downstream);
+          expect(bus.getListenerCount()).toBe(0);
+          expectLogged('pipe');
+        });
+
+        it('#unpipe logs and returns', () => {
+          bus.unpipe(downstream);
+          expectLogged('unpipe');
+        });
+
+        it('#next logs and returns a pending CancelablePromise', async () => {
+          const p = bus.next('foo');
+          expectLogged('next');
+          expect(await isPending(p)).toBeTrue();
+          p.cancel();
+          await expectAsync(p).toBeRejected();
+        });
+
+        it('#scan logs and returns a pending CancelablePromise', async () => {
+          const evaluator = jasmine.createSpy('evaluator');
+          const p = bus.scan('foo', evaluator);
+          expectLogged('scan');
+          expect(evaluator).not.toHaveBeenCalled();
+          expect(await isPending(p)).toBeTrue();
+          p.cancel();
+          await expectAsync(p).toBeRejected();
+        });
+
+        it('does not affect introspection', () => {
+          expect(bus.destroyed).toBeTrue();
+          expect(bus.active).toBeFalse();
+          expect(bus.hasListeners()).toBeFalse();
+          expect(bus.getListenerCount()).toBe(0);
+          expect(bus.getListeners().size).toBe(0);
+          expect(bus.getEventCount()).toBe(0);
+          expect(bus.hasListenersFor('foo')).toBeFalse();
+          expect(bus.getListenerCountFor('foo')).toBe(0);
+          expect(bus.getListenersFor('foo').size).toBe(0);
+          bus.forEach(() => undefined);
+          expect(logger.warn).not.toHaveBeenCalled();
+        });
+      });
+
+      it('includes the destroy reason in the log', () => {
+        bus.destroy('owner disposed');
+        bus.on('foo', singleEventHandler);
+        expect(logger.warn).toHaveBeenCalledOnceWith(
+          StrongbusLogMessages.useAfterDestroy(bus.name, 'on', 'owner disposed')
+        );
+        expect(logger.warn.calls.mostRecent().args[0].message).toContain('owner disposed');
+      });
+
+      it('logs a FilteredPipeHandle created before destroy and piped after', () => {
+        const handle = bus.pipe(() => true);
+        bus.destroy();
+        expect(handle.pipe(downstream)).toBe(downstream);
+        expect(bus.getListenerCount()).toBe(0);
+        expect(logger.warn).toHaveBeenCalledOnceWith(
+          StrongbusLogMessages.useAfterDestroy(bus.name, 'pipe', undefined)
+        );
+      });
+
+      describe('and a live bus pipes into the destroyed bus', () => {
+        let live: Strongbus.Bus<TestEventMap>;
+
+        beforeEach(() => {
+          live = new Strongbus.Bus<TestEventMap>();
+          bus.destroy();
+        });
+
+        function expectLoggedOnTarget(): void {
+          expect(logger.warn).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.useAfterDestroy(bus.name, `${live.name}.pipe`, undefined)
+          );
+        }
+
+        it('logs on the destroyed bus and does not link', () => {
+          expect(live.pipe(bus)).toBe(bus);
+          live.emit('foo', 'x');
+
+          expectLoggedOnTarget();
+          expect(onUnhandledEvent).not.toHaveBeenCalled();
+        });
+
+        it('logs through a FilteredPipeHandle and does not link', () => {
+          expect(live.pipe(() => true).pipe(bus)).toBe(bus);
+          live.emit('foo', 'x');
+
+          expectLoggedOnTarget();
+          expect(onUnhandledEvent).not.toHaveBeenCalled();
+        });
+      });
+    });
+
+    describe('given onUseAfterDestroy is false and a live bus pipes into a destroyed bus', () => {
+      it('links as before', () => {
+        bus = guardedBus(false);
+        bus.destroy();
+        const live = new Strongbus.Bus<TestEventMap>();
+
+        live.pipe(bus);
+        live.emit('foo', 'x');
+
+        expect(onUnhandledEvent).toHaveBeenCalledWith('foo', 'x');
+        expect(logger.warn).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('given onUseAfterDestroy is \'throw\'', () => {
+      beforeEach(() => {
+        bus = guardedBus('throw');
+      });
+
+      it('throws the log message and code, without logging', () => {
+        bus.destroy();
+        const {message, code} = StrongbusLogMessages.useAfterDestroy(bus.name, 'on', undefined);
+        expect(() => bus.on('foo', singleEventHandler)).toThrow(jasmine.objectContaining({message, code}));
+        expect(bus.getListenerCount()).toBe(0);
+        expect(logger.error).not.toHaveBeenCalled();
+      });
+
+      for(const method of ['next', 'scan'] as const) {
+        it(`#${method} returns a rejected promise instead of throwing`, async () => {
+          bus.destroy();
+          const {message, code} = StrongbusLogMessages.useAfterDestroy(bus.name, method, undefined);
+          let p: Promise<unknown>;
+          expect(() => {
+            p = method === 'next' ? bus.next('foo') : bus.scan('foo', () => undefined);
+          }).not.toThrow();
+          await expectAsync(p).toBeRejectedWith(jasmine.objectContaining({message, code}));
+        });
+      }
+
+      it('includes the destroy reason', () => {
+        bus.destroy('owner disposed');
+        expect(() => bus.on('foo', singleEventHandler)).toThrowError(/on\(\) invoked after destroy \(reason: owner disposed\)/);
+      });
+
+      it('does not throw from #emit or #destroy', () => {
+        bus.destroy();
+        expect(bus.emit('foo', 'x')).toBeFalse();
+        expect(() => bus.destroy()).not.toThrow();
+        expect(onUnhandledEvent).not.toHaveBeenCalled();
+      });
+
+      it('throws when a live bus pipes into the destroyed bus', () => {
+        bus.destroy();
+        const live = new Strongbus.Bus<TestEventMap>();
+        const {message, code} = StrongbusLogMessages.useAfterDestroy(bus.name, `${live.name}.pipe`, undefined);
+        expect(() => live.pipe(bus)).toThrow(jasmine.objectContaining({message, code}));
+      });
+
+      it('does not throw from introspection', () => {
+        bus.destroy();
+        expect(() => bus.getListenerCount()).not.toThrow();
+        expect(bus.destroyed).toBeTrue();
+      });
     });
   });
 
