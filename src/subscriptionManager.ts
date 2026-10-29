@@ -35,6 +35,140 @@ export type SubscriptionHost = {
   invalidateCombinedListenerCache(): void;
 };
 
+type AnyIntent<TEventMap extends EventMap> = HandlerIntent & {
+  events: EventKeys<TEventMap>[];
+  wrappers: Map<EventKeys<TEventMap>, GenericHandler>;
+};
+
+/**
+ * Per-registration teardown hooks for `on`, `once` and `tap`, as prototype methods so a
+ * registration allocates one object instead of one object plus four closures.
+ * @internal
+ */
+class SingleEventFrameMeta<TEventMap extends EventMap> implements IntentFrameMeta {
+  public readonly honorDisposalConfig: boolean;
+  private readonly manager: SubscriptionManager<TEventMap>;
+  private readonly lifecycle: LifecycleManager<TEventMap>;
+  private readonly listenableKey: EventKeys<TEventMap>|WILDCARD;
+  private readonly incognito: boolean;
+  private readonly emitHandler: GenericHandler;
+  private readonly intents: Map<GenericHandler, Map<any, HandlerIntent>>;
+  private readonly userHandler: GenericHandler;
+  private readonly byKey: Map<any, HandlerIntent>;
+
+  constructor(params: {
+    manager: SubscriptionManager<TEventMap>;
+    lifecycle: LifecycleManager<TEventMap>;
+    honorDisposalConfig: boolean;
+    listenableKey: EventKeys<TEventMap>|WILDCARD;
+    incognito: boolean;
+    emitHandler: GenericHandler;
+    intents: Map<GenericHandler, Map<any, HandlerIntent>>;
+    userHandler: GenericHandler;
+    byKey: Map<any, HandlerIntent>;
+  }) {
+    this.manager = params.manager;
+    this.lifecycle = params.lifecycle;
+    this.honorDisposalConfig = params.honorDisposalConfig;
+    this.listenableKey = params.listenableKey;
+    this.incognito = params.incognito;
+    this.emitHandler = params.emitHandler;
+    this.intents = params.intents;
+    this.userHandler = params.userHandler;
+    this.byKey = params.byKey;
+  }
+
+  public onFullyCleared(): void {
+    this.manager.detachEmitHandler(this.listenableKey, this.emitHandler);
+    this.byKey.delete(this.listenableKey);
+    if(this.byKey.size === 0) {
+      this.intents.delete(this.userHandler);
+    }
+  }
+
+  public adjustStackedObservability(delta: number): void {
+    this.manager.adjustSingleStackedObservability(this.listenableKey, this.incognito, delta);
+  }
+
+  public fireLifecycleOwnListenerWillRemove(): void {
+    if(!this.incognito) {
+      this.lifecycle.ownListenerWillRemove(this.listenableKey);
+    }
+  }
+
+  public fireLifecycleOwnListenerDidRemove(): void {
+    if(!this.incognito) {
+      this.lifecycle.ownListenerDidRemove(this.listenableKey);
+    }
+  }
+}
+
+/**
+ * Per-registration teardown hooks for `any`.
+ * @internal
+ */
+class AnyFrameMeta<TEventMap extends EventMap> implements IntentFrameMeta {
+  public readonly honorDisposalConfig: boolean = true;
+  private readonly manager: SubscriptionManager<TEventMap>;
+  private readonly lifecycle: LifecycleManager<TEventMap>;
+  private readonly anyIntents: Map<GenericHandler, Map<string, AnyIntent<TEventMap>>>;
+  private readonly intent: AnyIntent<TEventMap>;
+  private readonly uniqueEvents: EventKeys<TEventMap>[];
+  private readonly intentsForHandler: Map<string, AnyIntent<TEventMap>>;
+  private readonly eventsKey: string;
+  private readonly handler: GenericHandler;
+
+  constructor(params: {
+    manager: SubscriptionManager<TEventMap>;
+    lifecycle: LifecycleManager<TEventMap>;
+    anyIntents: Map<GenericHandler, Map<string, AnyIntent<TEventMap>>>;
+    intent: AnyIntent<TEventMap>;
+    uniqueEvents: EventKeys<TEventMap>[];
+    intentsForHandler: Map<string, AnyIntent<TEventMap>>;
+    eventsKey: string;
+    handler: GenericHandler;
+  }) {
+    this.manager = params.manager;
+    this.lifecycle = params.lifecycle;
+    this.anyIntents = params.anyIntents;
+    this.intent = params.intent;
+    this.uniqueEvents = params.uniqueEvents;
+    this.intentsForHandler = params.intentsForHandler;
+    this.eventsKey = params.eventsKey;
+    this.handler = params.handler;
+  }
+
+  public onFullyCleared(): void {
+    this.manager.teardownAnyEmitHandlers(this.intent);
+    this.intentsForHandler.delete(this.eventsKey);
+    if(this.intentsForHandler.size === 0) {
+      this.anyIntents.delete(this.handler);
+    }
+  }
+
+  public adjustStackedObservability(delta: number): void {
+    this.manager.adjustAnyStackedObservability(this.uniqueEvents, this.intent.incognito, delta);
+  }
+
+  public fireLifecycleOwnListenerWillRemove(): void {
+    if(this.intent.incognito) {
+      return;
+    }
+    for(const e of this.uniqueEvents) {
+      this.lifecycle.ownListenerWillRemove(e);
+    }
+  }
+
+  public fireLifecycleOwnListenerDidRemove(): void {
+    if(this.intent.incognito) {
+      return;
+    }
+    for(const e of this.uniqueEvents) {
+      this.lifecycle.ownListenerDidRemove(e);
+    }
+  }
+}
+
 /**
  * Owns duplicate-subscription stacks, emit-handler storage, and unsub queue.
  * @internal
@@ -232,35 +366,16 @@ export class SubscriptionManager<TEventMap extends EventMap> {
         }
         return existing.frames[0];
       }
-      return this.pushIntentFrame(existing, {
-        honorDisposalConfig: true,
-        onFullyCleared: () => {
-          this.teardownAnyEmitHandlers(existing);
-          intentsForHandler.delete(eventsKey);
-          if(intentsForHandler.size === 0) {
-            this.anyIntents.delete(handler as GenericHandler);
-          }
-        },
-        adjustStackedObservability: (delta) => {
-          this.adjustAnyStackedObservability(uniqueEvents, existing.incognito, delta);
-        },
-        fireLifecycleOwnListenerWillRemove: () => {
-          if(existing.incognito) {
-            return;
-          }
-          for(const e of uniqueEvents) {
-            this.lifecycle.ownListenerWillRemove(e);
-          }
-        },
-        fireLifecycleOwnListenerDidRemove: () => {
-          if(existing.incognito) {
-            return;
-          }
-          for(const e of uniqueEvents) {
-            this.lifecycle.ownListenerDidRemove(e);
-          }
-        }
-      });
+      return this.pushIntentFrame(existing, new AnyFrameMeta({
+        manager: this,
+        lifecycle: this.lifecycle,
+        anyIntents: this.anyIntents,
+        intent: existing,
+        uniqueEvents,
+        intentsForHandler,
+        eventsKey,
+        handler: handler as GenericHandler
+      }));
     }
 
     const wrappers = new Map<EventKeys<TEventMap>, GenericHandler>();
@@ -288,38 +403,20 @@ export class SubscriptionManager<TEventMap extends EventMap> {
       this.attachEmitHandler(e, wrapper, intent.incognito, true);
     }
     byKey.set(eventsKey, intent);
-    return this.pushIntentFrame(intent, {
-      honorDisposalConfig: true,
-      onFullyCleared: () => {
-        this.teardownAnyEmitHandlers(intent);
-        intentsForHandler.delete(eventsKey);
-        if(intentsForHandler.size === 0) {
-          this.anyIntents.delete(handler as GenericHandler);
-        }
-      },
-      adjustStackedObservability: (delta) => {
-        this.adjustAnyStackedObservability(uniqueEvents, intent.incognito, delta);
-      },
-      fireLifecycleOwnListenerWillRemove: () => {
-        if(intent.incognito) {
-          return;
-        }
-        for(const e of uniqueEvents) {
-          this.lifecycle.ownListenerWillRemove(e);
-        }
-      },
-      fireLifecycleOwnListenerDidRemove: () => {
-        if(intent.incognito) {
-          return;
-        }
-        for(const e of uniqueEvents) {
-          this.lifecycle.ownListenerDidRemove(e);
-        }
-      }
-    });
+    return this.pushIntentFrame(intent, new AnyFrameMeta({
+      manager: this,
+      lifecycle: this.lifecycle,
+      anyIntents: this.anyIntents,
+      intent,
+      uniqueEvents,
+      intentsForHandler,
+      eventsKey,
+      handler: handler as GenericHandler
+    }));
   }
 
-  private adjustAnyStackedObservability(
+  /** @internal used by the frame metas */
+  public adjustAnyStackedObservability(
     events: EventKeys<TEventMap>[],
     incognito: boolean,
     delta: number
@@ -338,7 +435,8 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     }
   }
 
-  private teardownAnyEmitHandlers(intent: {
+  /** @internal used by the frame metas */
+  public teardownAnyEmitHandlers(intent: {
     events: EventKeys<TEventMap>[];
     wrappers: Map<EventKeys<TEventMap>, GenericHandler>;
     incognito: boolean;
@@ -467,32 +565,21 @@ export class SubscriptionManager<TEventMap extends EventMap> {
       userHandler,
       byKey
     } = params;
-    return {
+    return new SingleEventFrameMeta({
+      manager: this,
+      lifecycle: this.lifecycle,
       honorDisposalConfig,
-      onFullyCleared: () => {
-        this.detachEmitHandler(listenableKey, emitHandler);
-        byKey.delete(listenableKey);
-        if(byKey.size === 0) {
-          intents.delete(userHandler);
-        }
-      },
-      adjustStackedObservability: (delta) => {
-        this.adjustSingleStackedObservability(listenableKey, incognito, delta);
-      },
-      fireLifecycleOwnListenerWillRemove: () => {
-        if(!incognito) {
-          this.lifecycle.ownListenerWillRemove(listenableKey);
-        }
-      },
-      fireLifecycleOwnListenerDidRemove: () => {
-        if(!incognito) {
-          this.lifecycle.ownListenerDidRemove(listenableKey);
-        }
-      }
-    };
+      listenableKey,
+      incognito,
+      emitHandler,
+      intents,
+      userHandler,
+      byKey
+    });
   }
 
-  private adjustSingleStackedObservability(
+  /** @internal used by the frame metas */
+  public adjustSingleStackedObservability(
     event: EventKeys<TEventMap>|WILDCARD,
     incognito: boolean,
     delta: number
@@ -607,7 +694,8 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     }
   }
 
-  private detachEmitHandler(
+  /** @internal used by the frame metas */
+  public detachEmitHandler(
     event: EventKeys<TEventMap>|WILDCARD,
     handler: GenericHandler
   ): void {
@@ -725,11 +813,10 @@ export class SubscriptionManager<TEventMap extends EventMap> {
   }
 
   private invokeTimesFor(event: EventKeys<TEventMap>|WILDCARD, emitHandler: GenericHandler): number {
-    for(const byEvent of this.onIntents.values()) {
-      const intent = byEvent.get(event);
-      if(intent?.emitHandler === emitHandler) {
-        return Math.max(intent.invokeCount, 1);
-      }
+    // `on` intents are keyed by the user's handler, which is the emit handler itself
+    const intent = this.onIntents.get(emitHandler)?.get(event);
+    if(intent?.emitHandler === emitHandler) {
+      return Math.max(intent.invokeCount, 1);
     }
     // once / any / pipe wrappers handle multiplicity internally
     return 1;

@@ -950,6 +950,133 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('stacked registrations of one handler', () => {
+    beforeEach(() => {
+      bus = new Strongbus.Bus<TestEventMap>({
+        duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.EventEmitter
+      });
+    });
+
+    it('invokes only the stacked handler multiple times when other handlers share the event', () => {
+      const stacked = jasmine.createSpy('stacked');
+      const other = jasmine.createSpy('other');
+      bus.on('foo', other);
+      bus.on('foo', stacked);
+      bus.on('foo', stacked);
+      bus.on('bar', stacked);
+
+      bus.emit('foo', 'x');
+
+      expect(stacked).toHaveBeenCalledTimes(2);
+      expect(other).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps a handler registered under another event unaffected by stacking on this one', () => {
+      const handler = jasmine.createSpy('handler');
+      bus.on('foo', handler);
+      bus.on('foo', handler);
+      bus.on('bar', handler);
+
+      bus.emit('bar', true);
+
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('releases one stacked `on` registration per unsubscribe and then the listener', () => {
+      const handler = jasmine.createSpy('handler');
+      const first = bus.on('foo', handler);
+      const second = bus.on('foo', handler);
+      expect(bus.getListenerCount()).toBe(2);
+
+      first();
+      expect(bus.getListenerCount()).toBe(1);
+      bus.emit('foo', 'x');
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      second();
+      expect(bus.hasListeners()).toBeFalse();
+      bus.emit('foo', 'x');
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('releases stacked `tap` registrations one at a time', () => {
+      const handler = jasmine.createSpy('handler');
+      const first = bus.tap(handler);
+      const second = bus.tap(handler);
+      expect(bus.getListenerCount()).toBe(2);
+
+      first();
+      expect(bus.getListenerCount()).toBe(1);
+      bus.emit('foo', 'x');
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      second();
+      expect(bus.hasListeners()).toBeFalse();
+    });
+
+    it('releases stacked `any` registrations one at a time', () => {
+      const handler = jasmine.createSpy('handler');
+      const first = bus.any(['foo', 'bar'], handler);
+      const second = bus.any(['foo', 'bar'], handler);
+      expect(bus.getListenerCount()).toBe(4);
+
+      first();
+      expect(bus.getListenerCount()).toBe(2);
+      bus.emit('foo', 'x');
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      second();
+      expect(bus.hasListeners()).toBeFalse();
+    });
+
+    it('fires removal lifecycle hooks for visible registrations only', () => {
+      const didRemove = jasmine.createSpy('didRemove');
+      bus.hook('didRemoveListener', didRemove);
+
+      const visible = bus.tap(() => null);
+      const hidden = bus.tap(() => null, {incognito: true});
+      const stackedAny = bus.any(['foo', 'bar'], () => null);
+      didRemove.calls.reset();
+
+      hidden();
+      expect(didRemove).not.toHaveBeenCalled();
+
+      visible();
+      expect(didRemove).toHaveBeenCalledTimes(1);
+
+      stackedAny();
+      expect(didRemove).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('introspection views', () => {
+    it('reflect listeners added and removed after the first introspection call', () => {
+      expect(bus.hasListeners()).toBeFalse();
+      expect(bus.getListenerCount({scope: Strongbus.ListenerScope.OWN})).toBe(0);
+
+      const sub = bus.on('foo', () => null);
+      expect(bus.hasListeners()).toBeTrue();
+      expect(bus.getListenerCount({scope: Strongbus.ListenerScope.OWN})).toBe(1);
+
+      sub();
+      expect(bus.hasListeners()).toBeFalse();
+    });
+
+    it('answers each scope and incognito mode independently', () => {
+      const downstream = new Strongbus.Bus<TestEventMap>();
+      downstream.on('bar', () => null);
+      bus.pipe(downstream);
+      bus.on('foo', () => null);
+      bus.on('baz', () => null, {incognito: true});
+
+      expect(bus.getListenerCount({scope: Strongbus.ListenerScope.OWN})).toBe(1);
+      expect(bus.getListenerCount({scope: Strongbus.ListenerScope.OWN, includeIncognito: true})).toBe(2);
+      expect(bus.getListenerCount({scope: Strongbus.ListenerScope.DOWNSTREAM})).toBe(1);
+      expect(bus.getListenerCount()).toBe(2);
+      expect(bus.getListenerCount({includeIncognito: true})).toBe(3);
+    });
+  });
+
   describe('unsubscribe queue', () => {
     let onWillRemoveListener: jasmine.Spy;
     let onRemoveListener: jasmine.Spy;

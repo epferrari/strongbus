@@ -40,12 +40,12 @@ export class IntrospectionManager<TEventMap extends EventMap = EventMap> {
   private _cachedDownstreamListeners: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
   private _cachedDownstreamListenersWithIncognito: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
 
-  private readonly listenersRegistry: ListenerRegistry<TEventMap>;
-  private readonly listenersRegistryWithIncognito: ListenerRegistry<TEventMap>;
-  private readonly ownListenersRegistry: ListenerRegistry<TEventMap>;
-  private readonly ownListenersRegistryWithIncognito: ListenerRegistry<TEventMap>;
-  private readonly downstreamListenersRegistry: ListenerRegistry<TEventMap>;
-  private readonly downstreamListenersRegistryWithIncognito: ListenerRegistry<TEventMap>;
+  private listenersRegistry?: ListenerRegistry<TEventMap>;
+  private listenersRegistryWithIncognito?: ListenerRegistry<TEventMap>;
+  private ownListenersRegistry?: ListenerRegistry<TEventMap>;
+  private ownListenersRegistryWithIncognito?: ListenerRegistry<TEventMap>;
+  private downstreamListenersRegistry?: ListenerRegistry<TEventMap>;
+  private downstreamListenersRegistryWithIncognito?: ListenerRegistry<TEventMap>;
 
   private readonly subscriptions: SubscriptionManager<TEventMap>;
   private readonly graph: IntrospectionManager.Graph<TEventMap>;
@@ -59,12 +59,6 @@ export class IntrospectionManager<TEventMap extends EventMap = EventMap> {
   }) {
     this.subscriptions = params.subscriptions;
     this.graph = params.graph;
-    this.listenersRegistry = ListenerRegistryView.create(() => this.getCombinedListenersMap(false));
-    this.listenersRegistryWithIncognito = ListenerRegistryView.create(() => this.getCombinedListenersMap(true));
-    this.ownListenersRegistry = ListenerRegistryView.create(() => this.getOwnListenersMap(false));
-    this.ownListenersRegistryWithIncognito = ListenerRegistryView.create(() => this.getOwnListenersMap(true));
-    this.downstreamListenersRegistry = ListenerRegistryView.create(() => this.getDownstreamListenersMap(false));
-    this.downstreamListenersRegistryWithIncognito = ListenerRegistryView.create(() => this.getDownstreamListenersMap(true));
   }
 
   public hasListeners(options: IntrospectionOptions = {}): boolean {
@@ -187,13 +181,23 @@ export class IntrospectionManager<TEventMap extends EventMap = EventMap> {
     this._cachedOwnListenersWithIncognito = null;
   }
 
+  /**
+   * Views are only needed once something introspects, so each is built on first use rather
+   * than for every bus.
+   */
   private registryForScope(scope: ListenerScope, includeIncognito = false): ListenerRegistry<TEventMap> {
     if((scope & ListenerScope.ANY) === ListenerScope.ANY) {
-      return includeIncognito ? this.listenersRegistryWithIncognito : this.listenersRegistry;
+      return includeIncognito
+        ? this.listenersRegistryWithIncognito ??= ListenerRegistryView.create(() => this.getCombinedListenersMap(true))
+        : this.listenersRegistry ??= ListenerRegistryView.create(() => this.getCombinedListenersMap(false));
     } else if((scope & ListenerScope.OWN) === ListenerScope.OWN) {
-      return includeIncognito ? this.ownListenersRegistryWithIncognito : this.ownListenersRegistry;
+      return includeIncognito
+        ? this.ownListenersRegistryWithIncognito ??= ListenerRegistryView.create(() => this.getOwnListenersMap(true))
+        : this.ownListenersRegistry ??= ListenerRegistryView.create(() => this.getOwnListenersMap(false));
     } else if((scope & ListenerScope.DOWNSTREAM) === ListenerScope.DOWNSTREAM) {
-      return includeIncognito ? this.downstreamListenersRegistryWithIncognito : this.downstreamListenersRegistry;
+      return includeIncognito
+        ? this.downstreamListenersRegistryWithIncognito ??= ListenerRegistryView.create(() => this.getDownstreamListenersMap(true))
+        : this.downstreamListenersRegistry ??= ListenerRegistryView.create(() => this.getDownstreamListenersMap(false));
     }
     return IntrospectionManager._emptyListenersRegistry;
   }
