@@ -24,14 +24,16 @@ describe('LifecycleManager', () => {
     host = jasmine.createSpyObj('host', [
       'hasListeners',
       'getListenerCount',
-      'getListenerCountFor',
+      'getListenerCountUpTo',
+      'getListenerCountForUpTo',
       'getOwnListenerCount',
       'accountForDownstreamListeners',
       'accountForRemovedDownstreamListeners'
     ]);
     host.hasListeners.and.returnValue(false);
     host.getListenerCount.and.returnValue(0);
-    host.getListenerCountFor.and.returnValue(0);
+    host.getListenerCountUpTo.and.returnValue(0);
+    host.getListenerCountForUpTo.and.returnValue(0);
     host.getOwnListenerCount.and.returnValue(0);
 
     manager = new LifecycleManager<TestEventMap>({
@@ -66,7 +68,8 @@ describe('LifecycleManager', () => {
   });
 
   it('brackets idle when the last own listener is removed', () => {
-    host.getListenerCountFor.and.returnValue(1);
+    host.getListenerCountForUpTo.and.returnValue(1);
+    host.getListenerCountUpTo.and.returnValue(1);
     host.getListenerCount.and.returnValue(1);
     host.hasListeners.and.returnValues(true, false);
     manager.ownListenerDidAdd('foo');

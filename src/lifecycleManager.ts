@@ -28,8 +28,11 @@ export type DownstreamSnapshot<TEventMap extends EventMap> = DownstreamSnapshotE
 export interface LifecycleHost<TEventMap extends EventMap> {
   hasListeners(): boolean;
   getListenerCount(): number;
+  /** Like `getListenerCount`, but may stop counting at `cap`. */
+  getListenerCountUpTo(cap: number): number;
   getOwnListenerCount(): number;
-  getListenerCountFor(event: EventKeys<TEventMap>|WILDCARD): number;
+  /** The listener count for one event, which may stop counting at `cap`. */
+  getListenerCountForUpTo(event: EventKeys<TEventMap>|WILDCARD, cap: number): number;
   accountForDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void;
   accountForRemovedDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void;
 }
@@ -96,9 +99,10 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
   }
 
   public ownListenerWillRemove(event: EventKeys<TEventMap>|WILDCARD): void {
-    const eventHandlerCount = this.host.getListenerCountFor(event);
+    // only none, one or several matters here, so counting stops at two
+    const eventHandlerCount = this.host.getListenerCountForUpTo(event, 2);
     if(eventHandlerCount) {
-      if(this._active && this.host.getListenerCount() === 1 && eventHandlerCount === 1) {
+      if(this._active && this.host.getListenerCountUpTo(2) === 1 && eventHandlerCount === 1) {
         this.emitLifecycleEvent(Lifecycle.willIdle, null);
       }
       this.emitLifecycleEvent(Lifecycle.willRemoveListener, event);
