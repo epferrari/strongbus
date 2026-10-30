@@ -150,7 +150,8 @@ bus.any(['message', 'count'], (event, payload) => {
 ## Piping
 
 `pipe` attaches a graph edge into another `Bus`. Use `tap` to observe every event without linking.
-Use `unpipe` to detach a bus edge. Multi-hop graphs need an explicit call-site filter — see
+Use `unpipe` to detach a bus edge. A pipe that would form a cycle is refused and logged. Multi-hop
+graphs need an explicit call-site filter — see
 [docs/pipe_limitations.md](./docs/pipe_limitations.md). For a worked analogy of directed multi-hop
 delivery (capture / bubble style), see
 [DOM-style capture and bubble example](./docs/examples/dom-event-propagation.md).
