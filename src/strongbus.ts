@@ -57,6 +57,7 @@ import {BusGraphNode} from './busGraphNode';
 import {IntrospectionManager} from './introspectionManager';
 import {SubscriptionManager, type SubscriptionHost} from './subscriptionManager';
 import {EventDispatcher} from './eventDispatcher';
+import {BusHost} from './busHost';
 
 
 
@@ -150,7 +151,8 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   protected readonly logger!: StrongbusLogger<TEventMap>;
   protected readonly lifecycle!: LifecycleManager<TEventMap>;
   protected readonly dispatcher!: EventDispatcher<TEventMap>;
-  protected readonly introspection!: IntrospectionManager<TEventMap>;
+  /** @internal used by {@link BusHost} */
+  public readonly introspection!: IntrospectionManager<TEventMap>;
   private readonly subscriptions!: SubscriptionManager<TEventMap>;
   private readonly scanners!: ScannerPools<TEventMap>;
 
@@ -163,8 +165,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
       provider: this.options.logger,
       name: this.name
     });
+    const host = new BusHost<TEventMap>(this);
     this.lifecycle = new LifecycleManager<TEventMap>({
-      host: this.createLifecycleHost(),
+      host,
       options: this.options,
       logger: this.logger
     });
@@ -177,19 +180,12 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     });
     this.introspection = new IntrospectionManager({
       subscriptions: this.subscriptions,
-      graph: {
-        hasDownstream: () => this.hasDownstream(),
-        someDownstream: (includeIncognito, fn) => this.someDownstream(includeIncognito, fn),
-        forEachDownstream: (fn) => this.forEachDownstream(fn)
-      }
+      graph: host
     });
     this.scanners = new ScannerPools<TEventMap>();
     this.dispatcher = new EventDispatcher<TEventMap>({
       subscriptions: this.subscriptions,
-      graph: {
-        propagate: (event, payload, fromUpstream) =>
-          this.propagate(event, payload, fromUpstream)
-      },
+      graph: host,
       options: this.options
     });
   }
@@ -543,18 +539,6 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     };
   }
 
-  private createLifecycleHost(): LifecycleHost<TEventMap> {
-    return {
-      hasListeners: this.hasListeners,
-      getListenerCount: this.getListenerCount,
-      getListenerCountUpTo: (cap) => this.introspection.getListenerCountUpTo(cap),
-      getOwnListenerCount: () => this.getListenerCount({scope: ListenerScope.OWN}),
-      getListenerCountForUpTo: (event, cap) => this.introspection.getListenerCountForUpTo(event, cap),
-      accountForDownstreamListeners: this.accountForDownstreamListeners,
-      accountForRemovedDownstreamListeners: this.accountForRemovedDownstreamListeners
-    };
-  }
-
   private createFilteredPipeHandle(
     filter: PipePredicate<TEventMap>
   ): FilteredPipeHandle<TEventMap> {
@@ -563,16 +547,6 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
         return this.connectDownstreamNode(downstream, {...options, filter}) as Bus<any>;
       }) as FilteredPipeHandle<TEventMap>['pipe']
     };
-  }
-
-  // local invalidation is enough here: the bus where the change started has already walked
-  // every upstream, this one included
-  private accountForDownstreamListeners(_event: EventKeys<TEventMap>|WILDCARD, _count: number): void {
-    this.introspection.invalidateCombinedListenerCache();
-  }
-
-  private accountForRemovedDownstreamListeners(_event: EventKeys<TEventMap>|WILDCARD, _count: number): void {
-    this.introspection.invalidateCombinedListenerCache();
   }
 
   private invalidateOwnListenerCache(): void {
