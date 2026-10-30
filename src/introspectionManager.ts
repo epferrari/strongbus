@@ -13,28 +13,29 @@ import type {
 } from './types/surfaces/introspectionSurface';
 import type {EventKeys} from './types/utility';
 
-/** @internal Graph callbacks {@link IntrospectionManager} needs from the pipe host. */
-export namespace IntrospectionManager {
-  export type Graph<TEventMap extends EventMap> = {
-    hasDownstream(): boolean;
-    /**
-     * Calls `fn` for each downstream reachable through an eligible edge (incognito edges only when
-     * `includeIncognito`), stopping at the first call that returns `true`.
-     * @returns whether `fn` returned `true`
-     */
-    someDownstream(
-      includeIncognito: boolean,
-      fn: (downstream: IntrospectionManager<TEventMap>) => boolean
-    ): boolean;
-    forEachDownstream(
-      fn: (downstream: {
-        getCombinedListenersMap(
-          includeIncognito: boolean
-        ): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
-        incognito: boolean;
-      }) => void
-    ): void;
-  };
+/**
+ * Pipe graph callbacks supplied to {@link IntrospectionManager}.
+ * @internal
+ */
+export interface IntrospectionHost<TEventMap extends EventMap> {
+  hasDownstream(): boolean;
+  /**
+   * Calls `fn` for each downstream reachable through an eligible edge (incognito edges only when
+   * `includeIncognito`), stopping at the first call that returns `true`.
+   * @returns whether `fn` returned `true`
+   */
+  someDownstream(
+    includeIncognito: boolean,
+    fn: (downstream: IntrospectionManager<TEventMap>) => boolean
+  ): boolean;
+  forEachDownstream(
+    fn: (downstream: {
+      getCombinedListenersMap(
+        includeIncognito: boolean
+      ): ReadonlyMap<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
+      incognito: boolean;
+    }) => void
+  ): void;
 }
 
 /**
@@ -58,17 +59,17 @@ export class IntrospectionManager<TEventMap extends EventMap = EventMap> {
   private downstreamListenersRegistryWithIncognito?: ListenerRegistry<TEventMap>;
 
   private readonly subscriptions: SubscriptionManager<TEventMap>;
-  private readonly graph: IntrospectionManager.Graph<TEventMap>;
+  private readonly host: IntrospectionHost<TEventMap>;
 
   private static readonly _emptyListenersRegistry: ListenerRegistry<any> =
     ListenerRegistryView.create(() => new Map());
 
   constructor(params: {
     subscriptions: SubscriptionManager<TEventMap>;
-    graph: IntrospectionManager.Graph<TEventMap>;
+    host: IntrospectionHost<TEventMap>;
   }) {
     this.subscriptions = params.subscriptions;
-    this.graph = params.graph;
+    this.host = params.host;
   }
 
   public hasListeners(options: IntrospectionOptions = {}): boolean {
@@ -82,7 +83,7 @@ export class IntrospectionManager<TEventMap extends EventMap = EventMap> {
     }
     // asking each downstream avoids rebuilding the listener maps, which would make every
     // removal on a bus with an upstream cost as much as the number of listeners it has
-    return this.graph.someDownstream(
+    return this.host.someDownstream(
       includeIncognito,
       (downstream) => downstream.hasListeners({scope: ListenerScope.ANY, includeIncognito})
     );
@@ -153,7 +154,7 @@ export class IntrospectionManager<TEventMap extends EventMap = EventMap> {
   }
 
   private tallyDownstreamListeners(tally: ListenerTally<TEventMap>, event?: EventKeys<TEventMap>|WILDCARD): void {
-    this.graph.someDownstream(false, (downstream) => {
+    this.host.someDownstream(false, (downstream) => {
       downstream.tallyListeners(tally, event);
       return tally.full;
     });
@@ -168,7 +169,7 @@ export class IntrospectionManager<TEventMap extends EventMap = EventMap> {
     if((scope & ListenerScope.OWN) === ListenerScope.OWN) {
       return this.subscriptions.ownHandlerTotal(includeIncognito) + this.subscriptions.stackedSurplusTotal();
     }
-    if(!this.graph.hasDownstream()) {
+    if(!this.host.hasDownstream()) {
       return 0;
     }
     let total = 0;
@@ -214,7 +215,7 @@ export class IntrospectionManager<TEventMap extends EventMap = EventMap> {
       return this.subscriptions.ownHandlerCountFor(event, includeIncognito)
         + this.subscriptions.stackedSurplusFor(event);
     }
-    if(!this.graph.hasDownstream()) {
+    if(!this.host.hasDownstream()) {
       return 0;
     }
     return this.registryForScope(scope, includeIncognito).getCount(event);
@@ -317,7 +318,7 @@ export class IntrospectionManager<TEventMap extends EventMap = EventMap> {
       : this._cachedDownstreamListeners;
     if(!cached) {
       const downstreamListenerCache = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
-      this.graph.forEachDownstream(({getCombinedListenersMap, incognito}) => {
+      this.host.forEachDownstream(({getCombinedListenersMap, incognito}) => {
         if(incognito && !includeIncognito) {
           return;
         }

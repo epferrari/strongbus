@@ -54,10 +54,9 @@ import {subscribeListenable} from './utils/subscribeListenable';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import {isSubscribeOptions} from './utils/isSubscribeOptions';
 import {BusGraphNode} from './busGraphNode';
-import {IntrospectionManager} from './introspectionManager';
+import {IntrospectionManager, type IntrospectionHost} from './introspectionManager';
 import {SubscriptionManager, type SubscriptionHost} from './subscriptionManager';
-import {EventDispatcher} from './eventDispatcher';
-import {BusHost} from './busHost';
+import {EventDispatcher, type EventDispatcherHost} from './eventDispatcher';
 
 
 
@@ -144,6 +143,84 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
       })
     };
   }
+
+  /**
+   * What a bus's collaborators need from it. A class rather than a literal so its methods are shared
+   * by every bus; declared inside {@link Bus} so it can reach members that are not public.
+   */
+  private static readonly Host = class<T extends EventMap> implements
+    LifecycleHost<T>,
+    SubscriptionHost,
+    IntrospectionHost<T>,
+    EventDispatcherHost<T> {
+    private readonly bus: Bus<T>;
+
+    constructor(bus: Bus<T>) {
+      this.bus = bus;
+    }
+
+    public hasListeners(): boolean {
+      return this.bus.hasListeners();
+    }
+
+    public getListenerCount(): number {
+      return this.bus.getListenerCount();
+    }
+
+    public getListenerCountUpTo(cap: number): number {
+      return this.bus.introspection.getListenerCountUpTo(cap);
+    }
+
+    public getOwnListenerCount(): number {
+      return this.bus.getListenerCount({scope: ListenerScope.OWN});
+    }
+
+    public getListenerCountForUpTo(event: EventKeys<T>|WILDCARD, cap: number): number {
+      return this.bus.introspection.getListenerCountForUpTo(event, cap);
+    }
+
+    // local invalidation is enough here: the bus where the change started has already walked
+    // every upstream, this one included
+    public accountForDownstreamListeners(_event: EventKeys<T>|WILDCARD, _count: number): void {
+      this.bus.introspection.invalidateCombinedListenerCache();
+    }
+
+    public accountForRemovedDownstreamListeners(_event: EventKeys<T>|WILDCARD, _count: number): void {
+      this.bus.introspection.invalidateCombinedListenerCache();
+    }
+
+    public invalidateOwnListenerCache(): void {
+      this.bus.introspection.invalidateOwnListenerCache();
+    }
+
+    public invalidateListenerCachesUpstream(): void {
+      this.bus.invalidateListenerCachesUpstream();
+    }
+
+    public hasDownstream(): boolean {
+      return this.bus.hasDownstream();
+    }
+
+    public someDownstream(
+      includeIncognito: boolean,
+      fn: (downstream: IntrospectionManager<T>) => boolean
+    ): boolean {
+      return this.bus.someDownstream(includeIncognito, fn);
+    }
+
+    public forEachDownstream(fn: Parameters<IntrospectionHost<T>['forEachDownstream']>[0]): void {
+      this.bus.forEachDownstream(fn);
+    }
+
+    public propagate<K extends EventKeys<T>>(
+      event: K,
+      payload: T[K] | undefined,
+      fromUpstream: boolean
+    ): boolean {
+      return this.bus.propagate(event, payload, fromUpstream);
+    }
+  };
+
   public readonly name!: string;
   public readonly hook!: MonitoringHook<TEventMap>;
 
@@ -151,10 +228,10 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   protected readonly logger!: StrongbusLogger<TEventMap>;
   protected readonly lifecycle!: LifecycleManager<TEventMap>;
   protected readonly dispatcher!: EventDispatcher<TEventMap>;
-  /** @internal used by {@link BusHost} */
-  public readonly introspection!: IntrospectionManager<TEventMap>;
+  protected readonly introspection!: IntrospectionManager<TEventMap>;
   private readonly subscriptions!: SubscriptionManager<TEventMap>;
   private readonly scanners!: ScannerPools<TEventMap>;
+  private readonly host = new Bus.Host<TEventMap>(this);
 
   constructor(options?: Options) {
     super();
@@ -165,27 +242,26 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
       provider: this.options.logger,
       name: this.name
     });
-    const host = new BusHost<TEventMap>(this);
     this.lifecycle = new LifecycleManager<TEventMap>({
-      host,
+      host: this.host,
       options: this.options,
       logger: this.logger
     });
     this.hook = this.lifecycle.hook;
     this.subscriptions = new SubscriptionManager({
-      host: this.createSubscriptionHost(),
+      host: this.host,
       options: this.options,
       logger: this.logger,
       lifecycle: this.lifecycle
     });
     this.introspection = new IntrospectionManager({
       subscriptions: this.subscriptions,
-      graph: host
+      host: this.host
     });
     this.scanners = new ScannerPools<TEventMap>();
     this.dispatcher = new EventDispatcher<TEventMap>({
       subscriptions: this.subscriptions,
-      graph: host,
+      host: this.host,
       options: this.options
     });
   }
@@ -528,17 +604,6 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     this.releaseAllDownstreamEdges();
   }
 
-  private createSubscriptionHost(): SubscriptionHost {
-    const {
-      invalidateOwnListenerCache,
-      invalidateListenerCachesUpstream
-    } = this;
-    return {
-      invalidateOwnListenerCache,
-      invalidateListenerCachesUpstream
-    };
-  }
-
   private createFilteredPipeHandle(
     filter: PipePredicate<TEventMap>
   ): FilteredPipeHandle<TEventMap> {
@@ -547,9 +612,5 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
         return this.connectDownstreamNode(downstream, {...options, filter}) as Bus<any>;
       }) as FilteredPipeHandle<TEventMap>['pipe']
     };
-  }
-
-  private invalidateOwnListenerCache(): void {
-    this.introspection.invalidateOwnListenerCache();
   }
 }
