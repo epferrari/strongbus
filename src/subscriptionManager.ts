@@ -41,139 +41,136 @@ type AnyIntent<TEventMap extends EventMap> = HandlerIntent & {
 };
 
 /**
- * Teardown hooks for one `on`, `once` or `tap` registration. Methods on a class, rather than
- * closures, so a registration allocates one object instead of five.
- * @internal
- */
-class SingleEventFrameMeta<TEventMap extends EventMap> implements IntentFrameMeta {
-  public readonly honorDisposalConfig: boolean;
-  private readonly manager: SubscriptionManager<TEventMap>;
-  private readonly lifecycle: LifecycleManager<TEventMap>;
-  private readonly listenableKey: EventKeys<TEventMap>|WILDCARD;
-  private readonly incognito: boolean;
-  private readonly emitHandler: GenericHandler;
-  private readonly intents: Map<GenericHandler, Map<any, HandlerIntent>>;
-  private readonly userHandler: GenericHandler;
-  private readonly byKey: Map<any, HandlerIntent>;
-
-  constructor(params: {
-    manager: SubscriptionManager<TEventMap>;
-    lifecycle: LifecycleManager<TEventMap>;
-    honorDisposalConfig: boolean;
-    listenableKey: EventKeys<TEventMap>|WILDCARD;
-    incognito: boolean;
-    emitHandler: GenericHandler;
-    intents: Map<GenericHandler, Map<any, HandlerIntent>>;
-    userHandler: GenericHandler;
-    byKey: Map<any, HandlerIntent>;
-  }) {
-    this.manager = params.manager;
-    this.lifecycle = params.lifecycle;
-    this.honorDisposalConfig = params.honorDisposalConfig;
-    this.listenableKey = params.listenableKey;
-    this.incognito = params.incognito;
-    this.emitHandler = params.emitHandler;
-    this.intents = params.intents;
-    this.userHandler = params.userHandler;
-    this.byKey = params.byKey;
-  }
-
-  public onFullyCleared(): void {
-    this.manager.detachEmitHandler(this.listenableKey, this.emitHandler);
-    this.byKey.delete(this.listenableKey);
-    if(this.byKey.size === 0) {
-      this.intents.delete(this.userHandler);
-    }
-  }
-
-  public adjustStackedObservability(delta: number): void {
-    this.manager.adjustSingleStackedObservability(this.listenableKey, this.incognito, delta);
-  }
-
-  public fireLifecycleOwnListenerWillRemove(): void {
-    if(!this.incognito) {
-      this.lifecycle.ownListenerWillRemove(this.listenableKey);
-    }
-  }
-
-  public fireLifecycleOwnListenerDidRemove(): void {
-    if(!this.incognito) {
-      this.lifecycle.ownListenerDidRemove(this.listenableKey);
-    }
-  }
-}
-
-/**
- * Teardown hooks for one `any` registration.
- * @internal
- */
-class AnyFrameMeta<TEventMap extends EventMap> implements IntentFrameMeta {
-  public readonly honorDisposalConfig: boolean = true;
-  private readonly manager: SubscriptionManager<TEventMap>;
-  private readonly lifecycle: LifecycleManager<TEventMap>;
-  private readonly anyIntents: Map<GenericHandler, Map<string, AnyIntent<TEventMap>>>;
-  private readonly intent: AnyIntent<TEventMap>;
-  private readonly uniqueEvents: EventKeys<TEventMap>[];
-  private readonly intentsForHandler: Map<string, AnyIntent<TEventMap>>;
-  private readonly eventsKey: string;
-  private readonly handler: GenericHandler;
-
-  constructor(params: {
-    manager: SubscriptionManager<TEventMap>;
-    lifecycle: LifecycleManager<TEventMap>;
-    anyIntents: Map<GenericHandler, Map<string, AnyIntent<TEventMap>>>;
-    intent: AnyIntent<TEventMap>;
-    uniqueEvents: EventKeys<TEventMap>[];
-    intentsForHandler: Map<string, AnyIntent<TEventMap>>;
-    eventsKey: string;
-    handler: GenericHandler;
-  }) {
-    this.manager = params.manager;
-    this.lifecycle = params.lifecycle;
-    this.anyIntents = params.anyIntents;
-    this.intent = params.intent;
-    this.uniqueEvents = params.uniqueEvents;
-    this.intentsForHandler = params.intentsForHandler;
-    this.eventsKey = params.eventsKey;
-    this.handler = params.handler;
-  }
-
-  public onFullyCleared(): void {
-    this.manager.teardownAnyEmitHandlers(this.intent);
-    this.intentsForHandler.delete(this.eventsKey);
-    if(this.intentsForHandler.size === 0) {
-      this.anyIntents.delete(this.handler);
-    }
-  }
-
-  public adjustStackedObservability(delta: number): void {
-    this.manager.adjustAnyStackedObservability(this.uniqueEvents, this.intent.incognito, delta);
-  }
-
-  public fireLifecycleOwnListenerWillRemove(): void {
-    if(this.intent.incognito) {
-      return;
-    }
-    for(const e of this.uniqueEvents) {
-      this.lifecycle.ownListenerWillRemove(e);
-    }
-  }
-
-  public fireLifecycleOwnListenerDidRemove(): void {
-    if(this.intent.incognito) {
-      return;
-    }
-    for(const e of this.uniqueEvents) {
-      this.lifecycle.ownListenerDidRemove(e);
-    }
-  }
-}
-
-/**
  * Owns duplicate-subscription stacks, emit-handler storage, and unsub queue.
  * @internal
  */
 export class SubscriptionManager<TEventMap extends EventMap> {
+
+  /**
+   * Teardown hooks for one `on`, `once` or `tap` registration. Methods on a class, rather than
+   * closures, so a registration allocates one object instead of five. Declared inside
+   * {@link SubscriptionManager} so it can reach the manager's private members.
+   */
+  private static readonly SingleEventFrameMeta = class<T extends EventMap> implements IntentFrameMeta {
+    public readonly honorDisposalConfig: boolean;
+    private readonly manager: SubscriptionManager<T>;
+    private readonly lifecycle: LifecycleManager<T>;
+    private readonly listenableKey: EventKeys<T>|WILDCARD;
+    private readonly incognito: boolean;
+    private readonly emitHandler: GenericHandler;
+    private readonly intents: Map<GenericHandler, Map<any, HandlerIntent>>;
+    private readonly userHandler: GenericHandler;
+    private readonly byKey: Map<any, HandlerIntent>;
+
+    constructor(params: {
+      manager: SubscriptionManager<T>;
+      lifecycle: LifecycleManager<T>;
+      honorDisposalConfig: boolean;
+      listenableKey: EventKeys<T>|WILDCARD;
+      incognito: boolean;
+      emitHandler: GenericHandler;
+      intents: Map<GenericHandler, Map<any, HandlerIntent>>;
+      userHandler: GenericHandler;
+      byKey: Map<any, HandlerIntent>;
+    }) {
+      this.manager = params.manager;
+      this.lifecycle = params.lifecycle;
+      this.honorDisposalConfig = params.honorDisposalConfig;
+      this.listenableKey = params.listenableKey;
+      this.incognito = params.incognito;
+      this.emitHandler = params.emitHandler;
+      this.intents = params.intents;
+      this.userHandler = params.userHandler;
+      this.byKey = params.byKey;
+    }
+
+    public onFullyCleared(): void {
+      this.manager.detachEmitHandler(this.listenableKey, this.emitHandler);
+      this.byKey.delete(this.listenableKey);
+      if(this.byKey.size === 0) {
+        this.intents.delete(this.userHandler);
+      }
+    }
+
+    public adjustStackedObservability(delta: number): void {
+      this.manager.adjustSingleStackedObservability(this.listenableKey, this.incognito, delta);
+    }
+
+    public fireLifecycleOwnListenerWillRemove(): void {
+      if(!this.incognito) {
+        this.lifecycle.ownListenerWillRemove(this.listenableKey);
+      }
+    }
+
+    public fireLifecycleOwnListenerDidRemove(): void {
+      if(!this.incognito) {
+        this.lifecycle.ownListenerDidRemove(this.listenableKey);
+      }
+    }
+  };
+
+  /** Teardown hooks for one `any` registration. */
+  private static readonly AnyFrameMeta = class<T extends EventMap> implements IntentFrameMeta {
+    public readonly honorDisposalConfig: boolean = true;
+    private readonly manager: SubscriptionManager<T>;
+    private readonly lifecycle: LifecycleManager<T>;
+    private readonly anyIntents: Map<GenericHandler, Map<string, AnyIntent<T>>>;
+    private readonly intent: AnyIntent<T>;
+    private readonly uniqueEvents: EventKeys<T>[];
+    private readonly intentsForHandler: Map<string, AnyIntent<T>>;
+    private readonly eventsKey: string;
+    private readonly handler: GenericHandler;
+
+    constructor(params: {
+      manager: SubscriptionManager<T>;
+      lifecycle: LifecycleManager<T>;
+      anyIntents: Map<GenericHandler, Map<string, AnyIntent<T>>>;
+      intent: AnyIntent<T>;
+      uniqueEvents: EventKeys<T>[];
+      intentsForHandler: Map<string, AnyIntent<T>>;
+      eventsKey: string;
+      handler: GenericHandler;
+    }) {
+      this.manager = params.manager;
+      this.lifecycle = params.lifecycle;
+      this.anyIntents = params.anyIntents;
+      this.intent = params.intent;
+      this.uniqueEvents = params.uniqueEvents;
+      this.intentsForHandler = params.intentsForHandler;
+      this.eventsKey = params.eventsKey;
+      this.handler = params.handler;
+    }
+
+    public onFullyCleared(): void {
+      this.manager.teardownAnyEmitHandlers(this.intent);
+      this.intentsForHandler.delete(this.eventsKey);
+      if(this.intentsForHandler.size === 0) {
+        this.anyIntents.delete(this.handler);
+      }
+    }
+
+    public adjustStackedObservability(delta: number): void {
+      this.manager.adjustAnyStackedObservability(this.uniqueEvents, this.intent.incognito, delta);
+    }
+
+    public fireLifecycleOwnListenerWillRemove(): void {
+      if(this.intent.incognito) {
+        return;
+      }
+      for(const e of this.uniqueEvents) {
+        this.lifecycle.ownListenerWillRemove(e);
+      }
+    }
+
+    public fireLifecycleOwnListenerDidRemove(): void {
+      if(this.intent.incognito) {
+        return;
+      }
+      for(const e of this.uniqueEvents) {
+        this.lifecycle.ownListenerDidRemove(e);
+      }
+    }
+  };
 
   private readonly onIntents = new Map<
     GenericHandler,
@@ -388,7 +385,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
         }
         return existing.frames[0];
       }
-      return this.pushIntentFrame(existing, new AnyFrameMeta({
+      return this.pushIntentFrame(existing, new SubscriptionManager.AnyFrameMeta<TEventMap>({
         manager: this,
         lifecycle: this.lifecycle,
         anyIntents: this.anyIntents,
@@ -422,7 +419,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
       this.attachEmitHandler(e, wrapper, intent.incognito, true);
     }
     byKey.set(eventsKey, intent);
-    return this.pushIntentFrame(intent, new AnyFrameMeta({
+    return this.pushIntentFrame(intent, new SubscriptionManager.AnyFrameMeta<TEventMap>({
       manager: this,
       lifecycle: this.lifecycle,
       anyIntents: this.anyIntents,
@@ -434,8 +431,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     }));
   }
 
-  /** @internal used by the frame metas */
-  public adjustAnyStackedObservability(
+  private adjustAnyStackedObservability(
     events: EventKeys<TEventMap>[],
     incognito: boolean,
     delta: number
@@ -454,8 +450,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     }
   }
 
-  /** @internal used by the frame metas */
-  public teardownAnyEmitHandlers(intent: AnyIntent<TEventMap>): void {
+  private teardownAnyEmitHandlers(intent: AnyIntent<TEventMap>): void {
     for(const e of intent.events) {
       const wrapper = intent.wrappers.get(e);
       if(wrapper) {
@@ -530,7 +525,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
         }
         return existing.frames[0];
       }
-      return this.pushIntentFrame(existing, new SingleEventFrameMeta({
+      return this.pushIntentFrame(existing, new SubscriptionManager.SingleEventFrameMeta<TEventMap>({
         manager: this,
         lifecycle: this.lifecycle,
         honorDisposalConfig,
@@ -553,7 +548,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     };
     byKey.set(listenableKey, intent);
     this.attachEmitHandler(listenableKey, emitHandler, incognito, true);
-    return this.pushIntentFrame(intent, new SingleEventFrameMeta({
+    return this.pushIntentFrame(intent, new SubscriptionManager.SingleEventFrameMeta<TEventMap>({
       manager: this,
       lifecycle: this.lifecycle,
       honorDisposalConfig,
@@ -566,8 +561,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     }));
   }
 
-  /** @internal used by the frame metas */
-  public adjustSingleStackedObservability(
+  private adjustSingleStackedObservability(
     event: EventKeys<TEventMap>|WILDCARD,
     incognito: boolean,
     delta: number
@@ -691,8 +685,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     }
   }
 
-  /** @internal used by the frame metas */
-  public detachEmitHandler(
+  private detachEmitHandler(
     event: EventKeys<TEventMap>|WILDCARD,
     handler: GenericHandler
   ): void {
