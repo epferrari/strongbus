@@ -6,21 +6,25 @@ import type {MaterializedBusOptions} from './types/materializedBusOptions';
 import type {EventKeys} from './types/utility';
 
 /**
+ * Pipe graph callbacks supplied to {@link EventDispatcher}.
+ * @internal
+ */
+export interface EventDispatcherHost<TEventMap extends EventMap> {
+  propagate<T extends EventKeys<TEventMap>>(
+    event: T,
+    payload: TEventMap[T] | undefined,
+    fromUpstream: boolean
+  ): boolean;
+}
+
+/**
  * Dispatches raised events to local handlers and propagates along pipe edges.
  * @internal
  */
 export namespace EventDispatcher {
-  export type Graph<TEventMap extends EventMap> = {
-    propagate<T extends EventKeys<TEventMap>>(
-      event: T,
-      payload: TEventMap[T] | undefined,
-      fromUpstream: boolean
-    ): boolean;
-  };
-
   export type Params<TEventMap extends EventMap> = {
     subscriptions: Pick<SubscriptionManager<TEventMap>, 'consumeEvent'>;
-    graph: Graph<TEventMap>;
+    host: EventDispatcherHost<TEventMap>;
     options: Pick<MaterializedBusOptions, 'onUnhandledEvent'>;
   };
 }
@@ -32,12 +36,12 @@ export namespace EventDispatcher {
 export class EventDispatcher<TEventMap extends EventMap = EventMap> {
 
   private readonly subscriptions!: Pick<SubscriptionManager<TEventMap>, 'consumeEvent'>;
-  private readonly graph!: EventDispatcher.Graph<TEventMap>;
+  private readonly host!: EventDispatcherHost<TEventMap>;
   private readonly options!: Pick<MaterializedBusOptions, 'onUnhandledEvent'>;
 
   constructor(params: EventDispatcher.Params<TEventMap>) {
     this.subscriptions = params.subscriptions;
-    this.graph = params.graph;
+    this.host = params.host;
     this.options = params.options;
   }
 
@@ -53,7 +57,7 @@ export class EventDispatcher<TEventMap extends EventMap = EventMap> {
     let handled = false;
     handled = this.subscriptions.consumeEvent(event, payload) || handled;
     handled = this.subscriptions.consumeEvent(WILDCARD as any, event, payload) || handled;
-    handled = this.graph.propagate(event, payload, fromUpstream) || handled;
+    handled = this.host.propagate(event, payload, fromUpstream) || handled;
 
     if(!handled) {
       if(this.options.onUnhandledEvent === 'throw') {

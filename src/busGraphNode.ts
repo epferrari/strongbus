@@ -53,8 +53,7 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
   protected abstract readonly logger: StrongbusLogger<TEventMap>;
   protected abstract readonly lifecycle: LifecycleManager<TEventMap>;
   protected abstract readonly dispatcher: EventDispatcher<TEventMap>;
-  /** @internal used by {@link BusHost} */
-  public abstract readonly introspection: IntrospectionManager<TEventMap>;
+  protected abstract readonly introspection: IntrospectionManager<TEventMap>;
 
   /**
    * Subscribe to meta changes. Provided by {@link Bus} after lifecycle setup.
@@ -145,8 +144,7 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
   /**
    * @param fromUpstream - true when *this* node is dispatching an event it received via pipe
    */
-  /** @internal used by {@link BusHost} */
-  public propagate<T extends EventKeys<TEventMap>>(
+  protected propagate<T extends EventKeys<TEventMap>>(
     event: T,
     payload: TEventMap[T] | undefined,
     fromUpstream: boolean
@@ -227,13 +225,11 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
     }
   }
 
-  /** @internal used by {@link BusHost} */
-  public hasDownstream(): boolean {
+  protected hasDownstream(): boolean {
     return this.graph.downstreams.size > 0;
   }
 
-  /** @internal used by {@link BusHost} */
-  public someDownstream(
+  protected someDownstream(
     includeIncognito: boolean,
     fn: (downstream: IntrospectionManager<TEventMap>) => boolean
   ): boolean {
@@ -248,8 +244,7 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
     return false;
   }
 
-  /** @internal used by {@link BusHost} */
-  public forEachDownstream(
+  protected forEachDownstream(
     fn: (downstream: {
       getCombinedListenersMap(
         includeIncognito: boolean

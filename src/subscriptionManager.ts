@@ -30,10 +30,10 @@ type IntentFrameMeta = {
  * Shared resources (`options`, `logger`, `lifecycle`) are constructor deps.
  * @internal
  */
-export type SubscriptionHost = {
+export interface SubscriptionHost {
   invalidateOwnListenerCache(): void;
   invalidateListenerCachesUpstream(): void;
-};
+}
 
 type AnyIntent<TEventMap extends EventMap> = HandlerIntent & {
   events: EventKeys<TEventMap>[];
