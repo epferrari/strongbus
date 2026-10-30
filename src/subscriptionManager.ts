@@ -32,7 +32,7 @@ type IntentFrameMeta = {
  */
 export type SubscriptionHost = {
   invalidateOwnListenerCache(): void;
-  invalidateCombinedListenerCache(): void;
+  invalidateListenerCachesUpstream(): void;
 };
 
 type AnyIntent<TEventMap extends EventMap> = HandlerIntent & {
@@ -667,7 +667,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     if(incognito) {
       this.markIncognito(handler, event);
     }
-    this.host.invalidateCombinedListenerCache();
+    this.host.invalidateListenerCachesUpstream();
     this.host.invalidateOwnListenerCache();
     if(fireLifecycle && !incognito) {
       this.lifecycle.ownListenerDidAdd(event);
@@ -692,7 +692,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
       if(set.size === 0) {
         this.handlersByEvent.delete(event);
       }
-      this.host.invalidateCombinedListenerCache();
+      this.host.invalidateListenerCachesUpstream();
       this.host.invalidateOwnListenerCache();
       this.logger.onListenerRemoved(event, this.ownListenerCountForEvent(event));
     }

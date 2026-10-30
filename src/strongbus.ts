@@ -535,11 +535,11 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   private createSubscriptionHost(): SubscriptionHost {
     const {
       invalidateOwnListenerCache,
-      invalidateCombinedListenerCache
+      invalidateListenerCachesUpstream
     } = this;
     return {
       invalidateOwnListenerCache,
-      invalidateCombinedListenerCache
+      invalidateListenerCachesUpstream
     };
   }
 
@@ -565,15 +565,13 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     };
   }
 
+  // local invalidation is enough here: the bus where the change started has already walked
+  // every upstream, this one included
   private accountForDownstreamListeners(_event: EventKeys<TEventMap>|WILDCARD, _count: number): void {
-    this.invalidateCombinedListenerCache();
+    this.introspection.invalidateCombinedListenerCache();
   }
 
   private accountForRemovedDownstreamListeners(_event: EventKeys<TEventMap>|WILDCARD, _count: number): void {
-    this.invalidateCombinedListenerCache();
-  }
-
-  private invalidateCombinedListenerCache(): void {
     this.introspection.invalidateCombinedListenerCache();
   }
 
