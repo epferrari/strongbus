@@ -262,7 +262,7 @@ describe('listener introspection across pipes', () => {
     });
   });
 
-  describe('given random changes to an acyclic graph', () => {
+  describe('given random changes to the graph', () => {
     function mulberry32(seed: number): () => number {
       let state = seed;
       return () => {
@@ -296,16 +296,16 @@ describe('listener introspection across pipes', () => {
           } else if(roll < 0.45 && subscriptions.length) {
             subscriptions.splice(Math.floor(random() * subscriptions.length), 1)[0]();
           } else if(roll < 0.7) {
-            // edges only point from a lower to a higher index, so the graph stays acyclic
-            const i = Math.floor(random() * (BUS_COUNT - 1));
-            const j = i + 1 + Math.floor(random() * (BUS_COUNT - 1 - i));
+            // any pair: edges that would close a cycle are refused, and unpiping them is a no-op
+            const from = pick(buses);
+            const to = pick(buses);
             const options = {incognito: random() < 0.3};
             if(random() < 0.3) {
-              buses[i].pipe(() => true).pipe(buses[j], options);
+              from.pipe(Strongbus.ASSUMED_SOUND_EDGE).pipe(to, options);
             } else {
-              buses[i].pipe(buses[j], options);
+              from.pipe(to, options);
             }
-            edges.push({from: buses[i], to: buses[j]});
+            edges.push({from, to});
           } else if(roll < 0.85 && edges.length) {
             const {from, to} = edges.splice(Math.floor(random() * edges.length), 1)[0];
             from.unpipe(to);

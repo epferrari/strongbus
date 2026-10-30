@@ -88,6 +88,10 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
     this.warn(buildUnsoundPipeEdgeFilterUpgrade(this.name, dest));
   }
 
+  public onCyclicPipe(dest: string): void {
+    this.warn(buildCyclicPipe(this.name, dest));
+  }
+
   public onErrorHandlerFailed(details: ErrorHandlerFailureDetails): void {
     this.error(buildErrorHandlerFailed(details));
   }
@@ -300,6 +304,17 @@ function buildUnsoundPipeEdgeFilterUpgrade(bridge: string, dest: string): Strong
   };
 }
 
+function buildCyclicPipe(source: string, dest: string): StrongbusLogRecord {
+  return {
+    code: StrongbusLogCode.CyclicPipe,
+    message: [
+      `${source} → ${dest}: not piped, because ${dest} already pipes into ${source},`,
+      'directly or through other buses, and the edge would form a cycle.',
+      'Unpipe an edge on that path first. See https://epferrari.github.io/strongbus/docs/pipe_limitations.md.'
+    ].join(' ')
+  };
+}
+
 function buildErrorHandlerFailed(context: ErrorHandlerFailureDetails): StrongbusLogRecord {
   return {
     code: StrongbusLogCode.ErrorHandlerFailed,
@@ -350,6 +365,7 @@ export class StrongbusLogMessages {
   public static unsoundPipeGraph = buildUnsoundPipeGraph;
   public static unsoundPipeGraphResolved = buildUnsoundPipeGraphResolved;
   public static unsoundPipeEdgeFilterUpgrade = buildUnsoundPipeEdgeFilterUpgrade;
+  public static cyclicPipe = buildCyclicPipe;
   public static errorHandlerFailed = buildErrorHandlerFailed;
   public static asyncErrorHandlerFailed = buildAsyncErrorHandlerFailed;
   public static useAfterDestroy = buildUseAfterDestroy;
