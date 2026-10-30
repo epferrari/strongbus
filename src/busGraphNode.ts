@@ -108,7 +108,7 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
       this.lifecycle.onDownstreamAttached(this.buildSnapshot(downstream));
     }
     downstream.onConnectedAsDownstreamNode(this);
-    this.introspection.invalidateCombinedListenerCache();
+    this.invalidateListenerCachesUpstream();
     if(!filter) {
       for(const upstream of upstreams) {
         this.warnUnsoundPath(upstream, downstream);
@@ -133,7 +133,7 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
     this.graph.downstreams.delete(downstream);
     downstream.onDisconnectedAsDownstreamNode(this);
     this.resolveWarnedPathsTo(downstream);
-    this.introspection.invalidateCombinedListenerCache();
+    this.invalidateListenerCachesUpstream();
   }
 
   /**
@@ -167,6 +167,33 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
       this.resolveWarnedPathsTo(downstream);
     }
     this.graph.downstreams.clear();
+    this.invalidateListenerCachesUpstream();
+  }
+
+  /**
+   * Drops the cached combined listener maps of this node and of every node upstream of it. Call it
+   * whenever this node's own listeners or downstream edges change, including incognito ones,
+   * which never reach an upstream through lifecycle hooks.
+   */
+  protected invalidateListenerCachesUpstream(): void {
+    this.introspection.invalidateCombinedListenerCache();
+    if(!this.graph.upstreams.size) {
+      return;
+    }
+    // `visited` keeps a diamond from being walked twice and a cycle from being walked forever
+    const visited = new Set<BusGraphNode<TEventMap>>([this]);
+    const pending: BusGraphNode<TEventMap>[] = [...this.graph.upstreams];
+    while(pending.length) {
+      const node = pending.pop();
+      if(visited.has(node)) {
+        continue;
+      }
+      visited.add(node);
+      node.introspection.invalidateCombinedListenerCache();
+      for(const upstream of node.graph.upstreams) {
+        pending.push(upstream);
+      }
+    }
   }
 
   /**
