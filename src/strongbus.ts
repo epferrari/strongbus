@@ -193,6 +193,8 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     this.introspection = new IntrospectionManager({
       subscriptions: this.subscriptions,
       graph: {
+        hasDownstream: () => this.hasDownstream(),
+        someDownstream: (includeIncognito, fn) => this.someDownstream(includeIncognito, fn),
         forEachDownstream: (fn) => this.forEachDownstream(fn)
       }
     });
@@ -663,8 +665,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     return {
       hasListeners: this.hasListeners,
       getListenerCount: this.getListenerCount,
+      getListenerCountUpTo: (cap) => this.introspection.getListenerCountUpTo(cap),
       getOwnListenerCount: () => this.getListenerCount({scope: ListenerScope.OWN}),
-      getListenerCountFor: this.getListenerCountFor,
+      getListenerCountForUpTo: (event, cap) => this.introspection.getListenerCountForUpTo(event, cap),
       accountForDownstreamListeners: this.accountForDownstreamListeners,
       accountForRemovedDownstreamListeners: this.accountForRemovedDownstreamListeners
     };

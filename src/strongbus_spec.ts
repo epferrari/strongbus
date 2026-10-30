@@ -508,6 +508,58 @@ describe('Strongbus.Bus', () => {
         expect(bus.emit('foo', 'eagle')).toBeFalse();
       });
     });
+
+    describe('given handlers change while an event is being emitted', () => {
+      it('does not call a handler added during the emit until the next emit', () => {
+        const added = jasmine.createSpy('added');
+        let addedOnce = false;
+        bus.on('foo', () => {
+          if(!addedOnce) {
+            addedOnce = true;
+            bus.on('foo', added);
+          }
+        });
+
+        bus.emit('foo', 'x');
+        expect(added).not.toHaveBeenCalled();
+
+        bus.emit('foo', 'y');
+        expect(added).toHaveBeenCalledTimes(1);
+      });
+
+      it('skips a handler removed during the emit before it is reached', () => {
+        const later = jasmine.createSpy('later');
+        let removeLater: Strongbus.Subscription;
+        bus.on('foo', () => removeLater());
+        removeLater = bus.on('foo', later);
+
+        bus.emit('foo', 'x');
+
+        expect(later).not.toHaveBeenCalled();
+        expect(bus.getListenerCountFor('foo')).toBe(1);
+      });
+
+      it('keeps a handler added mid-emit out of the emit after a nested emit of the same event has finished', () => {
+        const added = jasmine.createSpy('added');
+        const second = jasmine.createSpy('second');
+        let reentered = false;
+        bus.on('foo', () => {
+          if(!reentered) {
+            reentered = true;
+            bus.emit('foo', 'inner');
+            bus.on('foo', added);
+          }
+        });
+        bus.on('foo', second);
+
+        bus.emit('foo', 'outer');
+        expect(added).not.toHaveBeenCalled();
+        expect(second).toHaveBeenCalledTimes(2);
+
+        bus.emit('foo', 'next');
+        expect(added).toHaveBeenCalledOnceWith('next');
+      });
+    });
   });
 
   describe('#on', () => {
@@ -946,6 +998,268 @@ describe('Strongbus.Bus', () => {
 
         bus.emit('foo', 'x');
         expect(sink).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('stacking registrations of one handler', () => {
+      beforeEach(() => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.EventEmitter
+        });
+      });
+
+      it('invokes only the stacked handler multiple times when other handlers share the event', () => {
+        const stacked = jasmine.createSpy('stacked');
+        const other = jasmine.createSpy('other');
+        bus.on('foo', other);
+        bus.on('foo', stacked);
+        bus.on('foo', stacked);
+        bus.on('bar', stacked);
+
+        bus.emit('foo', 'x');
+
+        expect(stacked).toHaveBeenCalledTimes(2);
+        expect(other).toHaveBeenCalledTimes(1);
+      });
+
+      it('keeps a handler registered under another event unaffected by stacking on this one', () => {
+        const handler = jasmine.createSpy('handler');
+        bus.on('foo', handler);
+        bus.on('foo', handler);
+        bus.on('bar', handler);
+
+        bus.emit('bar', true);
+
+        expect(handler).toHaveBeenCalledTimes(1);
+      });
+
+      it('releases one stacked `on` registration per unsubscribe and then the listener', () => {
+        const handler = jasmine.createSpy('handler');
+        const first = bus.on('foo', handler);
+        const second = bus.on('foo', handler);
+        expect(bus.getListenerCount()).toBe(2);
+
+        first();
+        expect(bus.getListenerCount()).toBe(1);
+        bus.emit('foo', 'x');
+        expect(handler).toHaveBeenCalledTimes(1);
+
+        second();
+        expect(bus.hasListeners()).toBeFalse();
+        bus.emit('foo', 'x');
+        expect(handler).toHaveBeenCalledTimes(1);
+      });
+
+      it('releases stacked `tap` registrations one at a time', () => {
+        const handler = jasmine.createSpy('handler');
+        const first = bus.tap(handler);
+        const second = bus.tap(handler);
+        expect(bus.getListenerCount()).toBe(2);
+
+        first();
+        expect(bus.getListenerCount()).toBe(1);
+        bus.emit('foo', 'x');
+        expect(handler).toHaveBeenCalledTimes(1);
+
+        second();
+        expect(bus.hasListeners()).toBeFalse();
+      });
+
+      it('releases stacked `any` registrations one at a time', () => {
+        const handler = jasmine.createSpy('handler');
+        const first = bus.any(['foo', 'bar'], handler);
+        const second = bus.any(['foo', 'bar'], handler);
+        expect(bus.getListenerCount()).toBe(4);
+
+        first();
+        expect(bus.getListenerCount()).toBe(2);
+        bus.emit('foo', 'x');
+        expect(handler).toHaveBeenCalledTimes(1);
+
+        second();
+        expect(bus.hasListeners()).toBeFalse();
+      });
+
+      it('fires removal lifecycle hooks for visible registrations only', () => {
+        const didRemove = jasmine.createSpy('didRemove');
+        bus.hook('didRemoveListener', didRemove);
+
+        const visible = bus.tap(() => null);
+        const hidden = bus.tap(() => null, {incognito: true});
+        const stackedAny = bus.any(['foo', 'bar'], () => null);
+        didRemove.calls.reset();
+
+        hidden();
+        expect(didRemove).not.toHaveBeenCalled();
+
+        visible();
+        expect(didRemove).toHaveBeenCalledTimes(1);
+
+        stackedAny();
+        expect(didRemove).toHaveBeenCalledTimes(3);
+      });
+    });
+  });
+
+  describe('introspection views', () => {
+    it('reflect listeners added and removed after the first introspection call', () => {
+      expect(bus.hasListeners()).toBeFalse();
+      expect(bus.getListenerCount({scope: Strongbus.ListenerScope.OWN})).toBe(0);
+
+      const sub = bus.on('foo', () => null);
+      expect(bus.hasListeners()).toBeTrue();
+      expect(bus.getListenerCount({scope: Strongbus.ListenerScope.OWN})).toBe(1);
+
+      sub();
+      expect(bus.hasListeners()).toBeFalse();
+    });
+
+    it('answers each scope and incognito mode independently', () => {
+      const downstream = new Strongbus.Bus<TestEventMap>();
+      downstream.on('bar', () => null);
+      bus.pipe(downstream);
+      bus.on('foo', () => null);
+      bus.on('baz', () => null, {incognito: true});
+
+      expect(bus.getListenerCount({scope: Strongbus.ListenerScope.OWN})).toBe(1);
+      expect(bus.getListenerCount({scope: Strongbus.ListenerScope.OWN, includeIncognito: true})).toBe(2);
+      expect(bus.getListenerCount({scope: Strongbus.ListenerScope.DOWNSTREAM})).toBe(1);
+      expect(bus.getListenerCount()).toBe(2);
+      expect(bus.getListenerCount({includeIncognito: true})).toBe(3);
+    });
+  });
+
+  describe('listener bookkeeping with many handlers', () => {
+    const HANDLER_COUNT = 20000;
+    // the quadratic versions take tens of seconds at this size; the budget only has to separate
+    // linear from quadratic, so it is deliberately loose.
+    const BUDGET_MS = 3000;
+
+    const quietLogger: Logger = {
+      info: () => undefined,
+      warn: () => undefined,
+      error: () => undefined,
+      debug: () => undefined
+    };
+
+    const timeIt = (fn: () => void): number => {
+      const start = Date.now();
+      fn();
+      return Date.now() - start;
+    };
+
+    it('registers, emits to and removes handlers on distinct events in linear time', () => {
+      const events = Array.from({length: HANDLER_COUNT}, (_, i) => `event-${i}`);
+      const looseBus = new Strongbus.Bus<any>({logger: quietLogger});
+      let subs: Strongbus.Subscription[];
+
+      expect(timeIt(() => {
+        subs = events.map((event) => looseBus.on(event, () => null));
+      })).toBeLessThan(BUDGET_MS);
+      expect(timeIt(() => events.forEach((event) => looseBus.emit(event, 1)))).toBeLessThan(BUDGET_MS);
+      expect(timeIt(() => subs.forEach((sub) => sub()))).toBeLessThan(BUDGET_MS);
+      expect(looseBus.hasListeners()).toBeFalse();
+    });
+
+    it('registers and removes many handlers of one event in linear time', () => {
+      const looseBus = new Strongbus.Bus<any>({logger: quietLogger});
+      let subs: Strongbus.Subscription[];
+
+      expect(timeIt(() => {
+        subs = Array.from({length: HANDLER_COUNT}, () => looseBus.on('foo', () => null));
+      })).toBeLessThan(BUDGET_MS);
+      expect(looseBus.getListenerCountFor('foo')).toBe(HANDLER_COUNT);
+      expect(timeIt(() => subs.forEach((sub) => sub()))).toBeLessThan(BUDGET_MS);
+      expect(looseBus.hasListeners()).toBeFalse();
+    });
+
+    it('registers and removes many handlers on a bus that another bus pipes into in linear time', () => {
+      const upstream = new Strongbus.Bus<any>({logger: quietLogger});
+      const looseBus = new Strongbus.Bus<any>({logger: quietLogger});
+      upstream.pipe(looseBus);
+      let subs: Strongbus.Subscription[];
+
+      expect(timeIt(() => {
+        subs = Array.from({length: HANDLER_COUNT}, () => looseBus.on('foo', () => null));
+      })).toBeLessThan(BUDGET_MS);
+      expect(upstream.hasListeners()).toBeTrue();
+      expect(timeIt(() => subs.forEach((sub) => sub()))).toBeLessThan(BUDGET_MS);
+      expect(upstream.hasListeners()).toBeFalse();
+    });
+
+    describe('given a downstream bus with listeners', () => {
+      it('does not report the downstream listeners as own once the combined view has been read', () => {
+        const downstream = new Strongbus.Bus<TestEventMap>();
+        downstream.on('foo', () => null);
+        bus.pipe(downstream);
+        bus.on('foo', () => null);
+
+        // reading the combined view must not leak downstream handlers into the own view
+        expect(bus.getListenersFor('foo').size).toBe(2);
+
+        expect(bus.getListenersFor('foo', {scope: Strongbus.ListenerScope.OWN}).size).toBe(1);
+        expect(bus.getListenerCountFor('foo', {scope: Strongbus.ListenerScope.OWN})).toBe(1);
+        expect(bus.getListenerCount({scope: Strongbus.ListenerScope.OWN})).toBe(1);
+        expect(bus.getListenerCount()).toBe(2);
+      });
+
+      it('still goes idle once both buses have released a listener for the same event', () => {
+        const downstream = new Strongbus.Bus<TestEventMap>();
+        const onWillIdle = jasmine.createSpy('willIdle');
+        const onIdle = jasmine.createSpy('idle');
+        bus.hook('willIdle', onWillIdle);
+        bus.hook('idle', onIdle);
+        bus.pipe(downstream);
+        const downstreamSub = downstream.on('foo', () => null);
+        const ownSub = bus.on('foo', () => null);
+
+        // reading the combined view must not leave downstream handlers behind in the own view
+        expect(bus.getListenersFor('foo').size).toBe(2);
+
+        downstreamSub();
+        expect(onWillIdle).not.toHaveBeenCalled();
+        ownSub();
+        expect(onWillIdle).toHaveBeenCalledTimes(1);
+        expect(onIdle).toHaveBeenCalledTimes(1);
+        expect(bus.active).toBeFalse();
+      });
+
+      it('agrees with the listener count about having listeners in every scope', () => {
+        const shapes = [
+          {name: 'incognito edge, visible listener', incognitoEdge: true, incognitoListener: false},
+          {name: 'incognito edge, incognito listener', incognitoEdge: true, incognitoListener: true},
+          {name: 'visible edge, incognito listener', incognitoEdge: false, incognitoListener: true},
+          {name: 'visible edge, visible listener', incognitoEdge: false, incognitoListener: false}
+        ];
+        for(const {name, incognitoEdge, incognitoListener} of shapes) {
+          const upstream = new Strongbus.Bus<TestEventMap>({logger: quietLogger});
+          const middle = new Strongbus.Bus<TestEventMap>({logger: quietLogger});
+          const leaf = new Strongbus.Bus<TestEventMap>({logger: quietLogger});
+          upstream.pipe(middle, {incognito: incognitoEdge});
+          middle.pipe(leaf);
+          leaf.on('foo', () => null, {incognito: incognitoListener});
+
+          for(const scope of [Strongbus.ListenerScope.ANY, Strongbus.ListenerScope.OWN, Strongbus.ListenerScope.DOWNSTREAM]) {
+            for(const includeIncognito of [false, true]) {
+              const options = {scope, includeIncognito};
+              expect(upstream.hasListeners(options))
+                .withContext(`${name}, scope ${scope}, incognito ${includeIncognito}`)
+                .toBe(upstream.getListenerCount(options) > 0);
+            }
+          }
+        }
+      });
+
+      it('has listeners while only the downstream has them', () => {
+        const downstream = new Strongbus.Bus<TestEventMap>();
+        const sub = downstream.on('foo', () => null);
+        bus.pipe(downstream);
+
+        expect(bus.hasListeners()).toBeTrue();
+        expect(bus.hasListeners({scope: Strongbus.ListenerScope.OWN})).toBeFalse();
+
+        sub();
+        expect(bus.hasListeners()).toBeFalse();
       });
     });
   });
@@ -2465,6 +2779,63 @@ describe('Strongbus.Bus', () => {
 
         monitored.cancel();
         hidden.cancel();
+      });
+    });
+
+    describe('given incognito and stacked registrations', () => {
+      beforeEach(() => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.EventEmitter
+        });
+      });
+
+      it('counts each registration, excluding incognito ones unless asked', () => {
+        const stacked = (): void => undefined;
+        bus.on('foo', stacked);
+        bus.on('foo', stacked);
+        bus.on('bar', () => null, {incognito: true});
+        bus.tap(() => null);
+
+        const own = {scope: Strongbus.ListenerScope.OWN};
+        expect(bus.getListenerCount(own)).toBe(3);
+        expect(bus.getListenerCount({...own, includeIncognito: true})).toBe(4);
+        expect(bus.getListenerCountFor('foo', own)).toBe(2);
+        expect(bus.getListenerCountFor('bar', own)).toBe(0);
+        expect(bus.getListenerCountFor('bar', {...own, includeIncognito: true})).toBe(1);
+        expect(bus.hasListenersFor('bar')).toBeFalse();
+        expect(bus.hasListenersFor('bar', {includeIncognito: true})).toBeTrue();
+      });
+
+      it('keeps the first registration\'s incognito state when the same handler is stacked the other way', () => {
+        const fn = (): void => undefined;
+        const hiddenFirst = bus.on('foo', fn, {incognito: true});
+        const visibleSecond = bus.on('foo', fn);
+        expect(bus.getListenerCountFor('foo')).toBe(0);
+        expect(bus.getListenerCountFor('foo', {includeIncognito: true})).toBe(1);
+        hiddenFirst();
+        expect(bus.getListenerCountFor('foo', {includeIncognito: true})).toBe(1);
+        visibleSecond();
+        expect(bus.getListenerCountFor('foo', {includeIncognito: true})).toBe(0);
+
+        const visibleFirst = bus.on('foo', fn);
+        const hiddenSecond = bus.on('foo', fn, {incognito: true});
+        expect(bus.getListenerCountFor('foo')).toBe(2);
+        visibleFirst();
+        hiddenSecond();
+        expect(bus.getListenerCountFor('foo', {includeIncognito: true})).toBe(0);
+        expect(bus.hasListeners({includeIncognito: true})).toBeFalse();
+      });
+
+      it('returns to zero once everything is released', () => {
+        const stacked = (): void => undefined;
+        bus.on('foo', stacked);
+        bus.on('foo', stacked);
+        bus.on('bar', () => null, {incognito: true});
+
+        bus.clear({includeIncognito: true});
+
+        expect(bus.getListenerCount({includeIncognito: true})).toBe(0);
+        expect(bus.hasListeners({includeIncognito: true})).toBeFalse();
       });
     });
   });

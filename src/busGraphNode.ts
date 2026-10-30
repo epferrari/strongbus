@@ -193,6 +193,25 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
     }
   }
 
+  protected hasDownstream(): boolean {
+    return this.graph.downstreams.size > 0;
+  }
+
+  protected someDownstream(
+    includeIncognito: boolean,
+    fn: (downstream: IntrospectionManager<TEventMap>) => boolean
+  ): boolean {
+    for(const [downstream, edge] of this.graph.downstreams) {
+      if(edge.incognito && !includeIncognito) {
+        continue;
+      }
+      if(fn(downstream.introspection)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   protected forEachDownstream(
     fn: (downstream: {
       getCombinedListenersMap(
