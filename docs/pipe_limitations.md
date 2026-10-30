@@ -92,6 +92,17 @@ idempotent per dest). Calling `pipe(predicate).pipe(dest)` while an unfiltered e
 to `dest` already exists logs a warning and leaves the edge unchanged. The info fires
 on a successful `unpipe`; the subsequent `pipe(predicate).pipe(dest)` does not warn.
 
+### Cycles are refused
+
+A pipe that would make a bus reachable from itself, such as `a.pipe(b)` followed by `b.pipe(a)`,
+or `a → b → c` followed by `c.pipe(a)`, is not created. The call returns the bus you passed in,
+as every `pipe` does, and logs a warning with `StrongbusLogCode.CyclicPipe` (`1017`). Incognito
+edges and filtered edges (`pipe(predicate).pipe(dest)`) count as edges for this check. Once the
+edge that would close the cycle is removed with `unpipe`, the pipe can be created.
+
+Cycles were refused because they could not be used safely: walking a cyclic graph to count
+listeners overflowed the stack, and so did events relayed around a cycle through filtered edges.
+
 ## Practical guidance
 
 | Pattern | Safe? |
@@ -101,6 +112,7 @@ on a successful `unpipe`; the subsequent `pipe(predicate).pipe(dest)` does not w
 | Narrow middle bus between wider/disagreeing maps | Use `b.pipe(predicate).pipe(c)` |
 | Many feeders `pipe` into one hub (hub has no outbound pipe) | Yes — hub is not a bridge |
 | Bridge with disagreeing maps, no filter | No — use a selective predicate or `ASSUMED_SOUND_EDGE` only if you truly assume soundness |
+| Two buses piping into each other, directly or through other buses | No — the second `pipe` is refused with a warning; pipe one way only |
 
 Prefer keeping bridges on a single shared `EventMap`, or filter explicitly on the
 bridge edge when maps differ.

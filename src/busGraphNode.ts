@@ -82,6 +82,11 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
       return node;
     }
 
+    if(downstream.hasDownstreamPathTo(this)) {
+      this.logger.onCyclicPipe(downstream.name);
+      return node;
+    }
+
     const filter = options?.filter;
     const incognito = options?.incognito === true;
     if(incognito) {
@@ -342,6 +347,29 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
 
   private buildSnapshot(downstream: BusGraphNode<TEventMap>): DownstreamSnapshot<TEventMap> {
     return snapshotFromListenersMap(downstream.getCombinedListenersMap(false));
+  }
+
+  /**
+   * Whether `target` is reachable from this node by following downstream edges, incognito ones
+   * included. Iterative, so a long chain cannot overflow the stack.
+   */
+  private hasDownstreamPathTo(target: BusGraphNode<TEventMap>): boolean {
+    const visited = new Set<BusGraphNode<TEventMap>>();
+    const pending: BusGraphNode<TEventMap>[] = [this];
+    while(pending.length) {
+      const node = pending.pop();
+      if(node === target) {
+        return true;
+      }
+      if(visited.has(node)) {
+        continue;
+      }
+      visited.add(node);
+      for(const next of node.graph.downstreams.keys()) {
+        pending.push(next);
+      }
+    }
+    return false;
   }
 }
 
