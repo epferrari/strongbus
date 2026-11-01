@@ -12,7 +12,7 @@
 <h1>Interface Options</h1></div>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">Options</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#name">name</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#thresholds">thresholds</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">Partial</span><span class="tsd-signature-symbol">&lt;</span><a href="ListenerThresholds.html" class="tsd-signature-type tsd-kind-interface">ListenerThresholds</a><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#logger">logger</a><span class="tsd-signature-symbol">?:</span> <a href="../types/LoggerProvider.html" class="tsd-signature-type tsd-kind-type-alias">LoggerProvider</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#verbose">verbose</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#coalescedownstreamlifecycleevents">coalesceDownstreamLifecycleEvents</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#duplicatesubscriptionstrategy">duplicateSubscriptionStrategy</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">Partial</span><span class="tsd-signature-symbol">&lt;</span><a href="../types/DuplicateSubscriptionStrategy.html" class="tsd-signature-type tsd-kind-type-alias">DuplicateSubscriptionStrategy</a><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#onunhandledevent">onUnhandledEvent</a><span class="tsd-signature-symbol">?:</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;throw&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;ignore&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> (<span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">event</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">number</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">symbol</span><span class="tsd-signature-symbol">,</span> <span class="tsd-kind-parameter">payload</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">unknown</span><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span>)<span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#onuseafterdestroy">onUseAfterDestroy</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">false</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;error&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;info&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;debug&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;warn&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;throw&quot;</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/523911f43cdafdef9ca5c69cd68c3a953b32574f/src/types/options.ts#L36">types/options.ts:36</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/890547051dbd77d6e4a97f1885adf07dc3e55487/src/types/options.ts#L36">types/options.ts:36</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -38,28 +38,28 @@
 <div class="tsd-comment tsd-typography"><p><code>&quot;Anonymous&quot;</code> - A name for the bus. Included in warn/info/error potential memory leak messages and unhandled event errors thrown</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/523911f43cdafdef9ca5c69cd68c3a953b32574f/src/types/options.ts#L37">types/options.ts:37</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/890547051dbd77d6e4a97f1885adf07dc3e55487/src/types/options.ts#L37">types/options.ts:37</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="thresholds"><code class="tsd-tag">Optional</code><span>thresholds</span><a href="#thresholds" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">thresholds</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">Partial</span><span class="tsd-signature-symbol">&lt;</span><a href="ListenerThresholds.html" class="tsd-signature-type tsd-kind-interface">ListenerThresholds</a><span class="tsd-signature-symbol">&gt;</span></div>
 <div class="tsd-comment tsd-typography"><p><a href="ListenerThresholds.html" class="tsd-kind-interface">ListenerThresholds</a></p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/523911f43cdafdef9ca5c69cd68c3a953b32574f/src/types/options.ts#L38">types/options.ts:38</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/890547051dbd77d6e4a97f1885adf07dc3e55487/src/types/options.ts#L38">types/options.ts:38</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="logger"><code class="tsd-tag">Optional</code><span>logger</span><a href="#logger" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">logger</span><span class="tsd-signature-symbol">?:</span> <a href="../types/LoggerProvider.html" class="tsd-signature-type tsd-kind-type-alias">LoggerProvider</a></div>
 <div class="tsd-comment tsd-typography"><p><a href="Logger.html" class="tsd-kind-interface">() =&gt; Logger</a> - How to log potential memory leaks, if thresholds are &lt; Infinity. When omitted, a built-in console adapter is used.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/523911f43cdafdef9ca5c69cd68c3a953b32574f/src/types/options.ts#L39">types/options.ts:39</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/890547051dbd77d6e4a97f1885adf07dc3e55487/src/types/options.ts#L39">types/options.ts:39</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="verbose"><code class="tsd-tag">Optional</code><span>verbose</span><a href="#verbose" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">verbose</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span></div>
 <div class="tsd-comment tsd-typography"><p>[false] - should memory leak warnings be output on every listener added above the thresholds, or only at intervals</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/523911f43cdafdef9ca5c69cd68c3a953b32574f/src/types/options.ts#L40">types/options.ts:40</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/890547051dbd77d6e4a97f1885adf07dc3e55487/src/types/options.ts#L40">types/options.ts:40</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="coalescedownstreamlifecycleevents"><code class="tsd-tag">Optional</code><span>coalesce<wbr/>Downstream<wbr/>Lifecycle<wbr/>Events</span><a href="#coalescedownstreamlifecycleevents" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">coalesceDownstreamLifecycleEvents</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span></div>
@@ -67,14 +67,14 @@
 emission per event key during <code>pipe()</code> / <code>unpipe()</code> reconcile of a heavily-subscribed downstream bus</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/523911f43cdafdef9ca5c69cd68c3a953b32574f/src/types/options.ts#L41">types/options.ts:41</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/890547051dbd77d6e4a97f1885adf07dc3e55487/src/types/options.ts#L41">types/options.ts:41</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="duplicatesubscriptionstrategy"><code class="tsd-tag">Optional</code><span>duplicate<wbr/>Subscription<wbr/>Strategy</span><a href="#duplicatesubscriptionstrategy" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">duplicateSubscriptionStrategy</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">Partial</span><span class="tsd-signature-symbol">&lt;</span><a href="../types/DuplicateSubscriptionStrategy.html" class="tsd-signature-type tsd-kind-type-alias">DuplicateSubscriptionStrategy</a><span class="tsd-signature-symbol">&gt;</span></div>
 <div class="tsd-comment tsd-typography"><p>how duplicate listenable+handler registrations behave</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/523911f43cdafdef9ca5c69cd68c3a953b32574f/src/types/options.ts#L42">types/options.ts:42</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/890547051dbd77d6e4a97f1885adf07dc3e55487/src/types/options.ts#L42">types/options.ts:42</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="onunhandledevent"><code class="tsd-tag">Optional</code><span>on<wbr/>Unhandled<wbr/>Event</span><a href="#onunhandledevent" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">onUnhandledEvent</span><span class="tsd-signature-symbol">?:</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;throw&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;ignore&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> (<span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">event</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">number</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">symbol</span><span class="tsd-signature-symbol">,</span> <span class="tsd-kind-parameter">payload</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">unknown</span><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span>)</div>
@@ -82,7 +82,7 @@ emission per event key during <code>pipe()</code> / <code>unpipe()</code> reconc
 <code>'ignore'</code> (default no-op), <code>'throw'</code>, or a custom <code>(event, payload) =&gt; void</code> callback</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/523911f43cdafdef9ca5c69cd68c3a953b32574f/src/types/options.ts#L43">types/options.ts:43</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/890547051dbd77d6e4a97f1885adf07dc3e55487/src/types/options.ts#L43">types/options.ts:43</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="onuseafterdestroy"><code class="tsd-tag">Optional</code><span>on<wbr/>Use<wbr/>After<wbr/>Destroy</span><a href="#onuseafterdestroy" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">onUseAfterDestroy</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">false</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;error&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;info&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;debug&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;warn&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;throw&quot;</span></div>
@@ -94,7 +94,7 @@ Introspection is never affected. Calls made while <code>destroy()</code> is stil
 logged at debug under every setting, including <code>false</code>.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/523911f43cdafdef9ca5c69cd68c3a953b32574f/src/types/options.ts#L44">types/options.ts:44</a></li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/epferrari/strongbus/blob/890547051dbd77d6e4a97f1885adf07dc3e55487/src/types/options.ts#L44">types/options.ts:44</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">
