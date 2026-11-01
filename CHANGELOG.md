@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [strictDestroy]
+## [3.1.0]
 
 ### Added
 
@@ -54,6 +54,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   methods are skipped under any `onUseAfterDestroy` setting, logging
   `StrongbusLogCode.UseDuringDestroy` (`1015`) at `debug`. They return the same inert stubs,
   except that `next` / `scan` return an already-canceled promise. `emit` still runs.
+
+## [3.0.1]
+
+### Changed
+
+- **Registering, removing, and emitting scale linearly with handler count** — Adding or removing
+  a handler used to rebuild cached listener maps to drive the `active` / `idle` lifecycle, making
+  these operations quadratic. Listener counts are now tracked incrementally. At 16,000 handlers,
+  removing handlers on distinct events dropped from 28.6 s to 25 ms, adding handlers to one event
+  from 2.8 s to 10 ms, and 20 emits to one event from 30.5 s to 21 ms.
+- **Removing listeners behind a pipe is linear** — Upstream buses previously rebuilt combined
+  listener maps to check if they went idle when a downstream listener was removed. They now query
+  downstream buses directly. With 4,000 listeners one pipe hop away, removing them dropped from
+  900 ms to 23 ms.
+- **Lower memory per registration and per bus** — Registrations no longer allocate multiple
+  closures, introspection views build on first use, and a bus's internal collaborators share one
+  host object instead of per-bus arrow functions. Under esbuild with `keepNames`, a registration
+  dropped from 2.74 KB to 1.45 KB, and an empty `Bus` dropped from 7,715 bytes to 5,081 bytes
+  (5,923 without `keepNames`).
+
+### Fixed
+
+- **Own-scope introspection reported downstream handlers** — After reading a bus's combined
+  listener view, its own-scope views (`ListenerScope.OWN`) wrongly included handlers from
+  downstream buses, which could prevent a `willIdle` hook from firing. The combined view no longer
+  writes to the own-listener cache.
+- **Stale listener counts on upstream buses** — Upstream buses reported outdated counts after an
+  incognito listener was added or removed downstream, after anything changed behind an incognito
+  edge, or after an edge more than one hop away was added or removed. For example, if `a` piped to
+  `b`, and `b` piped to then unpiped from `c`, `a` still counted `c`'s listeners. Changing a bus's
+  listeners or downstream edges now invalidates the cached counts of every upstream bus.
+- **Cyclic pipes overflowed the stack** — `pipe` allowed cycles like `a.pipe(b)` followed by
+  `b.pipe(a)`, causing `getListenerCount`, `hasListeners`, and `emit` (with filtered edges) to
+  throw a `RangeError`. `pipe` now rejects edges that close a cycle, including incognito and
+  filtered edges. It returns the passed bus and logs a warning with the new
+  `StrongbusLogCode.CyclicPipe` (`1017`). See
+  [docs/pipe_limitations.md](./docs/pipe_limitations.md#cycles-are-refused).
 
 ## [3.0.0]
 
