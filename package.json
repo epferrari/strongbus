@@ -25,6 +25,7 @@
     "install": "([ -d ./src ] && [ ! -d ./lib ] && mkdir lib && npm install . &&  npm run dist) || echo ''",
     "docs": "./node_modules/.bin/typedoc --out docs-site",
     "prepare": "rm -rf ./lib && npm run dist",
+    "publish:scoped": "scripts/publish-scoped.sh",
     "version": "git add -A src",
     "postversion": "git push && git push --tags"
   },
