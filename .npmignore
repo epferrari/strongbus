@@ -1,5 +1,6 @@
 /src
 /docs
+/docs-site
 tsconfig.json
 tslint.json
 .editorconfig

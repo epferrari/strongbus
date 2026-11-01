@@ -1,6 +1,7 @@
 node_modules
 .vscode
 lib
+docs-site
 .DS_Store
 *.tgz
 .yarnrc
