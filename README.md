@@ -7,7 +7,7 @@ Strongbus gives you a fully type-safe event bus: events and their payloads are d
 It also ships with subscription lifecycle hooks, bus-to-bus piping, promise-based event awaiting, and built-in
 memory-leak detection.
 
-**[API Documentation v3 (current)](https://epferrari.github.io/strongbus/docs/3.0.0/)**
+**[API Documentation v3 (current)](https://epferrari.github.io/strongbus/docs/3.0.1/)**
 <br/>
 **[API Documentation v2](https://epferrari.github.io/strongbus/docs/2.11.1/)**
 <br/>
@@ -352,7 +352,7 @@ const ready = await bus.scan<boolean>(
 ```
 
 `scan` options (see the
-[`scan` API docs](https://epferrari.github.io/strongbus/classes/Bus.html#scan) for canonical defaults):
+[`scan` API docs](https://epferrari.github.io/strongbus/docs/3.0.1/classes/Bus.html#scan) for canonical defaults):
 
 - `eager` — run the evaluator immediately, so an already-satisfied condition resolves without waiting for an
   event. This avoids the `if (!condition) { await scan(...) }` anti-pattern.
@@ -647,8 +647,8 @@ const bus = new Bus<Events>({
 });
 ```
 
-See the [Options](https://epferrari.github.io/strongbus/interfaces/Options.html) and
-[ListenerThresholds](https://epferrari.github.io/strongbus/interfaces/ListenerThresholds.html) API docs for the
+See the [Options](https://epferrari.github.io/strongbus/docs/3.0.1/interfaces/Options.html) and
+[ListenerThresholds](https://epferrari.github.io/strongbus/docs/3.0.1/interfaces/ListenerThresholds.html) API docs for the
 canonical defaults and types.
 
 Defaults for all instances can be set globally with `Bus.configure()`:
