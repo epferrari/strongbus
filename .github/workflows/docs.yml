@@ -1,0 +1,67 @@
+name: docs
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gh-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: source
+
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: site
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: yarn
+          cache-dependency-path: source/yarn.lock
+
+      - name: Build API docs
+        working-directory: source
+        run: |
+          yarn install --frozen-lockfile --ignore-scripts
+          yarn docs
+
+      - name: Publish to gh-pages
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version=${GITHUB_REF_NAME#v}
+          else
+            version=$(node -p "require('./source/package.json').version")
+          fi
+          highest=$( { ls site/docs; echo "$version"; } | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+
+          rm -rf "site/docs/$version"
+          cp -a source/docs-site "site/docs/$version"
+
+          # Older release lines must not overwrite latest or the site landing page
+          if [ "$version" = "$highest" ]; then
+            rm -rf site/docs/latest
+            cp -a source/docs-site site/docs/latest
+            cp source/README.md source/_config.yml site/
+            rsync -a --include '*/' --include '*.md' --exclude '*' source/docs/ site/docs/
+          fi
+
+          cd site
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Publish docs for $version"
+          git push
