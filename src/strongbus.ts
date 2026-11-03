@@ -65,7 +65,6 @@ export interface Bus<TEventMap extends EventMap = EventMap> extends
   IntrospectionSurface<TEventMap>,
   MonitoringSurface<TEventMap> {}
 
-@autobind
 export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEventMap> implements
   ControlSurface<TEventMap>,
   EmittingSurface<TEventMap>,
@@ -160,11 +159,11 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     }
 
     public hasListeners(): boolean {
-      return this.bus.hasListeners();
+      return !this.bus.hasNoListenersOrDownstreams && this.bus.introspection.hasListeners();
     }
 
     public getListenerCount(): number {
-      return this.bus.getListenerCount();
+      return this.bus.hasNoListenersOrDownstreams ? 0 : this.bus.introspection.getListenerCount();
     }
 
     public getListenerCountUpTo(cap: number): number {
@@ -172,7 +171,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     }
 
     public getOwnListenerCount(): number {
-      return this.bus.getListenerCount({scope: ListenerScope.OWN});
+      return this.bus.hasNoListenersOrDownstreams ? 0 : this.bus.introspection.getListenerCount({scope: ListenerScope.OWN});
     }
 
     public getListenerCountForUpTo(event: EventKeys<T>|WILDCARD, cap: number): number {
@@ -245,6 +244,11 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     super();
     this.options = Bus.mergeOptions(Bus.defaultOptions, options);
     this.name = `${uniqueName(this.options.name)} ${this.constructor.name}`;
+    // nearly every bus calls these, so they are bound here, in the same order on every bus, rather than
+    // on first read like the rest
+    this.emit = this.emit.bind(this);
+    this.on = this.on.bind(this);
+    this.off = this.off.bind(this);
     this.hook = ((event, handler) => {
       if(this.guard('hook')) {
         return inertSubscription();
@@ -362,6 +366,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * Duplicate `once` registrations honor strategy `observability`, `invocation`, and `logLevel`;
    * disposal is always isolated from {@link Bus.on} for the same handler.
    */
+  @autobind
   public once<T extends SubscribableEventKeys<TEventMap>>(
     event: T,
     handler: EventHandler<TEventMap, T>,
@@ -436,6 +441,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   /**
    * Stop piping events into a bus previously passed to {@link Bus.pipe}.
    */
+  @autobind
   public unpipe<TDownstream extends Bus<any>>(dest: TDownstream): void {
     if(this.guard('unpipe')) {
       return;
@@ -608,6 +614,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * Bus becomes idle when it goes from 1 to 0 subscribers, and active when it goes from 0 to 1.
    * The handler receives a `boolean` indicating if the bus is active (`true`) or idle (`false`)
    */
+  @autobind
   public monitor(handler: (activeState: boolean) => void): Subscription {
     if(this.guard('monitor')) {
       return inertSubscription();
@@ -625,6 +632,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   /**
    * Whether the bus has any listeners in `options.scope` (defaults to `ListenerScope.ANY`).
    */
+  @autobind
   public hasListeners(options: IntrospectionOptions = {}): boolean {
     return !this.hasNoListenersOrDownstreams && this.introspection.hasListeners(options);
   }
@@ -634,26 +642,32 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * For `ListenerScope.ANY`, sums own and downstream counts (the same handler on both
    * still counts twice).
    */
+  @autobind
   public getListenerCount(options: IntrospectionOptions = {}): number {
     return this.hasNoListenersOrDownstreams ? 0 : this.introspection.getListenerCount(options);
   }
 
+  @autobind
   public getListeners(options: IntrospectionOptions = {}): ReadonlySet<GenericHandler> {
     return this.hasNoListenersOrDownstreams ? new Set() : this.introspection.getListeners(options);
   }
 
+  @autobind
   public getEventCount(options: IntrospectionOptions = {}): number {
     return this.hasNoListenersOrDownstreams ? 0 : this.introspection.getEventCount(options);
   }
 
+  @autobind
   public hasListenersFor(event: EventListenerMapKey<TEventMap>, options: IntrospectionOptions = {}): boolean {
     return !this.hasNoListenersOrDownstreams && this.introspection.hasListenersFor(event, options);
   }
 
+  @autobind
   public getListenerCountFor(event: EventListenerMapKey<TEventMap>, options: IntrospectionOptions = {}): number {
     return this.hasNoListenersOrDownstreams ? 0 : this.introspection.getListenerCountFor(event, options);
   }
 
+  @autobind
   public getListenersFor(event: EventListenerMapKey<TEventMap>, options: IntrospectionOptions = {}): ListenerSet {
     return this.hasNoListenersOrDownstreams
       ? EMPTY_LISTENER_SET
@@ -688,6 +702,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * {@link Options.onUseAfterDestroy} guards are ignored with a debug log under any setting;
    * `next` / `scan` return an already-canceled promise. `emit` still runs.
    */
+  @autobind
   public destroy(reason?: string) {
     if(this.destroying || this.ignoresCalls) {
       return;
@@ -717,6 +732,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * @param options.includeIncognito - when `false`, incognito subscriptions, `next` / `scan`
    *   promises, and pipe edges are left in place. Default `true`.
    */
+  @autobind
   public clear(options: IntrospectionOptions = {}): void {
     if(this.destroying || this.ignoresCalls) {
       return;

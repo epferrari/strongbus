@@ -259,4 +259,26 @@ describe('a bus method used without its bus', () => {
     expect(bus.emit).toHaveBeenCalledOnceWith('foo', 'x');
     expect(bus.clear).toHaveBeenCalledTimes(1);
   });
+
+  describe('given a subclass that overrides it and calls super', () => {
+    class Counting extends Strongbus.Bus<TestEventMap> {
+      public emitted = 0;
+
+      public override emit(...args: [any, any]): boolean {
+        this.emitted++;
+        return super.emit(...args);
+      }
+    }
+
+    it('runs the override each time, even when the method is detached', () => {
+      const counting = new Counting();
+      const handler = jasmine.createSpy('handler');
+      counting.on('foo', handler);
+      counting.emit('foo', 'a');
+      const {emit} = counting;
+      emit('foo', 'b');
+      expect(counting.emitted).toBe(2);
+      expect(handler.calls.allArgs()).toEqual([['a'], ['b']]);
+    });
+  });
 });
