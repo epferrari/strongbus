@@ -26,7 +26,7 @@ import {
   uniqueName,
   resolveDuplicateSubscriptionStrategy
 } from './types/materializedBusOptions';
-import {EMPTY_LISTENER_SET} from './types/listenerRegistry';
+import {EMPTY_LISTENER_SET, type EventListenerMapKey, type ListenerSet} from './types/listenerRegistry';
 import {ListenerScope, type IntrospectionOptions} from './types/listenerScope';
 import type {
   SubscriptionSurface,
@@ -35,7 +35,6 @@ import type {
   SubscriptionSurfacePipe,
   SubscriptionSurfaceScan,
   SubscriptionSurfaceTap,
-  SubscriptionSurfaceUnpipe,
   FilteredPipeHandle,
   NextResult,
   SubscribeOptions
@@ -44,10 +43,7 @@ import type {ControlSurface} from './types/surfaces/controlSurface';
 import type {EmittingSurface} from './types/surfaces/emittingSurface';
 import type {
   IntrospectionSurface,
-  IntrospectionSurfaceHasListenersForEvent,
-  IntrospectionSurfaceListenerCountForEvent,
-  IntrospectionSurfaceListenerForEach,
-  IntrospectionSurfaceListenerForEvent
+  IntrospectionSurfaceListenerForEach
 } from './types/surfaces/introspectionSurface';
 import type {MonitoringSurface, MonitoringHook} from './types/surfaces/monitoringSurface';
 import type {EventKeys, SubscribableEventKeys, VoidEventKeys} from './types/utility';
@@ -440,14 +436,12 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   /**
    * Stop piping events into a bus previously passed to {@link Bus.pipe}.
    */
-  public unpipe: SubscriptionSurfaceUnpipe<TEventMap> = ((
-    dest: Bus<any>
-  ) => {
+  public unpipe<TDownstream extends Bus<any>>(dest: TDownstream): void {
     if(this.guard('unpipe')) {
       return;
     }
     this.disconnectDownstreamNode(dest);
-  }) as SubscriptionSurfaceUnpipe<TEventMap>;
+  }
 
   /**
    * Utility for resolving/rejecting a promise based on the reception of an event.
@@ -652,28 +646,19 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     return this.hasNoListenersOrDownstreams ? 0 : this.introspection.getEventCount(options);
   }
 
-  public hasListenersFor: IntrospectionSurfaceHasListenersForEvent<TEventMap> = ((
-    event,
-    options: IntrospectionOptions = {}
-  ) => {
+  public hasListenersFor(event: EventListenerMapKey<TEventMap>, options: IntrospectionOptions = {}): boolean {
     return !this.hasNoListenersOrDownstreams && this.introspection.hasListenersFor(event, options);
-  }) as IntrospectionSurfaceHasListenersForEvent<TEventMap>;
+  }
 
-  public getListenerCountFor: IntrospectionSurfaceListenerCountForEvent<TEventMap> = ((
-    event,
-    options: IntrospectionOptions = {}
-  ) => {
+  public getListenerCountFor(event: EventListenerMapKey<TEventMap>, options: IntrospectionOptions = {}): number {
     return this.hasNoListenersOrDownstreams ? 0 : this.introspection.getListenerCountFor(event, options);
-  }) as IntrospectionSurfaceListenerCountForEvent<TEventMap>;
+  }
 
-  public getListenersFor: IntrospectionSurfaceListenerForEvent<TEventMap> = ((
-    event,
-    options: IntrospectionOptions = {}
-  ) => {
+  public getListenersFor(event: EventListenerMapKey<TEventMap>, options: IntrospectionOptions = {}): ListenerSet {
     return this.hasNoListenersOrDownstreams
       ? EMPTY_LISTENER_SET
       : this.introspection.getListenersFor(event, options);
-  }) as IntrospectionSurfaceListenerForEvent<TEventMap>;
+  }
 
   public forEach: IntrospectionSurfaceListenerForEach<TEventMap> = ((
     fn,
