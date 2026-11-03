@@ -1,5 +1,3 @@
-import {autobind} from 'core-decorators';
-
 import type {SubscriptionManager} from './subscriptionManager';
 import type {EventMap, WILDCARD} from './types/events';
 import type {GenericHandler} from './types/eventHandlers';
@@ -42,7 +40,6 @@ export interface IntrospectionHost<TEventMap extends EventMap> {
  * Owns listener introspection caches, scope routing, and surplus-aware counts.
  * @internal
  */
-@autobind
 export class IntrospectionManager<TEventMap extends EventMap = EventMap> {
   private _cachedCombinedListeners: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;
   private _cachedCombinedListenersWithIncognito: Map<EventKeys<TEventMap>|WILDCARD, ReadonlySet<GenericHandler>>;

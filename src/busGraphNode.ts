@@ -1,5 +1,3 @@
-import {autobind} from 'core-decorators';
-
 import type {EventDispatcher} from './eventDispatcher';
 import type {IntrospectionManager} from './introspectionManager';
 import {
@@ -45,7 +43,6 @@ class PipeGraphState<TEventMap extends EventMap> {
  * Base for {@link Bus}: owns the pipe graph and peer delivery via `protected`
  * methods so graph helpers are not part of the public `Bus` surface.
  */
-@autobind
 export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
   private readonly graph = new PipeGraphState<TEventMap>();
 
@@ -54,6 +51,8 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
   protected abstract readonly lifecycle: LifecycleManager<TEventMap>;
   protected abstract readonly dispatcher: EventDispatcher<TEventMap>;
   protected abstract readonly introspection: IntrospectionManager<TEventMap>;
+  /** Drops this node's cached combined listener maps, if it has built any. */
+  protected abstract invalidateCombinedListenerCache(): void;
 
   /**
    * Subscribe to meta changes. Provided by {@link Bus} after lifecycle setup.
@@ -181,7 +180,7 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
    * which never reach an upstream through lifecycle hooks.
    */
   protected invalidateListenerCachesUpstream(): void {
-    this.introspection.invalidateCombinedListenerCache();
+    this.invalidateCombinedListenerCache();
     if(!this.graph.upstreams.size) {
       return;
     }
@@ -194,7 +193,7 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
         continue;
       }
       visited.add(node);
-      node.introspection.invalidateCombinedListenerCache();
+      node.invalidateCombinedListenerCache();
       for(const upstream of node.graph.upstreams) {
         pending.push(upstream);
       }

@@ -26,6 +26,7 @@ import {
   uniqueName,
   resolveDuplicateSubscriptionStrategy
 } from './types/materializedBusOptions';
+import {EMPTY_LISTENER_SET, type EventListenerMapKey, type ListenerSet} from './types/listenerRegistry';
 import {ListenerScope, type IntrospectionOptions} from './types/listenerScope';
 import type {
   SubscriptionSurface,
@@ -34,7 +35,6 @@ import type {
   SubscriptionSurfacePipe,
   SubscriptionSurfaceScan,
   SubscriptionSurfaceTap,
-  SubscriptionSurfaceUnpipe,
   FilteredPipeHandle,
   NextResult,
   SubscribeOptions
@@ -43,10 +43,7 @@ import type {ControlSurface} from './types/surfaces/controlSurface';
 import type {EmittingSurface} from './types/surfaces/emittingSurface';
 import type {
   IntrospectionSurface,
-  IntrospectionSurfaceHasListenersForEvent,
-  IntrospectionSurfaceListenerCountForEvent,
-  IntrospectionSurfaceListenerForEach,
-  IntrospectionSurfaceListenerForEvent
+  IntrospectionSurfaceListenerForEach
 } from './types/surfaces/introspectionSurface';
 import type {MonitoringSurface, MonitoringHook} from './types/surfaces/monitoringSurface';
 import type {EventKeys, SubscribableEventKeys, VoidEventKeys} from './types/utility';
@@ -68,7 +65,6 @@ export interface Bus<TEventMap extends EventMap = EventMap> extends
   IntrospectionSurface<TEventMap>,
   MonitoringSurface<TEventMap> {}
 
-@autobind
 export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEventMap> implements
   ControlSurface<TEventMap>,
   EmittingSurface<TEventMap>,
@@ -163,11 +159,11 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     }
 
     public hasListeners(): boolean {
-      return this.bus.hasListeners();
+      return !this.bus.hasNoListenersOrDownstreams && this.bus.introspection.hasListeners();
     }
 
     public getListenerCount(): number {
-      return this.bus.getListenerCount();
+      return this.bus.hasNoListenersOrDownstreams ? 0 : this.bus.introspection.getListenerCount();
     }
 
     public getListenerCountUpTo(cap: number): number {
@@ -175,7 +171,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     }
 
     public getOwnListenerCount(): number {
-      return this.bus.getListenerCount({scope: ListenerScope.OWN});
+      return this.bus.hasNoListenersOrDownstreams ? 0 : this.bus.introspection.getListenerCount({scope: ListenerScope.OWN});
     }
 
     public getListenerCountForUpTo(event: EventKeys<T>|WILDCARD, cap: number): number {
@@ -185,15 +181,15 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     // local invalidation is enough here: the bus where the change started has already walked
     // every upstream, this one included
     public accountForDownstreamListeners(_event: EventKeys<T>|WILDCARD, _count: number): void {
-      this.bus.introspection.invalidateCombinedListenerCache();
+      this.bus.invalidateCombinedListenerCache();
     }
 
     public accountForRemovedDownstreamListeners(_event: EventKeys<T>|WILDCARD, _count: number): void {
-      this.bus.introspection.invalidateCombinedListenerCache();
+      this.bus.invalidateCombinedListenerCache();
     }
 
     public invalidateOwnListenerCache(): void {
-      this.bus.introspection.invalidateOwnListenerCache();
+      this.bus._introspection?.invalidateOwnListenerCache();
     }
 
     public invalidateListenerCachesUpstream(): void {
@@ -228,56 +224,94 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   public readonly hook!: MonitoringHook<TEventMap>;
 
   protected readonly options!: MaterializedBusOptions;
-  protected readonly logger!: StrongbusLogger<TEventMap>;
-  protected readonly lifecycle!: LifecycleManager<TEventMap>;
-  protected readonly dispatcher!: EventDispatcher<TEventMap>;
-  protected readonly introspection!: IntrospectionManager<TEventMap>;
-  private readonly subscriptions!: SubscriptionManager<TEventMap>;
-  private readonly scanners!: ScannerPools<TEventMap>;
   private readonly host = new Bus.Host<TEventMap>(this);
-  /** Pending `next` / `scan` promises, mapped to whether they were registered incognito. */
-  private readonly inFlight = new Map<CancelablePromise<unknown>, boolean>();
   private destroyReason: string | typeof Bus.DESTROYED | undefined;
   /** `true` only while {@link Bus.destroy} is running, including its lifecycle hooks. */
   private destroying: boolean = false;
+
+  // each of these is built the first time it is used, by the getter of the same name, since most
+  // buses never need most of them. They start as `undefined` so that every bus has the same shape.
+  private _logger: StrongbusLogger<TEventMap> | undefined = undefined;
+  private _lifecycle: LifecycleManager<TEventMap> | undefined = undefined;
+  private _subscriptions: SubscriptionManager<TEventMap> | undefined = undefined;
+  private _introspection: IntrospectionManager<TEventMap> | undefined = undefined;
+  private _dispatcher: EventDispatcher<TEventMap> | undefined = undefined;
+  private _scanners: ScannerPools<TEventMap> | undefined = undefined;
+  /** Pending `next` / `scan` promises, mapped to whether they were registered incognito. */
+  private _inFlight: Map<CancelablePromise<unknown>, boolean> | undefined = undefined;
 
   constructor(options?: Options) {
     super();
     this.options = Bus.mergeOptions(Bus.defaultOptions, options);
     this.name = `${uniqueName(this.options.name)} ${this.constructor.name}`;
-    this.logger = new StrongbusLogger<TEventMap>({
-      name: this.name,
-      provider: this.options.logger,
-      thresholds: this.options.thresholds,
-      verbose: this.options.verbose
-    });
-    this.lifecycle = new LifecycleManager<TEventMap>({
-      host: this.host,
-      options: this.options,
-      logger: this.logger
-    });
+    // nearly every bus calls these, so they are bound here, in the same order on every bus, rather than
+    // on first read like the rest
+    this.emit = this.emit.bind(this);
+    this.on = this.on.bind(this);
+    this.off = this.off.bind(this);
     this.hook = ((event, handler) => {
       if(this.guard('hook')) {
         return inertSubscription();
       }
       return this.lifecycle.hook(event, handler);
     }) as MonitoringHook<TEventMap>;
-    this.subscriptions = new SubscriptionManager({
+  }
+
+  protected get logger(): StrongbusLogger<TEventMap> {
+    return this._logger ??= new StrongbusLogger<TEventMap>({
+      name: this.name,
+      provider: this.options.logger,
+      thresholds: this.options.thresholds,
+      verbose: this.options.verbose
+    });
+  }
+
+  protected get lifecycle(): LifecycleManager<TEventMap> {
+    return this._lifecycle ??= new LifecycleManager<TEventMap>({
+      host: this.host,
+      options: this.options,
+      logger: this.logger
+    });
+  }
+
+  protected get introspection(): IntrospectionManager<TEventMap> {
+    return this._introspection ??= new IntrospectionManager({
+      subscriptions: this.subscriptions,
+      host: this.host
+    });
+  }
+
+  protected get dispatcher(): EventDispatcher<TEventMap> {
+    return this._dispatcher ??= new EventDispatcher<TEventMap>({
+      subscriptions: this.subscriptions,
+      host: this.host,
+      options: this.options
+    });
+  }
+
+  private get subscriptions(): SubscriptionManager<TEventMap> {
+    return this._subscriptions ??= new SubscriptionManager({
       host: this.host,
       options: this.options,
       logger: this.logger,
       lifecycle: this.lifecycle
     });
-    this.introspection = new IntrospectionManager({
-      subscriptions: this.subscriptions,
-      host: this.host
-    });
-    this.scanners = new ScannerPools<TEventMap>();
-    this.dispatcher = new EventDispatcher<TEventMap>({
-      subscriptions: this.subscriptions,
-      host: this.host,
-      options: this.options
-    });
+  }
+
+  private get scanners(): ScannerPools<TEventMap> {
+    return this._scanners ??= new ScannerPools<TEventMap>();
+  }
+
+  private get inFlight(): Map<CancelablePromise<unknown>, boolean> {
+    return this._inFlight ??= new Map();
+  }
+
+  /**
+   * Whether nothing can be listening here, so a query or an emit can answer without building
+   * the managers that would otherwise find nothing.
+   */
+  private get hasNoListenersOrDownstreams(): boolean {
+    return this._subscriptions === undefined && !this.hasDownstream();
   }
 
   public emit<T extends VoidEventKeys<TEventMap>>(event: T, payload?: null | undefined): boolean;
@@ -291,6 +325,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   ): boolean {
     if(this.ignoresCalls) {
       return false;
+    }
+    if(this.hasNoListenersOrDownstreams) {
+      return EventDispatcher.dispatchUnhandled(event, payload, this.options);
     }
     return this.dispatcher.dispatchEvent(event, payload);
   }
@@ -329,6 +366,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * Duplicate `once` registrations honor strategy `observability`, `invocation`, and `logLevel`;
    * disposal is always isolated from {@link Bus.on} for the same handler.
    */
+  @autobind
   public once<T extends SubscribableEventKeys<TEventMap>>(
     event: T,
     handler: EventHandler<TEventMap, T>,
@@ -403,14 +441,13 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   /**
    * Stop piping events into a bus previously passed to {@link Bus.pipe}.
    */
-  public unpipe: SubscriptionSurfaceUnpipe<TEventMap> = ((
-    dest: Bus<any>
-  ) => {
+  @autobind
+  public unpipe<TDownstream extends Bus<any>>(dest: TDownstream): void {
     if(this.guard('unpipe')) {
       return;
     }
     this.disconnectDownstreamNode(dest);
-  }) as SubscriptionSurfaceUnpipe<TEventMap>;
+  }
 
   /**
    * Utility for resolving/rejecting a promise based on the reception of an event.
@@ -577,6 +614,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * Bus becomes idle when it goes from 1 to 0 subscribers, and active when it goes from 0 to 1.
    * The handler receives a `boolean` indicating if the bus is active (`true`) or idle (`false`)
    */
+  @autobind
   public monitor(handler: (activeState: boolean) => void): Subscription {
     if(this.guard('monitor')) {
       return inertSubscription();
@@ -588,14 +626,15 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * The active state of the bus, i.e. does it have any subscribers. Subscribers include downstreams and scanners.
    */
   public get active(): boolean {
-    return this.lifecycle.active;
+    return this._lifecycle?.active ?? false;
   }
 
   /**
    * Whether the bus has any listeners in `options.scope` (defaults to `ListenerScope.ANY`).
    */
+  @autobind
   public hasListeners(options: IntrospectionOptions = {}): boolean {
-    return this.introspection.hasListeners(options);
+    return !this.hasNoListenersOrDownstreams && this.introspection.hasListeners(options);
   }
 
   /**
@@ -603,44 +642,45 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * For `ListenerScope.ANY`, sums own and downstream counts (the same handler on both
    * still counts twice).
    */
+  @autobind
   public getListenerCount(options: IntrospectionOptions = {}): number {
-    return this.introspection.getListenerCount(options);
+    return this.hasNoListenersOrDownstreams ? 0 : this.introspection.getListenerCount(options);
   }
 
+  @autobind
   public getListeners(options: IntrospectionOptions = {}): ReadonlySet<GenericHandler> {
-    return this.introspection.getListeners(options);
+    return this.hasNoListenersOrDownstreams ? new Set() : this.introspection.getListeners(options);
   }
 
+  @autobind
   public getEventCount(options: IntrospectionOptions = {}): number {
-    return this.introspection.getEventCount(options);
+    return this.hasNoListenersOrDownstreams ? 0 : this.introspection.getEventCount(options);
   }
 
-  public hasListenersFor: IntrospectionSurfaceHasListenersForEvent<TEventMap> = ((
-    event,
-    options: IntrospectionOptions = {}
-  ) => {
-    return this.introspection.hasListenersFor(event, options);
-  }) as IntrospectionSurfaceHasListenersForEvent<TEventMap>;
+  @autobind
+  public hasListenersFor(event: EventListenerMapKey<TEventMap>, options: IntrospectionOptions = {}): boolean {
+    return !this.hasNoListenersOrDownstreams && this.introspection.hasListenersFor(event, options);
+  }
 
-  public getListenerCountFor: IntrospectionSurfaceListenerCountForEvent<TEventMap> = ((
-    event,
-    options: IntrospectionOptions = {}
-  ) => {
-    return this.introspection.getListenerCountFor(event, options);
-  }) as IntrospectionSurfaceListenerCountForEvent<TEventMap>;
+  @autobind
+  public getListenerCountFor(event: EventListenerMapKey<TEventMap>, options: IntrospectionOptions = {}): number {
+    return this.hasNoListenersOrDownstreams ? 0 : this.introspection.getListenerCountFor(event, options);
+  }
 
-  public getListenersFor: IntrospectionSurfaceListenerForEvent<TEventMap> = ((
-    event,
-    options: IntrospectionOptions = {}
-  ) => {
-    return this.introspection.getListenersFor(event, options);
-  }) as IntrospectionSurfaceListenerForEvent<TEventMap>;
+  @autobind
+  public getListenersFor(event: EventListenerMapKey<TEventMap>, options: IntrospectionOptions = {}): ListenerSet {
+    return this.hasNoListenersOrDownstreams
+      ? EMPTY_LISTENER_SET
+      : this.introspection.getListenersFor(event, options);
+  }
 
   public forEach: IntrospectionSurfaceListenerForEach<TEventMap> = ((
     fn,
     options: IntrospectionOptions = {}
   ) => {
-    return this.introspection.forEach(fn, options);
+    if(!this.hasNoListenersOrDownstreams) {
+      this.introspection.forEach(fn, options);
+    }
   }) as IntrospectionSurfaceListenerForEach<TEventMap>;
 
   /**
@@ -662,14 +702,15 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * {@link Options.onUseAfterDestroy} guards are ignored with a debug log under any setting;
    * `next` / `scan` return an already-canceled promise. `emit` still runs.
    */
+  @autobind
   public destroy(reason?: string) {
     if(this.destroying || this.ignoresCalls) {
       return;
     }
     this.destroying = true;
     try {
-      this.subscriptions.releaseAll();
-      this.lifecycle.destroy();
+      this._subscriptions?.releaseAll();
+      this._lifecycle?.destroy();
       this.releaseAllDownstreamEdges();
       this.releaseAllUpstreamEdges();
       this.destroyReason ??= reason ?? Bus.DESTROYED;
@@ -691,18 +732,19 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * @param options.includeIncognito - when `false`, incognito subscriptions, `next` / `scan`
    *   promises, and pipe edges are left in place. Default `true`.
    */
+  @autobind
   public clear(options: IntrospectionOptions = {}): void {
     if(this.destroying || this.ignoresCalls) {
       return;
     }
     const {scope = ListenerScope.ANY, includeIncognito = true} = options;
     if((scope & ListenerScope.OWN) === ListenerScope.OWN) {
-      for(const [p, incognito] of [...this.inFlight]) {
+      for(const [p, incognito] of [...this._inFlight ?? []]) {
         if(includeIncognito || !incognito) {
           p.cancel(`${this.name} cleared`);
         }
       }
-      this.subscriptions.releaseAll(includeIncognito);
+      this._subscriptions?.releaseAll(includeIncognito);
     }
     if((scope & ListenerScope.DOWNSTREAM) === ListenerScope.DOWNSTREAM) {
       this.disconnectAllDownstreamNodes(includeIncognito);
@@ -793,6 +835,10 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
       this.logger.onUseDuringDestroy(method);
     }
     return this.destroying;
+  }
+
+  protected invalidateCombinedListenerCache(): void {
+    this._introspection?.invalidateCombinedListenerCache();
   }
 
 }

@@ -40,6 +40,11 @@ type AnyIntent<TEventMap extends EventMap> = HandlerIntent & {
   wrappers: Map<EventKeys<TEventMap>, GenericHandler>;
 };
 
+type UnsubQueueEntry = {
+  subscription: Subscription;
+  dispose: () => void;
+};
+
 /**
  * Owns duplicate-subscription stacks, emit-handler storage, and unsub queue.
  * @internal
@@ -176,21 +181,23 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     GenericHandler,
     Map<EventKeys<TEventMap>|WILDCARD, HandlerIntent>
   >();
-  private readonly onceIntents = new Map<
+  // built on first use by the getters below, since most buses use few of them; `undefined` up front
+  // so every manager has the same shape
+  private _onceIntents: Map<
     GenericHandler,
     Map<EventKeys<TEventMap>|WILDCARD, HandlerIntent>
-  >();
-  private readonly anyIntents = new Map<GenericHandler, Map<string, AnyIntent<TEventMap>>>();
-  private readonly tapIntents = new Map<
+  > | undefined = undefined;
+  private _anyIntents: Map<GenericHandler, Map<string, AnyIntent<TEventMap>>> | undefined = undefined;
+  private _tapIntents: Map<
     GenericHandler,
     Map<typeof WILDCARD, HandlerIntent>
-  >();
-  private readonly incognitoByHandler = new Map<
+  > | undefined = undefined;
+  private _incognitoByHandler: Map<
     GenericHandler,
     Set<EventKeys<TEventMap>|WILDCARD>
-  >();
+  > | undefined = undefined;
   private readonly handlersByEvent = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
-  private readonly stackedListenerSurplusByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
+  private _stackedListenerSurplusByEvent: Map<EventKeys<TEventMap>|WILDCARD, number> | undefined = undefined;
   /**
    * Number of (event, handler) pairs in `handlersByEvent`. This and the counts below are kept in
    * step with the maps above, so the lifecycle checks on every add and remove stay O(1)
@@ -199,15 +206,12 @@ export class SubscriptionManager<TEventMap extends EventMap> {
   private handlerTotal = 0;
   /** How many of those pairs are incognito, in total and per event */
   private incognitoTotal = 0;
-  private readonly incognitoCountByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
+  private _incognitoCountByEvent: Map<EventKeys<TEventMap>|WILDCARD, number> | undefined = undefined;
   /** Sum of `stackedListenerSurplusByEvent` */
   private stackedSurplusSum = 0;
   /** Handler sets an emit is iterating right now; adding to one of these must not be seen by that emit */
-  private readonly setsBeingIterated: Set<GenericHandler>[] = [];
-  private readonly unsubQueue: {
-    subscription: Subscription;
-    dispose: () => void;
-  }[] = [];
+  private _setsBeingIterated: Set<GenericHandler>[] | undefined = undefined;
+  private _unsubQueue: UnsubQueueEntry[] | undefined = undefined;
   private _purgingUnsubQueue: boolean = false;
 
   private readonly host: SubscriptionHost;
@@ -225,6 +229,47 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     this.options = params.options;
     this.logger = params.logger;
     this.lifecycle = params.lifecycle;
+  }
+
+  private get onceIntents(): Map<
+    GenericHandler,
+    Map<EventKeys<TEventMap>|WILDCARD, HandlerIntent>
+  > {
+    return this._onceIntents ??= new Map();
+  }
+
+  private get anyIntents(): Map<GenericHandler, Map<string, AnyIntent<TEventMap>>> {
+    return this._anyIntents ??= new Map();
+  }
+
+  private get tapIntents(): Map<
+    GenericHandler,
+    Map<typeof WILDCARD, HandlerIntent>
+  > {
+    return this._tapIntents ??= new Map();
+  }
+
+  private get incognitoByHandler(): Map<
+    GenericHandler,
+    Set<EventKeys<TEventMap>|WILDCARD>
+  > {
+    return this._incognitoByHandler ??= new Map();
+  }
+
+  private get stackedListenerSurplusByEvent(): Map<EventKeys<TEventMap>|WILDCARD, number> {
+    return this._stackedListenerSurplusByEvent ??= new Map();
+  }
+
+  private get incognitoCountByEvent(): Map<EventKeys<TEventMap>|WILDCARD, number> {
+    return this._incognitoCountByEvent ??= new Map();
+  }
+
+  private get setsBeingIterated(): Set<GenericHandler>[] {
+    return this._setsBeingIterated ??= [];
+  }
+
+  private get unsubQueue(): UnsubQueueEntry[] {
+    return this._unsubQueue ??= [];
   }
 
   public off(event: EventKeys<TEventMap>|WILDCARD, handler: GenericHandler): void {
@@ -252,7 +297,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
   }
 
   public stackedSurplusFor(event: EventKeys<TEventMap>|WILDCARD): number {
-    return this.stackedListenerSurplusByEvent.get(event) ?? 0;
+    return this._stackedListenerSurplusByEvent?.get(event) ?? 0;
   }
 
   public stackedSurplusTotal(): number {
@@ -262,7 +307,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
   /** Distinct handlers registered for `event` on this bus, optionally excluding incognito ones */
   public ownHandlerCountFor(event: EventKeys<TEventMap>|WILDCARD, includeIncognito: boolean): number {
     const size = this.handlersByEvent.get(event)?.size ?? 0;
-    return includeIncognito ? size : size - (this.incognitoCountByEvent.get(event) ?? 0);
+    return includeIncognito ? size : size - (this._incognitoCountByEvent?.get(event) ?? 0);
   }
 
   /** Distinct (event, handler) registrations on this bus, optionally excluding incognito ones */
@@ -285,24 +330,26 @@ export class SubscriptionManager<TEventMap extends EventMap> {
       }
     };
     collect(this.onIntents);
-    collect(this.onceIntents);
-    collect(this.anyIntents);
-    collect(this.tapIntents);
+    for(const intents of [this._onceIntents, this._anyIntents, this._tapIntents]) {
+      if(intents) {
+        collect(intents);
+      }
+    }
     over(pending)();
     if(!includeIncognito) {
       return;
     }
     this.handlersByEvent.clear();
-    this.incognitoByHandler.clear();
-    this.stackedListenerSurplusByEvent.clear();
+    this._incognitoByHandler?.clear();
+    this._stackedListenerSurplusByEvent?.clear();
     this.handlerTotal = 0;
     this.incognitoTotal = 0;
     this.stackedSurplusSum = 0;
-    this.incognitoCountByEvent.clear();
+    this._incognitoCountByEvent?.clear();
     this.onIntents.clear();
-    this.onceIntents.clear();
-    this.anyIntents.clear();
-    this.tapIntents.clear();
+    this._onceIntents?.clear();
+    this._anyIntents?.clear();
+    this._tapIntents?.clear();
   }
 
 
@@ -329,7 +376,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     options?: SubscribeOptions
   ): Subscription {
     const emitHandler = ((payload: any) => {
-      const intent = this.onceIntents.get(handler)?.get(event);
+      const intent = this._onceIntents?.get(handler)?.get(event);
       if(!intent?.frames.length) {
         return;
       }
@@ -463,7 +510,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     handler: TapHandler<TEventMap>,
     options?: SubscribeOptions
   ): Subscription {
-    const existing = this.tapIntents.get(handler as GenericHandler)?.get(WILDCARD);
+    const existing = this._tapIntents?.get(handler as GenericHandler)?.get(WILDCARD);
     const emitHandler: GenericHandler = existing?.emitHandler ?? ((event, payload) => {
       const intent = this.tapIntents.get(handler as GenericHandler)?.get(WILDCARD);
       const times = Math.max(intent?.invokeCount ?? 1, 1);
@@ -663,7 +710,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     if(!next) {
       next = new Set<GenericHandler>();
       this.handlersByEvent.set(event, next);
-    } else if(this.setsBeingIterated.includes(next)) {
+    } else if(this._setsBeingIterated?.includes(next)) {
       next = new Set<GenericHandler>(prev);
       this.handlersByEvent.set(event, next);
     }
@@ -708,7 +755,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
 
   public ownListenerCountForEvent(event: EventKeys<TEventMap>|WILDCARD): number {
     const setSize = this.handlersByEvent.get(event)?.size ?? 0;
-    const extra = this.stackedListenerSurplusByEvent.get(event) ?? 0;
+    const extra = this._stackedListenerSurplusByEvent?.get(event) ?? 0;
     return setSize + extra;
   }
 
@@ -720,11 +767,11 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     if(incognito) {
       return;
     }
-    const curr = this.stackedListenerSurplusByEvent.get(event) ?? 0;
+    const curr = this._stackedListenerSurplusByEvent?.get(event) ?? 0;
     const next = Math.max(curr + delta, 0);
     this.stackedSurplusSum += next - curr;
     if(next === 0) {
-      this.stackedListenerSurplusByEvent.delete(event);
+      this._stackedListenerSurplusByEvent?.delete(event);
     } else {
       this.stackedListenerSurplusByEvent.set(event, next);
     }
@@ -743,7 +790,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
       return;
     }
     this._purgingUnsubQueue = true;
-    while(this.unsubQueue.length) {
+    while(this._unsubQueue?.length) {
       const {dispose} = this.unsubQueue.shift();
       dispose();
     }
@@ -754,7 +801,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     handler: GenericHandler,
     event: EventKeys<TEventMap>|WILDCARD
   ): boolean {
-    return this.incognitoByHandler.get(handler)?.has(event) ?? false;
+    return this._incognitoByHandler?.get(handler)?.has(event) ?? false;
   }
 
   private markIncognito(
@@ -777,7 +824,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     handler: GenericHandler,
     event: EventKeys<TEventMap>|WILDCARD
   ): void {
-    const events = this.incognitoByHandler.get(handler);
+    const events = this._incognitoByHandler?.get(handler);
     if(!events) {
       return;
     }
