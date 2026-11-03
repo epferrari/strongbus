@@ -1,5 +1,3 @@
-import {autobind} from 'core-decorators';
-
 import type {SubscriptionManager} from './subscriptionManager';
 import {WILDCARD, type EventMap} from './types/events';
 import type {MaterializedBusOptions} from './types/materializedBusOptions';
@@ -32,7 +30,6 @@ export namespace EventDispatcher {
 /**
  * @internal
  */
-@autobind
 export class EventDispatcher<TEventMap extends EventMap = EventMap> {
 
   private readonly subscriptions!: Pick<SubscriptionManager<TEventMap>, 'consumeEvent'>;

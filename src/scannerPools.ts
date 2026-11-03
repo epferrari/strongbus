@@ -6,7 +6,6 @@ import type {Scannable} from './types/scannable';
 import type {ScanOptions, SubscribeOptions} from './types/surfaces/subscriptionSurface';
 import type {EventKeys} from './types/utility';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
-import { autobind } from 'core-decorators';
 
 /** @internal Normalized scan request used by {@link ScannerPools}. */
 export interface ScanParams<T, TEventMap extends EventMap> {
@@ -35,7 +34,6 @@ interface Pool<TEventMap extends EventMap> {
  * canceled once every constituent has been canceled.
  * @internal
  */
-@autobind
 export class ScannerPools<TEventMap extends EventMap> {
   private readonly pools = new WeakMap<Scanner.Evaluator<any, TEventMap>, Map<PoolKey, Pool<TEventMap>>>();
   private readonly constituencies = new WeakMap<Promise<any>, {
