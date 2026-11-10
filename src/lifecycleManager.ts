@@ -1,5 +1,3 @@
-import {autobind} from 'core-decorators';
-
 import {type StrongbusLogger} from './strongbusLogger';
 import type {MaterializedBusOptions} from './types/materializedBusOptions';
 import {Lifecycle} from './types/lifecycle';
@@ -41,7 +39,6 @@ export interface LifecycleHost<TEventMap extends EventMap> {
  * Owns active/idle state and lifecycle hook dispatch for a {@link Bus}.
  * @internal
  */
-@autobind
 export class LifecycleManager<TEventMap extends EventMap = EventMap> {
   private readonly handlers = new Map<Lifecycle, Set<GenericHandler>>();
   private readonly host: LifecycleHost<TEventMap>;
