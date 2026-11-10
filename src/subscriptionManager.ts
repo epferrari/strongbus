@@ -69,6 +69,53 @@ class AnyRegistration extends Registration {
   }
 }
 
+/** Registrations a handler may have before they are looked up by key instead of searched in turn */
+const MAX_CHAINED_REGISTRATIONS = 16;
+
+/**
+ * The registrations of a handler that is subscribed to many events, found by event rather than by
+ * walking a chain. A key holds at most one registration per kind. Iterates in the order the
+ * registrations were made.
+ */
+class RegistrationIndex {
+  private readonly all = new Set<Registration>();
+  private readonly byKey = new Map<ListenerKey, Registration[]>();
+
+  public find(kind: RegistrationKind, key: ListenerKey): Registration | undefined {
+    return this.byKey.get(key)?.find(r => r.kind === kind);
+  }
+
+  public add(registration: Registration): void {
+    this.all.add(registration);
+    const sameKey = this.byKey.get(registration.key);
+    if(sameKey) {
+      sameKey.push(registration);
+    } else {
+      this.byKey.set(registration.key, [registration]);
+    }
+  }
+
+  public delete(registration: Registration): void {
+    this.all.delete(registration);
+    const sameKey = this.byKey.get(registration.key);
+    if(!sameKey) {
+      return;
+    }
+    sameKey.splice(sameKey.indexOf(registration), 1);
+    if(sameKey.length === 0) {
+      this.byKey.delete(registration.key);
+    }
+  }
+
+  public get isEmpty(): boolean {
+    return this.all.size === 0;
+  }
+
+  public [Symbol.iterator](): IterableIterator<Registration> {
+    return this.all.values();
+  }
+}
+
 /** The (event, handler) pairs that are incognito. Never mutated while it is {@link NO_INCOGNITO}. */
 class IncognitoIndex {
   public total = 0;
@@ -136,8 +183,11 @@ const NO_SURPLUS = new StackedSurplus();
  */
 export class SubscriptionManager<TEventMap extends EventMap> {
 
-  /** Every registration, found by the handler the caller passed */
-  private readonly registrations = new Map<GenericHandler, Registration>();
+  /**
+   * Every registration, found by the handler the caller passed: the first of a chain linked by
+   * {@link Registration.next}, or a {@link RegistrationIndex} once the handler has many
+   */
+  private readonly registrations = new Map<GenericHandler, Registration | RegistrationIndex>();
   private readonly handlersByEvent = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
   /**
    * Number of (event, handler) pairs in `handlersByEvent`, kept in step with it so the lifecycle
@@ -217,8 +267,8 @@ export class SubscriptionManager<TEventMap extends EventMap> {
   public releaseAll(includeIncognito: boolean = true): void {
     const pending: Subscription[] = [];
     for(const kind of ['on', 'once', 'any', 'tap'] as const) {
-      for(const head of this.registrations.values()) {
-        for(let r: Registration | undefined = head; r; r = r.next) {
+      for(const entry of this.registrations.values()) {
+        for(const r of registrationsOf(entry)) {
           if(r.kind === kind && (includeIncognito || !r.incognito)) {
             pending.push(...r.frames);
           }
@@ -481,7 +531,11 @@ export class SubscriptionManager<TEventMap extends EventMap> {
   }
 
   private find(kind: RegistrationKind, handler: GenericHandler, key: ListenerKey): Registration | undefined {
-    for(let r = this.registrations.get(handler); r; r = r.next) {
+    const entry = this.registrations.get(handler);
+    if(entry instanceof RegistrationIndex) {
+      return entry.find(kind, key);
+    }
+    for(let r = entry; r; r = r.next) {
       if(r.kind === kind && r.key === key) {
         return r;
       }
@@ -491,28 +545,53 @@ export class SubscriptionManager<TEventMap extends EventMap> {
 
   /** Added after the handler's existing registrations, so they are released in the order they were made */
   private index(registration: Registration): void {
-    const head = this.registrations.get(registration.handler);
-    if(!head) {
+    const entry = this.registrations.get(registration.handler);
+    if(!entry) {
       this.registrations.set(registration.handler, registration);
-      return;
+    } else if(entry instanceof RegistrationIndex) {
+      entry.add(registration);
+    } else {
+      this.chain(entry, registration);
     }
+  }
+
+  private chain(head: Registration, registration: Registration): void {
     let tail = head;
+    let length = 1;
     while(tail.next) {
       tail = tail.next;
+      length += 1;
     }
-    tail.next = registration;
+    if(length < MAX_CHAINED_REGISTRATIONS) {
+      tail.next = registration;
+      return;
+    }
+    const index = new RegistrationIndex();
+    for(let r: Registration | undefined = head; r;) {
+      const following = r.next;
+      r.next = undefined;
+      index.add(r);
+      r = following;
+    }
+    index.add(registration);
+    this.registrations.set(registration.handler, index);
   }
 
   private unindex(registration: Registration): void {
-    const head = this.registrations.get(registration.handler);
-    if(head === registration) {
+    const entry = this.registrations.get(registration.handler);
+    if(entry instanceof RegistrationIndex) {
+      entry.delete(registration);
+      if(entry.isEmpty) {
+        this.registrations.delete(registration.handler);
+      }
+    } else if(entry === registration) {
       if(registration.next) {
         this.registrations.set(registration.handler, registration.next);
       } else {
         this.registrations.delete(registration.handler);
       }
     } else {
-      let previous = head;
+      let previous = entry;
       while(previous && previous.next !== registration) {
         previous = previous.next;
       }
@@ -627,6 +706,16 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     }
     const registration = this.find('on', emitHandler, event);
     return registration ? Math.max(registration.invokeCount, 1) : 1;
+  }
+}
+
+function* registrationsOf(entry: Registration | RegistrationIndex): IterableIterator<Registration> {
+  if(entry instanceof RegistrationIndex) {
+    yield* entry;
+    return;
+  }
+  for(let r: Registration | undefined = entry; r; r = r.next) {
+    yield r;
   }
 }
 

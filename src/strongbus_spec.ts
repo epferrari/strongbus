@@ -1322,6 +1322,21 @@ describe('Strongbus.Bus', () => {
       expect(upstream.hasListeners()).toBeFalse();
     });
 
+    it('registers, emits to and removes one handler on many events in linear time', () => {
+      const events = Array.from({length: HANDLER_COUNT}, (_, i) => `event-${i}`);
+      const looseBus = new Strongbus.Bus<any>({logger: quietLogger});
+      const handler = jasmine.createSpy('handler');
+      let subs: Strongbus.Subscription[];
+
+      expect(timeIt(() => {
+        subs = events.map((event) => looseBus.on(event, handler));
+      })).toBeLessThan(BUDGET_MS);
+      expect(timeIt(() => events.forEach((event) => looseBus.emit(event, 1)))).toBeLessThan(BUDGET_MS);
+      expect(handler).toHaveBeenCalledTimes(HANDLER_COUNT);
+      expect(timeIt(() => subs.forEach((sub) => sub()))).toBeLessThan(BUDGET_MS);
+      expect(looseBus.hasListeners()).toBeFalse();
+    });
+
     describe('given a downstream bus with listeners', () => {
       it('does not report the downstream listeners as own once the combined view has been read', () => {
         const downstream = new Strongbus.Bus<TestEventMap>();
