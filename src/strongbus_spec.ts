@@ -1244,9 +1244,69 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('a bus that has not used a feature yet', () => {
+    let onHook: jasmine.Spy;
+
+    beforeEach(() => {
+      onHook = jasmine.createSpy('onHook');
+    });
+
+    it('does not share state with other buses once it does', () => {
+      const first = new Strongbus.Bus<TestEventMap>();
+      const second = new Strongbus.Bus<TestEventMap>();
+      const downstream = new Strongbus.Bus<TestEventMap>();
+
+      first.on('foo', singleEventHandler);
+      first.hook('didAddListener', onHook);
+      first.pipe(downstream);
+      first.next('bar');
+
+      expect(second.hasListeners()).toBeFalse();
+      expect(second.getListenerCount()).toBe(0);
+      second.emit('foo', 'hawk');
+      expect(singleEventHandler).not.toHaveBeenCalled();
+      second.on('baz', eventSink);
+      expect(onHook).not.toHaveBeenCalledWith('baz');
+      expect(downstream.hasListeners()).toBeFalse();
+    });
+
+    it('can be cleared, destroyed and read before anything is subscribed', () => {
+      const unused = new Strongbus.Bus<TestEventMap>();
+
+      expect(unused.hasListeners()).toBeFalse();
+      expect(unused.getListenersFor('foo').size).toBe(0);
+      unused.unpipe(new Strongbus.Bus<TestEventMap>());
+      unused.clear();
+      unused.destroy();
+      expect(unused.destroyed).toBeTrue();
+    });
+
+    it('can be used again after being cleared of everything it had', () => {
+      const downstream = new Strongbus.Bus<TestEventMap>();
+      bus.on('foo', singleEventHandler);
+      bus.hook('didAddListener', onHook);
+      bus.pipe(downstream);
+      bus.clear({scope: Strongbus.ListenerScope.ANY});
+
+      bus.on('foo', singleEventHandler);
+      bus.hook('didAddListener', onHook);
+      bus.pipe(downstream);
+      bus.emit('foo', 'hawk');
+
+      expect(singleEventHandler).toHaveBeenCalledWith('hawk');
+      expect(onHook).toHaveBeenCalled();
+    });
+
+    it('can still hook and subscribe after being destroyed, as it could before', () => {
+      bus.destroy();
+
+      expect(() => bus.hook('didAddListener', onHook)).not.toThrow();
+    });
+  });
+
   describe('memory footprint of subscriptions', () => {
-    it('costs an empty bus less than 4.2 KB', () => {
-      expect(bytesRetainedPer(() => new Strongbus.Bus<TestEventMap>())).toBeLessThan(4200);
+    it('costs an empty bus less than 2.5 KB', () => {
+      expect(bytesRetainedPer(() => new Strongbus.Bus<TestEventMap>())).toBeLessThan(2500);
     });
 
     it('costs three subscriptions on a bus less than 3 KB', () => {

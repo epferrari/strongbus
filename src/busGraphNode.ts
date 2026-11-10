@@ -14,6 +14,7 @@ import type {MaterializedBusOptions} from './types/materializedBusOptions';
 import type {MonitoringHook} from './types/surfaces/monitoringSurface';
 import type {SubscribeOptions} from './types/surfaces/subscriptionSurface';
 import type {EventKeys} from './types/utility';
+import {EMPTY_MAP, EMPTY_SET} from './utils/emptyCollections';
 import {over} from './utils/over';
 
 /** @internal Options for attaching a pipe graph edge. */
@@ -31,13 +32,34 @@ type BusNodeEdge<TEventMap extends EventMap> = {
  * Pure graph maps for pipe edges. Does not call peers or collaborators.
  */
 class PipeGraphState<TEventMap extends EventMap> {
-  public readonly upstreams = new Set<BusGraphNode<TEventMap>>();
-  public readonly downstreams = new Map<BusGraphNode<TEventMap>, BusNodeEdge<TEventMap>>();
+  public upstreams = EMPTY_SET as Set<BusGraphNode<TEventMap>>;
+  public downstreams = EMPTY_MAP as Map<BusGraphNode<TEventMap>, BusNodeEdge<TEventMap>>;
   /** Live unsound `source → this → dest` paths that have already been warned. */
-  public readonly warnedUnsoundPaths = new Map<
+  public warnedUnsoundPaths = EMPTY_MAP as Map<
     BusGraphNode<TEventMap>,
     Set<BusGraphNode<TEventMap>>
-  >();
+  >;
+
+  public addUpstream(node: BusGraphNode<TEventMap>): void {
+    if(this.upstreams === EMPTY_SET) {
+      this.upstreams = new Set();
+    }
+    this.upstreams.add(node);
+  }
+
+  public addDownstream(node: BusGraphNode<TEventMap>, edge: BusNodeEdge<TEventMap>): void {
+    if(this.downstreams === EMPTY_MAP) {
+      this.downstreams = new Map();
+    }
+    this.downstreams.set(node, edge);
+  }
+
+  public addWarnedUnsoundPath(source: BusGraphNode<TEventMap>, dests: Set<BusGraphNode<TEventMap>>): void {
+    if(this.warnedUnsoundPaths === EMPTY_MAP) {
+      this.warnedUnsoundPaths = new Map();
+    }
+    this.warnedUnsoundPaths.set(source, dests);
+  }
 }
 
 /**
@@ -90,13 +112,13 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
     const filter = options?.filter;
     const incognito = options?.incognito === true;
     if(incognito) {
-      downstreams.set(downstream, {
+      this.graph.addDownstream(downstream, {
         unlink: () => undefined,
         incognito: true,
         filter
       });
     } else {
-      downstreams.set(downstream, {
+      this.graph.addDownstream(downstream, {
         unlink: over([
           downstream.lifecycle.hook(Lifecycle.willAddListener, (event) =>
             this.lifecycle.onDownstreamWillAdd(event as EventKeys<TEventMap>|WILDCARD)),
@@ -276,7 +298,7 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
     if(upstreams.has(node)) {
       return;
     }
-    upstreams.add(node);
+    this.graph.addUpstream(node);
     for(const [downstream, edge] of downstreams) {
       if(!edge.filter) {
         this.warnUnsoundPath(node, downstream);
@@ -315,7 +337,7 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
     let warnedDests = this.graph.warnedUnsoundPaths.get(source);
     if(!warnedDests) {
       warnedDests = new Set();
-      this.graph.warnedUnsoundPaths.set(source, warnedDests);
+      this.graph.addWarnedUnsoundPath(source, warnedDests);
     }
     if(warnedDests.has(dest)) {
       return;
