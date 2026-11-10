@@ -29,12 +29,8 @@ import {
 import {ListenerScope, type IntrospectionOptions} from './types/listenerScope';
 import type {
   SubscriptionSurface,
-  SubscriptionSurfaceAny,
   SubscriptionSurfaceNext,
-  SubscriptionSurfacePipe,
   SubscriptionSurfaceScan,
-  SubscriptionSurfaceTap,
-  SubscriptionSurfaceUnpipe,
   FilteredPipeHandle,
   NextResult,
   SubscribeOptions
@@ -347,78 +343,6 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     }
     return this.subscriptions.once(event, handler, options);
   }
-
-  /**
-   * Handle multiple events with the same handler.
-   * {@link EventSink} receives raised event as first argument, payload as second argument.
-   * Duplicate `any` with the same event set (order-independent) and handler honors
-   * {@link Options.duplicateSubscriptionStrategy}.
-   */
-  public any: SubscriptionSurfaceAny<TEventMap> = ((
-    events,
-    handler,
-    options?: SubscribeOptions
-  ) => {
-    if(this.guard('any')) {
-      return inertSubscription();
-    }
-    return this.subscriptions.any(
-      events as EventKeys<TEventMap>[],
-      handler as unknown as EventSink<TEventMap>,
-      options
-    );
-  }) as SubscriptionSurfaceAny<TEventMap>;
-
-  /**
-   * Observe every raised event as a correlated `{event, payload}` message.
-   * Does not create a graph edge. Unsubscribe via the returned {@link Subscription}.
-   */
-  public tap: SubscriptionSurfaceTap<TEventMap> = ((
-    handler: TapHandler<TEventMap>,
-    options?: SubscribeOptions
-  ) => {
-    if(this.guard('tap')) {
-      return inertSubscription();
-    }
-    return this.subscriptions.tap(handler, options);
-  }) as SubscriptionSurfaceTap<TEventMap>;
-
-  /**
-   * Attach a graph edge to another {@link Bus}, or return a {@link FilteredPipeHandle}
-   * when given a {@link PipePredicate} for gated multi-hop relay.
-   *
-   * - `pipe(dest)` — first-hop / local raises always deliver to `dest`.
-   * - `pipe(predicate).pipe(dest)` — stores `predicate` on the edge; passthrough (upstream-sourced)
-   *   events are delivered only when `predicate` returns true. Unfiltered outbound edges from
-   *   a bus that already has inbound pipes warn once per unique unsound path and block passthrough.
-   *
-   * Requires a real {@link Bus} instance — not a hand-rolled surface duck type.
-   */
-  public pipe: SubscriptionSurfacePipe<TEventMap> = ((
-    dest: PipePredicate<TEventMap> | Bus<any>,
-    options?: SubscribeOptions
-  ): FilteredPipeHandle<TEventMap> | Bus<any> => {
-    if(this.guard('pipe')) {
-      return typeof dest === 'function' ? inertFilteredPipeHandle() : dest;
-    } else if(typeof dest === 'function') {
-      return this.createFilteredPipeHandle(dest as PipePredicate<TEventMap>);
-    } else if(dest.guardAsPipeTarget(this.name)) {
-      return dest;
-    }
-    return this.connectDownstreamNode(dest, options) as Bus<any>;
-  }) as SubscriptionSurfacePipe<TEventMap>;
-
-  /**
-   * Stop piping events into a bus previously passed to {@link Bus.pipe}.
-   */
-  public unpipe: SubscriptionSurfaceUnpipe<TEventMap> = ((
-    dest: Bus<any>
-  ) => {
-    if(this.guard('unpipe')) {
-      return;
-    }
-    this.disconnectDownstreamNode(dest);
-  }) as SubscriptionSurfaceUnpipe<TEventMap>;
 
   /**
    * Utility for resolving/rejecting a promise based on the reception of an event.
@@ -805,6 +729,57 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
       this.logger.onUseDuringDestroy(method);
     }
     return this.destroying;
+  }
+
+  // these members' public types are generic aliases merged in from the surfaces above, which a class
+  // method cannot express without breaking Wide-to-Narrow bus assignability. Installing them on the
+  // prototype still keeps a bus from allocating a closure for each one.
+  static {
+    const methods = {
+      any(this: Bus<any>, events: EventKeys<any>[], handler: EventSink<any>, options?: SubscribeOptions): Subscription {
+        if(this.guard('any')) {
+          return inertSubscription();
+        }
+        return this.subscriptions.any(events, handler, options);
+      },
+
+      tap(this: Bus<any>, handler: TapHandler<any>, options?: SubscribeOptions): Subscription {
+        if(this.guard('tap')) {
+          return inertSubscription();
+        }
+        return this.subscriptions.tap(handler, options);
+      },
+
+      pipe(
+        this: Bus<any>,
+        dest: PipePredicate<any> | Bus<any>,
+        options?: SubscribeOptions
+      ): FilteredPipeHandle<any> | Bus<any> {
+        if(this.guard('pipe')) {
+          return typeof dest === 'function' ? inertFilteredPipeHandle() : dest;
+        } else if(typeof dest === 'function') {
+          return this.createFilteredPipeHandle(dest);
+        } else if(dest.guardAsPipeTarget(this.name)) {
+          return dest;
+        }
+        return this.connectDownstreamNode(dest, options) as Bus<any>;
+      },
+
+      unpipe(this: Bus<any>, dest: Bus<any>): void {
+        if(this.guard('unpipe')) {
+          return;
+        }
+        this.disconnectDownstreamNode(dest);
+      }
+    };
+
+    for(const [name, method] of Object.entries(methods)) {
+      Object.defineProperty(
+        Bus.prototype,
+        name,
+        autobind(Bus.prototype, name, {value: method, writable: true, configurable: true})
+      );
+    }
   }
 
 }

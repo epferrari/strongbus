@@ -1249,6 +1249,36 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('a bus\'s generic methods', () => {
+    it('work when called detached from the bus', () => {
+      const downstream = new Strongbus.Bus<TestEventMap>();
+      const {any: subscribeToAny, tap, pipe, unpipe} = bus;
+      const events: string[] = [];
+
+      subscribeToAny(['foo', 'bar'], (event) => events.push(String(event)));
+      tap(eventSink);
+      pipe(downstream);
+      bus.emit('foo', 'hawk');
+
+      expect(events).toEqual(['foo']);
+      expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'hawk'});
+      downstream.on('foo', singleEventHandler);
+      unpipe(downstream);
+      bus.emit('foo', 'owl');
+      expect(singleEventHandler).not.toHaveBeenCalledWith('owl');
+    });
+
+    it('can be replaced on one bus with a spy without affecting others', () => {
+      const other = new Strongbus.Bus<TestEventMap>();
+      const pipe = spyOn(bus, 'pipe').and.callThrough();
+
+      bus.pipe(new Strongbus.Bus<TestEventMap>());
+      other.pipe(new Strongbus.Bus<TestEventMap>());
+
+      expect(pipe).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('a bus that has not used a feature yet', () => {
     let onHook: jasmine.Spy;
 
@@ -1310,8 +1340,8 @@ describe('Strongbus.Bus', () => {
   });
 
   describe('memory footprint of subscriptions', () => {
-    it('costs an empty bus less than 2.5 KB', () => {
-      expect(bytesRetainedPer(() => new Strongbus.Bus<TestEventMap>())).toBeLessThan(2500);
+    it('costs an empty bus less than 2.2 KB', () => {
+      expect(bytesRetainedPer(() => new Strongbus.Bus<TestEventMap>())).toBeLessThan(2200);
     });
 
     it('costs three subscriptions on a bus less than 2 KB', () => {

@@ -186,6 +186,12 @@ export interface SubscriptionSurface<TEventMap extends EventMap = EventMap> {
     options?: SubscribeOptions
   ): Subscription;
 
+  /**
+   * Handle multiple events with the same handler.
+   * {@link EventSink} receives raised event as first argument, payload as second argument.
+   * Duplicate `any` with the same event set (order-independent) and handler honors
+   * {@link Options.duplicateSubscriptionStrategy}.
+   */
   any: SubscriptionSurfaceAny<TEventMap>;
 
   /**
@@ -212,8 +218,22 @@ export interface SubscriptionSurface<TEventMap extends EventMap = EventMap> {
    */
   tap: SubscriptionSurfaceTap<TEventMap>;
 
+  /**
+   * Attach a graph edge to another {@link Bus}, or return a {@link FilteredPipeHandle}
+   * when given a {@link PipePredicate} for gated multi-hop relay.
+   *
+   * - `pipe(dest)` — first-hop / local raises always deliver to `dest`.
+   * - `pipe(predicate).pipe(dest)` — stores `predicate` on the edge; passthrough (upstream-sourced)
+   *   events are delivered only when `predicate` returns true. Unfiltered outbound edges from
+   *   a bus that already has inbound pipes warn once per unique unsound path and block passthrough.
+   *
+   * Requires a real {@link Bus} instance — not a hand-rolled surface duck type.
+   */
   pipe: SubscriptionSurfacePipe<TEventMap>;
 
+  /**
+   * Stop piping events into a bus previously passed to {@link Bus.pipe}.
+   */
   unpipe: SubscriptionSurfaceUnpipe<TEventMap>;
 }
 
