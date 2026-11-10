@@ -28,7 +28,8 @@ describe('LifecycleManager', () => {
       'getListenerCountForUpTo',
       'getOwnListenerCount',
       'accountForDownstreamListeners',
-      'accountForRemovedDownstreamListeners'
+      'accountForRemovedDownstreamListeners',
+      'forwardListenerLifecycle'
     ]);
     host.hasListeners.and.returnValue(false);
     host.getListenerCount.and.returnValue(0);

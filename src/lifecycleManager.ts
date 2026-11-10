@@ -1,5 +1,6 @@
 import {autobind} from 'core-decorators';
 
+import type {ForwardedLifecycle} from './busGraphNode';
 import {type StrongbusLogger} from './strongbusLogger';
 import type {MaterializedBusOptions} from './types/materializedBusOptions';
 import {Lifecycle} from './types/lifecycle';
@@ -35,6 +36,7 @@ export interface LifecycleHost<TEventMap extends EventMap> {
   getListenerCountForUpTo(event: EventKeys<TEventMap>|WILDCARD, cap: number): number;
   accountForDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void;
   accountForRemovedDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void;
+  forwardListenerLifecycle(event: ForwardedLifecycle, subject: EventKeys<TEventMap>|WILDCARD): void;
 }
 
 /**
@@ -259,7 +261,17 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
         }
       }
     }
+    if(isForwardedLifecycle(event)) {
+      this.host.forwardListenerLifecycle(event, payload as EventKeys<TEventMap>|WILDCARD);
+    }
   }
+}
+
+function isForwardedLifecycle(event: Lifecycle): event is ForwardedLifecycle {
+  return event === Lifecycle.willAddListener
+    || event === Lifecycle.didAddListener
+    || event === Lifecycle.willRemoveListener
+    || event === Lifecycle.didRemoveListener;
 }
 
 function addHandler<TKey>(bus: Map<TKey, Set<GenericHandler>>, event: TKey, handler: GenericHandler): void {
