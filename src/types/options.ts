@@ -26,6 +26,8 @@ export interface ListenerThresholds {
  * @prop coalesceDownstreamLifecycleEvents [true] - when true, coalesce will/did add/remove hooks to one
  * emission per event key during `pipe()` / `unpipe()` reconcile of a heavily-subscribed downstream bus
  * @prop duplicateSubscriptionStrategy - how duplicate listenable+handler registrations behave
+ * @prop logHandlerErrors [false] - log an error through `logger` whenever a handler throws, in addition to
+ * notifying `error` lifecycle hooks. Lets an application report handler errors without a hook on every bus.
  * @prop onUseAfterDestroy [false] - what to do when a monitoring or subscription method is called
  * after `destroy()`: `false` runs it as usual; a {@link LogLevel} logs
  * `StrongbusLogCode.UseAfterDestroy`, then skips it and returns an inert stub;
@@ -41,6 +43,7 @@ export interface Options {
   coalesceDownstreamLifecycleEvents?: boolean;
   duplicateSubscriptionStrategy?: Partial<DuplicateSubscriptionStrategy>;
   onUnhandledEvent?: 'throw'|'ignore'|((event: string|number|symbol, payload: unknown) => void);
+  logHandlerErrors?: boolean;
   onUseAfterDestroy?: false|Exclude<LogLevel, 'never'>|'throw';
 }
 

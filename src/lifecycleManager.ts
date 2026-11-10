@@ -45,14 +45,14 @@ export interface LifecycleHost<TEventMap extends EventMap> {
 export class LifecycleManager<TEventMap extends EventMap = EventMap> {
   private readonly handlers = new Map<Lifecycle, Set<GenericHandler>>();
   private readonly host: LifecycleHost<TEventMap>;
-  private readonly options: Pick<MaterializedBusOptions, 'coalesceDownstreamLifecycleEvents'>;
+  private readonly options: Pick<MaterializedBusOptions, 'coalesceDownstreamLifecycleEvents' | 'logHandlerErrors'>;
   private readonly logger: StrongbusLogger<TEventMap>;
 
   private _active = false;
 
   constructor(params: {
     host: LifecycleHost<TEventMap>;
-    options: Pick<MaterializedBusOptions, 'coalesceDownstreamLifecycleEvents'>;
+    options: Pick<MaterializedBusOptions, 'coalesceDownstreamLifecycleEvents' | 'logHandlerErrors'>;
     logger: StrongbusLogger<TEventMap>;
   }) {
     this.host = params.host;
@@ -216,12 +216,20 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
     error: unknown,
     event: EventKeys<TEventMap>|WILDCARD | Lifecycle
   ): void {
-    this.emitLifecycleEvent(Lifecycle.error, {error: normalizeError(error), event});
+    this.reportError(error, event);
   }
 
   public destroy(): void {
     this.emitLifecycleEvent(Lifecycle.willDestroy, null);
     this.handlers.clear();
+  }
+
+  private reportError(error: unknown, event: EventKeys<TEventMap>|WILDCARD | Lifecycle): void {
+    const normalized = normalizeError(error);
+    this.emitLifecycleEvent(Lifecycle.error, {error: normalized, event});
+    if(this.options.logHandlerErrors) {
+      this.logger.onHandlerError(event, normalized);
+    }
   }
 
   private emitLifecycleEvent<L extends Lifecycle>(event: L, payload: Lifecycle.EventMap<TEventMap>[L]): void {
@@ -241,7 +249,7 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
                   eventHandlerError: errorPayload.error
               });
             } else {
-              this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
+              this.reportError(e, event);
             }
           });
         } catch(e) {
@@ -254,7 +262,7 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
                 eventHandlerError: errorPayload.error
             });
           } else {
-            this.emitLifecycleEvent(Lifecycle.error, {error: normalizeError(e), event});
+            this.reportError(e, event);
           }
         }
       }

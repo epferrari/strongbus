@@ -87,6 +87,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     coalesceDownstreamLifecycleEvents: true,
     duplicateSubscriptionStrategy: resolveDuplicateSubscriptionStrategy(),
     onUnhandledEvent: 'ignore',
+    logHandlerErrors: false,
     onUseAfterDestroy: false
   };
 

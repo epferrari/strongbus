@@ -92,6 +92,10 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
     this.warn(buildCyclicPipe(this.name, dest));
   }
 
+  public onHandlerError(event: unknown, error: unknown): void {
+    this.error(buildHandlerError(this.name, event, error));
+  }
+
   public onErrorHandlerFailed(details: ErrorHandlerFailureDetails): void {
     this.error(buildErrorHandlerFailed(details));
   }
@@ -312,6 +316,14 @@ function buildCyclicPipe(source: string, dest: string): StrongbusLogRecord {
       'directly or through other buses, and the edge would form a cycle.',
       'Unpipe an edge on that path first. See https://epferrari.github.io/strongbus/docs/pipe_limitations.md.'
     ].join(' ')
+  };
+}
+
+function buildHandlerError(name: string, event: unknown, error: unknown): StrongbusLogRecord {
+  return {
+    code: StrongbusLogCode.HandlerError,
+    message: `${name} encountered error in '${String(event)}' callback`,
+    context: {event, error}
   };
 }
 

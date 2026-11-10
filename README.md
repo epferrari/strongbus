@@ -671,6 +671,8 @@ hook can send a final event to downstreams that are still attached.
 - `logger` — a `Logger`, or a `() => Logger` provider.
 - `verbose` — log on every listener past a threshold (`true`), or only at threshold boundaries
   (`false`, default).
+- `logHandlerErrors` — `false` (default), or `true` to log `StrongbusLogCode.HandlerError` (`1018`) through `logger`
+  whenever a handler throws, in addition to notifying `error` hooks.
 - `onUseAfterDestroy` — `false` (default), a log level, or `'throw'`: how to treat calls on a destroyed bus.
   See [Teardown](#teardown).
 - `duplicateSubscriptionStrategy` — how duplicate listenable+handler registrations behave for

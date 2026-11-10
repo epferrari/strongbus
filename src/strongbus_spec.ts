@@ -4,7 +4,7 @@ import {CancelablePromise, parallel, sleep, TimeoutExpiredError} from 'jaasync';
 import * as Strongbus from './';
 import type {Scanner} from './scanner';
 import {StrongbusLogMessages} from './strongbusLogger';
-import type {Logger} from './types/logger';
+import {StrongbusLogCode, type Logger} from './types/logger';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import type {EventMap} from './types/events';
 import type {EventKeys, VoidEventKeys} from './types/utility';
@@ -156,6 +156,105 @@ describe('Strongbus.Bus', () => {
 
       const options: Strongbus.Options = (new Strongbus.Bus() as any).options;
       expect(options.name).toBe('Anonymous');
+    });
+  });
+
+  describe('options.logHandlerErrors', () => {
+    let logger: jasmine.SpyObj<Logger>;
+
+    beforeEach(() => {
+      logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+    });
+
+    function throwingBus(options: Strongbus.Options): Strongbus.Bus<TestEventMap> {
+      const throwing = new Strongbus.Bus<TestEventMap>({logger, name: 'errors', ...options});
+      throwing.on('foo', () => {
+        throw new Error('boom');
+      });
+      return throwing;
+    }
+
+    it('logs nothing by default when a handler throws', () => {
+      throwingBus({}).emit('foo', 'a');
+
+      expect(logger.error).not.toHaveBeenCalled();
+    });
+
+    it('logs the error with the bus name and event when enabled', () => {
+      throwingBus({logHandlerErrors: true}).emit('foo', 'a');
+
+      const record = logger.error.calls.mostRecent().args[0];
+      expect(record.code).toBe(StrongbusLogCode.HandlerError);
+      expect(record.message).toBe('errors Bus encountered error in \'foo\' callback');
+      expect(record.context).toEqual({event: 'foo', error: new Error('boom')});
+    });
+
+    it('still notifies error hooks when enabled', () => {
+      const onError = jasmine.createSpy('onError');
+      const throwing = throwingBus({logHandlerErrors: true});
+      throwing.hook('error', onError);
+
+      throwing.emit('foo', 'a');
+
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(logger.error).toHaveBeenCalledTimes(1);
+    });
+
+    it('logs a handler that rejects asynchronously', async () => {
+      const rejecting = new Strongbus.Bus<TestEventMap>({logger, logHandlerErrors: true});
+      rejecting.on('foo', () => Promise.reject(new Error('later')));
+
+      rejecting.emit('foo', 'a');
+      await sleep(0);
+
+      expect(logger.error).toHaveBeenCalledTimes(1);
+      expect(logger.error.calls.mostRecent().args[0].code).toBe(StrongbusLogCode.HandlerError);
+    });
+
+    it('logs errors thrown by lifecycle hooks', () => {
+      const hooked = new Strongbus.Bus<TestEventMap>({logger, logHandlerErrors: true});
+      hooked.hook('didAddListener', () => {
+        throw new Error('hook failed');
+      });
+
+      hooked.on('foo', singleEventHandler);
+
+      expect(logger.error).toHaveBeenCalledTimes(1);
+      expect(logger.error.calls.mostRecent().args[0].code).toBe(StrongbusLogCode.HandlerError);
+    });
+
+    it('logs a non-Error throw as an Error', () => {
+      const throwing = new Strongbus.Bus<TestEventMap>({logger, logHandlerErrors: true});
+      throwing.on('foo', () => {
+        throw {reason: 'not an Error'};
+      });
+
+      throwing.emit('foo', 'a');
+
+      expect((logger.error.calls.mostRecent().args[0].context as {error: unknown}).error).toEqual(jasmine.any(Error));
+    });
+
+    it('logs once, then reports the failure, when an error hook throws', () => {
+      const throwing = throwingBus({logHandlerErrors: true});
+      throwing.hook('error', () => {
+        throw new Error('hook broke');
+      });
+
+      throwing.emit('foo', 'a');
+
+      const codes = logger.error.calls.allArgs().map(([record]) => record.code);
+      expect(codes).toEqual([StrongbusLogCode.ErrorHandlerFailed, StrongbusLogCode.HandlerError]);
+    });
+
+    it('applies when set through Bus.configure', () => {
+      Strongbus.Bus.configure({logHandlerErrors: true});
+      try {
+        throwingBus({}).emit('foo', 'a');
+      } finally {
+        Strongbus.Bus.configure({logHandlerErrors: false});
+      }
+
+      expect(logger.error).toHaveBeenCalledTimes(1);
     });
   });
 
