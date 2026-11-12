@@ -35,7 +35,7 @@ class Registration {
   public frames: Subscription[] = NO_FRAMES;
   public invokeCount = 1;
   public observabilityCount = 1;
-  /** What the bus keeps in its per-event handler sets: `handler` for `on`, a wrapper for the rest */
+  /** What the bus keeps in its per-event handler sets: `handler` for `on`, a wrapper for `once` and `tap`. Unused by `any`. */
   public emitHandler: GenericHandler;
   /** The caller's other registrations of the same handler */
   public next: Registration | undefined;
@@ -103,7 +103,11 @@ class RegistrationIndex {
     if(!sameKey) {
       return;
     }
-    sameKey.splice(sameKey.indexOf(registration), 1);
+    const index = sameKey.indexOf(registration);
+    if(index === -1) {
+      return;
+    }
+    sameKey.splice(index, 1);
     if(sameKey.length === 0) {
       this.byKey.delete(registration.key);
     }

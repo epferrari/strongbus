@@ -1314,7 +1314,7 @@ describe('Strongbus.Bus', () => {
       expect(bytesRetainedPer(() => new Strongbus.Bus<TestEventMap>())).toBeLessThan(2500);
     });
 
-    it('costs three subscriptions on a bus less than 3 KB', () => {
+    it('costs three subscriptions on a bus less than 2 KB', () => {
       const handler = (): void => undefined;
       const empty = bytesRetainedPer(() => new Strongbus.Bus<TestEventMap>());
       const subscribed = bytesRetainedPer(() => {
@@ -1325,7 +1325,7 @@ describe('Strongbus.Bus', () => {
         return subscribedBus;
       });
 
-      expect(subscribed - empty).toBeLessThan(3000);
+      expect(subscribed - empty).toBeLessThan(2000);
     });
   });
 
@@ -3786,6 +3786,35 @@ describe('Strongbus.Bus', () => {
       expect(singleEventHandler).not.toHaveBeenCalled();
       expect(eventSink).not.toHaveBeenCalled();
       expect(bus.getListenerCount({includeIncognito: true})).toBe(0);
+    });
+
+    describe('given handlers that mix kinds', () => {
+      const first = (): void => undefined;
+      const second = (): void => undefined;
+
+      beforeEach(() => {
+        bus.once('foo', first);
+        bus.on('bar', second);
+        bus.on('baz', first);
+      });
+
+      it('releases kind by kind, and handlers within a kind in the order they first subscribed to anything', () => {
+        const released: string[] = [];
+        bus.hook('didRemoveListener', (event) => released.push(String(event)));
+
+        bus.clear();
+
+        expect(released).toEqual(['baz', 'bar', 'foo']);
+      });
+
+      it('releases in the same order on destroy', () => {
+        const released: string[] = [];
+        bus.hook('didRemoveListener', (event) => released.push(String(event)));
+
+        bus.destroy();
+
+        expect(released).toEqual(['baz', 'bar', 'foo']);
+      });
     });
 
     it('keeps lifecycle hooks, which see the removals and later additions', () => {
