@@ -1,5 +1,3 @@
-import {autobind} from 'core-decorators';
-
 import type {ListenerThresholds} from './types/options';
 import {
   StrongbusLogCode,
@@ -31,7 +29,6 @@ export type LogLevel = 'never' | 'debug' | 'info' | 'warn' | 'error';
  * Domain-oriented adapter over {@link Logger} / {@link LoggerProvider}.
  * @internal
  */
-@autobind
 export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
   private readonly name: string;
   private readonly provider: LoggerProvider|undefined;
@@ -48,10 +45,11 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
   }
 
   public onAddListener(event: EventKeys<TEventMap>|WILDCARD, n: number) {
-    (this.verbose
-      ? this.onAddListenerVerbose
-      : this.onAddListenerNonVerbose
-    )(event, n);
+    if(this.verbose) {
+      this.onAddListenerVerbose(event, n);
+    } else {
+      this.onAddListenerNonVerbose(event, n);
+    }
   }
 
   public onListenerRemoved(event: EventKeys<TEventMap>|WILDCARD, count: number): void {

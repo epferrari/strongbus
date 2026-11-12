@@ -1,5 +1,3 @@
-import {autobind} from 'core-decorators';
-
 import type {EventDispatcher} from './eventDispatcher';
 import type {IntrospectionManager} from './introspectionManager';
 import {
@@ -50,7 +48,6 @@ class PipeGraphState<TEventMap extends EventMap> {
  * Base for {@link Bus}: owns the pipe graph and peer delivery via `protected`
  * methods so graph helpers are not part of the public `Bus` surface.
  */
-@autobind
 export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
   private readonly graph = new PipeGraphState<TEventMap>();
 

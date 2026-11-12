@@ -1130,6 +1130,22 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('memory footprint of subscriptions', () => {
+    it('costs three subscriptions on a bus less than 3.3 KB', () => {
+      const handler = (): void => undefined;
+      const empty = bytesRetainedPer(() => new Strongbus.Bus<TestEventMap>());
+      const subscribed = bytesRetainedPer(() => {
+        const subscribedBus = new Strongbus.Bus<TestEventMap>();
+        subscribedBus.on('foo', handler);
+        subscribedBus.on('bar', handler);
+        subscribedBus.once('foo', handler);
+        return subscribedBus;
+      });
+
+      expect(subscribed - empty).toBeLessThan(3300);
+    });
+  });
+
   describe('listener bookkeeping with many handlers', () => {
     const HANDLER_COUNT = 20000;
     // the quadratic versions take tens of seconds at this size; the budget only has to separate

@@ -7,6 +7,7 @@ import type {LifecycleManager} from './lifecycleManager';
 import {type StrongbusLogger} from './strongbusLogger';
 import {over} from './utils/over';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
+import {unnamed} from './utils/unnamed';
 
 type HandlerIntent = {
   frames: Subscription[];
@@ -328,7 +329,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     handler: GenericHandler,
     options?: SubscribeOptions
   ): Subscription {
-    const emitHandler = ((payload: any) => {
+    const emitHandler = unnamed(((payload: any) => {
       const intent = this.onceIntents.get(handler)?.get(event);
       if(!intent?.frames.length) {
         return;
@@ -342,7 +343,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
       for(let i = 0; i < times; i++) {
         handler(payload);
       }
-    }) as GenericHandler;
+    }) as GenericHandler);
 
     return this.registerHandlerIntent({
       kind: 'once',
@@ -409,12 +410,12 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     };
 
     for(const e of uniqueEvents) {
-      const wrapper = ((payload: any) => {
+      const wrapper = unnamed(((payload: any) => {
         const times = Math.max(intent.invokeCount, 1);
         for(let i = 0; i < times; i++) {
           (handler as EventSink<TEventMap>)(e as any, payload);
         }
-      }) as GenericHandler;
+      }) as GenericHandler);
       wrappers.set(e, wrapper);
       this.attachEmitHandler(e, wrapper, intent.incognito, true);
     }
