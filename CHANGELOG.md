@@ -5,6 +5,49 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`options.suppressDefaultUnhandledErrorLogging`** (default `true`) — A listener or lifecycle
+  hook that throws or rejects is reported to the bus's `error` hooks, and silently dropped when
+  there are none. Set this to `false` to log the error through `logger` at `error` instead, as
+  `StrongbusLogCode.UnhandledError` (`1018`), with the event and the error on `context`. This
+  matches how Node's `EventEmitter` treats an unhandled `'error'` event, and lets an application
+  log handler errors without an `error` hook on every bus. Registering an `error` hook takes over
+  reporting and stops the log; unsubscribing the last one brings it back. Can be set per bus or
+  for every bus with `Bus.configure`.
+
+  **Upcoming breaking change:** the next major version will log by default, by removing this
+  option or defaulting it to `false`. Applications that rely on handler errors being swallowed
+  should hook `error` with a handler that ignores them.
+
+### Changed
+
+- **Upstreams hear about a downstream's listener changes after the downstream's own hooks** — A
+  piped bus notifies each upstream when its listeners change, driving the upstream's `active` state
+  and lifecycle hooks (`willAddListener`, `didAddListener`, `willRemoveListener`,
+  `didRemoveListener`). The downstream now forwards this notice directly after all its own hooks
+  run, rather than using a hook registered during `pipe()`. Downstream hooks registered after
+  `pipe()` now run before the upstream is notified, instead of after.
+- **Less memory per pipe** — A non-incognito `pipe()` no longer registers four lifecycle hooks on
+  the downstream bus. Under esbuild with `keepNames`, this reduces two piped buses from 14,284 B
+  to 11,402 B, and three chained buses from 23,644 B to 17,884 B.
+- **Less memory per bus for the internal methods it uses** — The classes a `Bus` delegates to no
+  longer use `@autobind`, so a bus no longer keeps a bound copy of each internal method it calls.
+  `Bus` and `Scanner` still autobind because callers destructure their methods. Unbundled, three
+  subscriptions on a bus dropped from 3,687 B to 2,949 B.
+- **Subscription closures are anonymous** — Under esbuild with `keepNames`, closures for
+  subscriptions, `once`, or `any` events previously carried a redefined `name` costing about 250 B.
+  They are now created without a name, appearing as anonymous functions in stack traces and
+  profiles. A bus with two `on`s and an `any` over two events dropped from 10,380 B to 9,220 B.
+
+### Fixed
+
+- **Async lifecycle hook rejections reach `error` hooks as an `Error`** — When a lifecycle hook
+  returned a promise that rejected, `error` hooks received the raw rejection value. It is now
+  normalized to an `Error`, as it already was for synchronous throws and for listeners.
+
 ## [3.1.0]
 
 ### Added
