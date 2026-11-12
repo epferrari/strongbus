@@ -1254,7 +1254,7 @@ describe('Strongbus.Bus', () => {
       expect(bytesRetainedPer(() => new Strongbus.Bus<TestEventMap>())).toBeLessThan(4200);
     });
 
-    it('costs three subscriptions on a bus less than 3 KB', () => {
+    it('costs three subscriptions on a bus less than 2 KB', () => {
       const handler = (): void => undefined;
       const empty = bytesRetainedPer(() => new Strongbus.Bus<TestEventMap>());
       const subscribed = bytesRetainedPer(() => {
@@ -1265,7 +1265,7 @@ describe('Strongbus.Bus', () => {
         return subscribedBus;
       });
 
-      expect(subscribed - empty).toBeLessThan(3000);
+      expect(subscribed - empty).toBeLessThan(2000);
     });
   });
 
