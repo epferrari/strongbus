@@ -3728,6 +3728,35 @@ describe('Strongbus.Bus', () => {
       expect(bus.getListenerCount({includeIncognito: true})).toBe(0);
     });
 
+    describe('given handlers that mix kinds', () => {
+      const first = (): void => undefined;
+      const second = (): void => undefined;
+
+      beforeEach(() => {
+        bus.once('foo', first);
+        bus.on('bar', second);
+        bus.on('baz', first);
+      });
+
+      it('releases kind by kind, and handlers within a kind in the order they first subscribed to anything', () => {
+        const released: string[] = [];
+        bus.hook('didRemoveListener', (event) => released.push(String(event)));
+
+        bus.clear();
+
+        expect(released).toEqual(['baz', 'bar', 'foo']);
+      });
+
+      it('releases in the same order on destroy', () => {
+        const released: string[] = [];
+        bus.hook('didRemoveListener', (event) => released.push(String(event)));
+
+        bus.destroy();
+
+        expect(released).toEqual(['baz', 'bar', 'foo']);
+      });
+    });
+
     it('keeps lifecycle hooks, which see the removals and later additions', () => {
       const didRemoveListener = jasmine.createSpy('didRemoveListener');
       const didAddListener = jasmine.createSpy('didAddListener');
