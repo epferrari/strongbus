@@ -502,7 +502,10 @@ export class SubscriptionManager<TEventMap extends EventMap> {
   }
 
   private adjustSurplus(event: ListenerKey, delta: number): void {
-    if(delta > 0 && this.surplus === NO_SURPLUS) {
+    if(this.surplus === NO_SURPLUS) {
+      if(delta <= 0) {
+        return;
+      }
       this.surplus = new StackedSurplus();
     }
     this.surplus.adjust(event, delta);
@@ -656,9 +659,11 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     const removed = set.delete(handler);
     if(removed) {
       this.handlerTotal -= 1;
-      this.incognito.delete(event, handler);
-      if(this.incognito.total === 0) {
-        this.incognito = NO_INCOGNITO;
+      if(this.incognito !== NO_INCOGNITO) {
+        this.incognito.delete(event, handler);
+        if(this.incognito.total === 0) {
+          this.incognito = NO_INCOGNITO;
+        }
       }
       if(set.size === 0) {
         this.handlersByEvent.delete(event);
