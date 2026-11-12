@@ -6,6 +6,7 @@ import type {EventKeys} from './types/utility';
 import type {LifecycleManager} from './lifecycleManager';
 import {type StrongbusLogger} from './strongbusLogger';
 import {over} from './utils/over';
+import {unnamed} from './utils/unnamed';
 
 /**
  * Bus identity / callbacks {@link SubscriptionManager} needs.
@@ -329,12 +330,12 @@ export class SubscriptionManager<TEventMap extends EventMap> {
       uniqueEvents
     );
     for(const e of uniqueEvents) {
-      const wrapper = ((payload: any) => {
+      const wrapper = unnamed(((payload: any) => {
         const times = Math.max(registration.invokeCount, 1);
         for(let i = 0; i < times; i++) {
           (handler as EventSink<TEventMap>)(e as any, payload);
         }
-      }) as GenericHandler;
+      }) as GenericHandler);
       registration.wrappers.push(wrapper);
       this.attachEmitHandler(e, wrapper, registration.incognito);
     }
@@ -392,7 +393,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
         this.adjustObservability(registration, 1);
       }
     }
-    const subscription: Subscription = () => this.release(registration, subscription);
+    const subscription: Subscription = unnamed(() => this.release(registration, subscription)) as Subscription;
     subscription.unsubscribe = subscription;
     if(registration.frames === NO_FRAMES) {
       registration.frames = [subscription];
