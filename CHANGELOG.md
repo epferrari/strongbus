@@ -22,6 +22,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   option or defaulting it to `false`. Applications that rely on handler errors being swallowed
   should hook `error` with a handler that ignores them.
 
+### Changed
+
+- **Upstreams hear about a downstream's listener changes after the downstream's own hooks** — A
+  piped bus notifies each upstream when its listeners change, driving the upstream's `active` state
+  and lifecycle hooks (`willAddListener`, `didAddListener`, `willRemoveListener`,
+  `didRemoveListener`). The downstream now forwards this notice directly after all its own hooks
+  run, rather than using a hook registered during `pipe()`. Downstream hooks registered after
+  `pipe()` now run before the upstream is notified, instead of after.
+- **Less memory per pipe** — A non-incognito `pipe()` no longer registers four lifecycle hooks on
+  the downstream bus. Under esbuild with `keepNames`, this reduces two piped buses from 14,284 B
+  to 11,402 B, and three chained buses from 23,644 B to 17,884 B.
+- **Less memory per bus for the internal methods it uses** — The classes a `Bus` delegates to no
+  longer use `@autobind`, so a bus no longer keeps a bound copy of each internal method it calls.
+  `Bus` and `Scanner` still autobind because callers destructure their methods. Unbundled, three
+  subscriptions on a bus dropped from 3,687 B to 2,949 B.
+- **Subscription closures are anonymous** — Under esbuild with `keepNames`, closures for
+  subscriptions, `once`, or `any` events previously carried a redefined `name` costing about 250 B.
+  They are now created without a name, appearing as anonymous functions in stack traces and
+  profiles. A bus with two `on`s and an `any` over two events dropped from 10,380 B to 9,220 B.
+
 ### Fixed
 
 - **Async lifecycle hook rejections reach `error` hooks as an `Error`** — When a lifecycle hook
