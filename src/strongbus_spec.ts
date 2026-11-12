@@ -9,6 +9,7 @@ import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import type {EventMap} from './types/events';
 import type {EventKeys, VoidEventKeys} from './types/utility';
 import {over} from './utils/over';
+import {bytesRetainedPer} from './support/heapFootprint';
 
 type TestEventMap = {
   foo: string;
@@ -1126,6 +1127,22 @@ describe('Strongbus.Bus', () => {
       expect(bus.getListenerCount({scope: Strongbus.ListenerScope.DOWNSTREAM})).toBe(1);
       expect(bus.getListenerCount()).toBe(2);
       expect(bus.getListenerCount({includeIncognito: true})).toBe(3);
+    });
+  });
+
+  describe('memory footprint of subscriptions', () => {
+    it('costs three subscriptions on a bus less than 3.3 KB', () => {
+      const handler = (): void => undefined;
+      const empty = bytesRetainedPer(() => new Strongbus.Bus<TestEventMap>());
+      const subscribed = bytesRetainedPer(() => {
+        const subscribedBus = new Strongbus.Bus<TestEventMap>();
+        subscribedBus.on('foo', handler);
+        subscribedBus.on('bar', handler);
+        subscribedBus.once('foo', handler);
+        return subscribedBus;
+      });
+
+      expect(subscribed - empty).toBeLessThan(3300);
     });
   });
 
