@@ -657,6 +657,9 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     if(removed) {
       this.handlerTotal -= 1;
       this.incognito.delete(event, handler);
+      if(this.incognito.total === 0) {
+        this.incognito = NO_INCOGNITO;
+      }
       if(set.size === 0) {
         this.handlersByEvent.delete(event);
       }
