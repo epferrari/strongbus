@@ -88,6 +88,11 @@ describe('Strongbus.Bus', () => {
         const options: Strongbus.Options = (bus as any).options;
         expect(options.coalesceDownstreamLifecycleEvents).toBeTrue();
       });
+
+      it('defaults suppressDefaultUnhandledErrorLogging to true', () => {
+        const options: Strongbus.Options = (bus as any).options;
+        expect(options.suppressDefaultUnhandledErrorLogging).toBeTrue();
+      });
     });
 
     describe('given an unhandled event is raised', () => {
@@ -2099,6 +2104,129 @@ describe('Strongbus.Bus', () => {
                 eventHandlerError: originalError
               })
             })
+          );
+        });
+      });
+
+      describe('given no "error" hook is registered and unhandled error logging is suppressed (default)', () => {
+        let logger: jasmine.SpyObj<Logger>;
+        const error = new Error('error in listener');
+
+        beforeEach(() => {
+          logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+        });
+
+        it('drops an error thrown by a listener', () => {
+          const unhooked = new Strongbus.Bus<TestEventMap>({logger});
+          unhooked.on('bar', () => {
+            throw error;
+          });
+
+          unhooked.emit('bar', true);
+
+          expect(logger.error).not.toHaveBeenCalled();
+        });
+
+        it('logs when Bus.configure turns suppression off', () => {
+          Strongbus.Bus.configure({suppressDefaultUnhandledErrorLogging: false});
+          try {
+            const unhooked = new Strongbus.Bus<TestEventMap>({logger});
+            unhooked.on('bar', () => {
+              throw error;
+            });
+
+            unhooked.emit('bar', true);
+          } finally {
+            Strongbus.Bus.configure({suppressDefaultUnhandledErrorLogging: true});
+          }
+
+          expect(logger.error).toHaveBeenCalledTimes(1);
+        });
+      });
+
+      describe('given no "error" hook is registered and unhandled error logging is not suppressed', () => {
+        let logger: jasmine.SpyObj<Logger>;
+        let unhooked: Strongbus.Bus<TestEventMap>;
+        const error = new Error('error in listener');
+
+        beforeEach(() => {
+          logger = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+          unhooked = new Strongbus.Bus<TestEventMap>({
+            logger,
+            name: 'unhooked',
+            suppressDefaultUnhandledErrorLogging: false
+          });
+        });
+
+        it('logs an error thrown by a listener through the bus logger', () => {
+          unhooked.on('bar', () => {
+            throw error;
+          });
+
+          unhooked.emit('bar', true);
+
+          expect(logger.error).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.unhandledError(unhooked.name, 'bar', error)
+          );
+        });
+
+        it('logs a listener that rejects asynchronously', async () => {
+          unhooked.on('bar', () => Promise.reject(error));
+
+          unhooked.emit('bar', true);
+          await sleep(1);
+
+          expect(logger.error).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.unhandledError(unhooked.name, 'bar', error)
+          );
+        });
+
+        it('logs an error thrown by a lifecycle hook', () => {
+          unhooked.hook('active', () => {
+            throw error;
+          });
+
+          unhooked.on('foo', singleEventHandler);
+
+          expect(logger.error).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.unhandledError(unhooked.name, 'active', error)
+          );
+        });
+
+        it('logs a non-Error throw as an Error', () => {
+          unhooked.on('bar', () => {
+            throw {reason: 'not an Error'};
+          });
+
+          unhooked.emit('bar', true);
+
+          const {context} = logger.error.calls.mostRecent().args[0];
+          expect((context as {error: unknown}).error).toEqual(jasmine.any(Error));
+        });
+
+        it('does not log once an "error" hook is registered', () => {
+          const onUnhookedError = jasmine.createSpy('onUnhookedError');
+          unhooked.hook('error', onUnhookedError);
+          unhooked.on('bar', () => {
+            throw error;
+          });
+
+          unhooked.emit('bar', true);
+
+          expect(onUnhookedError).toHaveBeenCalledOnceWith({error, event: 'bar'});
+          expect(logger.error).not.toHaveBeenCalled();
+        });
+
+        it('logs again once the last "error" hook is unsubscribed', () => {
+          unhooked.hook('error', jasmine.createSpy('onError'))();
+          unhooked.on('bar', () => {
+            throw error;
+          });
+
+          unhooked.emit('bar', true);
+
+          expect(logger.error).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.unhandledError(unhooked.name, 'bar', error)
           );
         });
       });

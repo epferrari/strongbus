@@ -390,6 +390,10 @@ bus.hook('error', ({error, event}) => {
 });
 ```
 
+A bus with no `error` hook drops the error by default. Set `suppressDefaultUnhandledErrorLogging: false` to log it
+through `logger` instead, as `StrongbusLogCode.UnhandledError` (`1018`). Registering an `error` hook takes over
+reporting, and the bus stops logging handler errors. The default will change to logging in the next major version.
+
 ### `monitor(handler)`
 
 Shorthand for observing the active/idle transition. The handler receives `true` when the bus becomes active and
@@ -673,6 +677,8 @@ hook can send a final event to downstreams that are still attached.
   (`false`, default).
 - `onUseAfterDestroy` — `false` (default), a log level, or `'throw'`: how to treat calls on a destroyed bus.
   See [Teardown](#teardown).
+- `suppressDefaultUnhandledErrorLogging` — `true` (default) drops a handler error when the bus has no `error` hook;
+  `false` logs it as `StrongbusLogCode.UnhandledError` (`1018`). See [Lifecycle hooks](#lifecycle-hooks).
 - `duplicateSubscriptionStrategy` — how duplicate listenable+handler registrations behave for
   `on`, `any`, and `tap` across four axes:
 

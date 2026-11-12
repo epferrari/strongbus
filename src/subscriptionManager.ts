@@ -807,10 +807,10 @@ export class SubscriptionManager<TEventMap extends EventMap> {
             try {
               const execution = fn(...args);
               (execution as Promise<any>)?.catch?.((e) => {
-                this.lifecycle.emitHandlerError(e, event);
+                this.lifecycle.reportHandlerError(e, event);
               });
             } catch(e: unknown) {
-              this.lifecycle.emitHandlerError(e, event);
+              this.lifecycle.reportHandlerError(e, event);
             }
           }
         }
