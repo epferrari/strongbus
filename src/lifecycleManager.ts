@@ -294,8 +294,12 @@ function removeHandler<TKey>(bus: Map<TKey, HandlerEntry>, event: TKey, handler:
   const entry = bus.get(event);
   if(entry === handler) {
     bus.delete(event);
-  } else if(entry && typeof entry !== 'function' && entry.delete(handler) && entry.size === 1) {
-    const [remaining] = entry;
-    bus.set(event, remaining);
+  } else if(entry && typeof entry !== 'function') {
+    entry.delete(handler);
+    // a stored Set always holds at least two handlers, so one left means it goes back to bare
+    if(entry.size === 1) {
+      const [remaining] = entry;
+      bus.set(event, remaining);
+    }
   }
 }
