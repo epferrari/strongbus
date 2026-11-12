@@ -21,7 +21,8 @@ export const StrongbusLogCode = {
   AsyncErrorHandlerFailed: 1014,
   UseDuringDestroy: 1015,
   UseAfterDestroy: 1016,
-  CyclicPipe: 1017
+  CyclicPipe: 1017,
+  UnhandledError: 1018
 } as const;
 
 export type StrongbusLogCode = typeof StrongbusLogCode[keyof typeof StrongbusLogCode];

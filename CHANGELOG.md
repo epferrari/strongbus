@@ -5,6 +5,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`options.suppressDefaultUnhandledErrorLogging`** (default `true`) — A listener or lifecycle
+  hook that throws or rejects is reported to the bus's `error` hooks, and silently dropped when
+  there are none. Set this to `false` to log the error through `logger` at `error` instead, as
+  `StrongbusLogCode.UnhandledError` (`1018`), with the event and the error on `context`. This
+  matches how Node's `EventEmitter` treats an unhandled `'error'` event, and lets an application
+  log handler errors without an `error` hook on every bus. Registering an `error` hook takes over
+  reporting and stops the log; unsubscribing the last one brings it back. Can be set per bus or
+  for every bus with `Bus.configure`.
+
+  **Upcoming breaking change:** the next major version will log by default, by removing this
+  option or defaulting it to `false`. Applications that rely on handler errors being swallowed
+  should hook `error` with a handler that ignores them.
+
+### Fixed
+
+- **Async lifecycle hook rejections reach `error` hooks as an `Error`** — When a lifecycle hook
+  returned a promise that rejected, `error` hooks received the raw rejection value. It is now
+  normalized to an `Error`, as it already was for synchronous throws and for listeners.
+
 ## [3.1.0]
 
 ### Added

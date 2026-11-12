@@ -10,7 +10,7 @@ describe('LifecycleManager', () => {
   let manager: LifecycleManager<TestEventMap>;
   let order: string[];
   let logger: StrongbusLogger<TestEventMap>;
-  let lifecycleOptions: {coalesceDownstreamLifecycleEvents: boolean};
+  let lifecycleOptions: {coalesceDownstreamLifecycleEvents: boolean; suppressDefaultUnhandledErrorLogging: boolean};
 
   beforeEach(() => {
     order = [];
@@ -20,7 +20,7 @@ describe('LifecycleManager', () => {
       thresholds: {info: 100, warn: 500, error: Infinity},
       verbose: false
     });
-    lifecycleOptions = {coalesceDownstreamLifecycleEvents: false};
+    lifecycleOptions = {coalesceDownstreamLifecycleEvents: false, suppressDefaultUnhandledErrorLogging: true};
     host = jasmine.createSpyObj('host', [
       'hasListeners',
       'getListenerCount',
@@ -90,7 +90,7 @@ describe('LifecycleManager', () => {
   it('coalesces downstream attach hooks when configured', () => {
     const coalescing = new LifecycleManager<TestEventMap>({
       host,
-      options: {coalesceDownstreamLifecycleEvents: true},
+      options: {coalesceDownstreamLifecycleEvents: true, suppressDefaultUnhandledErrorLogging: true},
       logger
     });
     coalescing.hook('willAddListener', (event) => order.push(`willAdd:${event}`));
