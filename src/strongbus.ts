@@ -50,6 +50,7 @@ import type {
 } from './types/surfaces/introspectionSurface';
 import type {MonitoringSurface, MonitoringHook} from './types/surfaces/monitoringSurface';
 import type {EventKeys, SubscribableEventKeys, VoidEventKeys} from './types/utility';
+import {EMPTY_MAP} from './utils/emptyCollections';
 import {subscribeListenable} from './utils/subscribeListenable';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
@@ -241,10 +242,10 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   protected readonly dispatcher!: EventDispatcher<TEventMap>;
   protected readonly introspection!: IntrospectionManager<TEventMap>;
   private readonly subscriptions!: SubscriptionManager<TEventMap>;
-  private readonly scanners!: ScannerPools<TEventMap>;
+  private scanners: ScannerPools<TEventMap> | undefined;
   private readonly host = new Bus.Host<TEventMap>(this);
   /** Pending `next` / `scan` promises, mapped to whether they were registered incognito. */
-  private readonly inFlight = new Map<CancelablePromise<unknown>, boolean>();
+  private inFlight = EMPTY_MAP as Map<CancelablePromise<unknown>, boolean>;
   private destroyReason: string | typeof Bus.DESTROYED | undefined;
   /** `true` only while {@link Bus.destroy} is running, including its lifecycle hooks. */
   private destroying: boolean = false;
@@ -280,7 +281,6 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
       subscriptions: this.subscriptions,
       host: this.host
     });
-    this.scanners = new ScannerPools<TEventMap>();
     this.dispatcher = new EventDispatcher<TEventMap>({
       subscriptions: this.subscriptions,
       host: this.host,
@@ -577,6 +577,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
 
     }
 
+    this.scanners ??= new ScannerPools<TEventMap>();
     return this.trackInFlight(this.scanners.scan<any>(this, scanParams), params.incognito === true);
   }) as SubscriptionSurfaceScan<TEventMap>;
 
@@ -724,6 +725,9 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     const untrack = () => {
       this.inFlight.delete(p);
     };
+    if(this.inFlight === EMPTY_MAP) {
+      this.inFlight = new Map();
+    }
     this.inFlight.set(p, incognito);
     p.then(untrack, untrack);
     return p;

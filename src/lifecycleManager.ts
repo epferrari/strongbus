@@ -8,6 +8,7 @@ import type {MonitoringHook} from './types/surfaces/monitoringSurface';
 import type {EventKeys} from './types/utility';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {normalizeError} from './utils/normalizeError';
+import {EMPTY_MAP} from './utils/emptyCollections';
 import {over} from './utils/over';
 
 /** @internal Downstream listener counts captured when attaching/detaching a pipe edge. */
@@ -47,7 +48,7 @@ export interface LifecycleHost<TEventMap extends EventMap> {
  * @internal
  */
 export class LifecycleManager<TEventMap extends EventMap = EventMap> {
-  private readonly handlers = new Map<Lifecycle, HandlerEntry>();
+  private handlers = EMPTY_MAP as Map<Lifecycle, HandlerEntry>;
   private readonly host: LifecycleHost<TEventMap>;
   private readonly options: LifecycleOptions;
   private readonly logger: StrongbusLogger<TEventMap>;
@@ -76,6 +77,9 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
     event,
     handler
   ) => {
+    if(this.handlers === EMPTY_MAP) {
+      this.handlers = new Map();
+    }
     addHandler(this.handlers, event, handler);
     return subscriptionWrapper(() => removeHandler(this.handlers, event, handler));
   }) as MonitoringHook<TEventMap>;
@@ -230,7 +234,7 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
 
   public destroy(): void {
     this.emitLifecycleEvent(Lifecycle.willDestroy, null);
-    this.handlers.clear();
+    this.handlers = EMPTY_MAP;
   }
 
   private emitLifecycleEvent<L extends Lifecycle>(event: L, payload: Lifecycle.EventMap<TEventMap>[L]): void {
