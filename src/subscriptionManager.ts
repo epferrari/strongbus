@@ -6,25 +6,7 @@ import type {EventKeys} from './types/utility';
 import type {LifecycleManager} from './lifecycleManager';
 import {type StrongbusLogger} from './strongbusLogger';
 import {over} from './utils/over';
-import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {unnamed} from './utils/unnamed';
-
-type HandlerIntent = {
-  frames: Subscription[];
-  invokeCount: number;
-  observabilityCount: number;
-  /** Handler placed in {@link handlersByEvent} for emit. */
-  emitHandler: GenericHandler;
-  incognito: boolean;
-};
-
-type IntentFrameMeta = {
-  honorDisposalConfig: boolean;
-  onFullyCleared: () => void;
-  adjustStackedObservability: (delta: number) => void;
-  fireLifecycleOwnListenerWillRemove: () => void;
-  fireLifecycleOwnListenerDidRemove: () => void;
-};
 
 /**
  * Bus identity / callbacks {@link SubscriptionManager} needs.
@@ -36,180 +18,194 @@ export interface SubscriptionHost {
   invalidateListenerCachesUpstream(): void;
 }
 
-type AnyIntent<TEventMap extends EventMap> = HandlerIntent & {
-  events: EventKeys<TEventMap>[];
-  wrappers: Map<EventKeys<TEventMap>, GenericHandler>;
-};
+type ListenerKey = string | number | symbol;
+type RegistrationKind = 'on' | 'once' | 'any' | 'tap';
+
+/** What a registration holds until its first frame, so most registrations never grow an array by `push` */
+const NO_FRAMES: Subscription[] = Object.freeze([]) as unknown as Subscription[];
 
 /**
- * Owns duplicate-subscription stacks, emit-handler storage, and unsub queue.
+ * One distinct subscription: what kind it is, the handler the caller passed, and the event it
+ * listens to. Subscribing the same thing again adds a frame to the registration instead of
+ * creating another one; the duplicate strategy decides what the frames mean.
+ */
+class Registration {
+  /** One live {@link Subscription} per subscribe call */
+  public frames: Subscription[] = NO_FRAMES;
+  public invokeCount = 1;
+  public observabilityCount = 1;
+  /** What the bus keeps in its per-event handler sets: `handler` for `on`, a wrapper for `once` and `tap`. Unused by `any`. */
+  public emitHandler: GenericHandler;
+  /** The caller's other registrations of the same handler */
+  public next: Registration | undefined;
+
+  public readonly kind: RegistrationKind;
+  public readonly handler: GenericHandler;
+  /** The event; for {@link AnyRegistration}, its canonical events joined into one string */
+  public readonly key: ListenerKey;
+  public readonly incognito: boolean;
+
+  constructor(kind: RegistrationKind, handler: GenericHandler, key: ListenerKey, incognito: boolean) {
+    this.kind = kind;
+    this.handler = handler;
+    this.key = key;
+    this.incognito = incognito;
+    this.emitHandler = handler;
+  }
+
+  /** Whether `strategy.disposal` applies; a `once` is always released on its own */
+  public get honorsDisposalStrategy(): boolean {
+    return this.kind !== 'once';
+  }
+}
+
+/** An `any` listens to several events with one handler, through one wrapper per event */
+class AnyRegistration extends Registration {
+  public wrappers: GenericHandler[] = [];
+  public readonly events: ListenerKey[];
+
+  constructor(handler: GenericHandler, key: string, incognito: boolean, events: ListenerKey[]) {
+    super('any', handler, key, incognito);
+    this.events = events;
+  }
+}
+
+/** Registrations a handler may have before they are looked up by key instead of searched in turn */
+const MAX_CHAINED_REGISTRATIONS = 16;
+
+/**
+ * The registrations of a handler that is subscribed to many events, found by event rather than by
+ * walking a chain. A key holds at most one registration per kind. Iterates in the order the
+ * registrations were made.
+ */
+class RegistrationIndex {
+  private readonly all = new Set<Registration>();
+  private readonly byKey = new Map<ListenerKey, Registration[]>();
+
+  public find(kind: RegistrationKind, key: ListenerKey): Registration | undefined {
+    return this.byKey.get(key)?.find(r => r.kind === kind);
+  }
+
+  public add(registration: Registration): void {
+    this.all.add(registration);
+    const sameKey = this.byKey.get(registration.key);
+    if(sameKey) {
+      sameKey.push(registration);
+    } else {
+      this.byKey.set(registration.key, [registration]);
+    }
+  }
+
+  public delete(registration: Registration): void {
+    this.all.delete(registration);
+    const sameKey = this.byKey.get(registration.key);
+    if(!sameKey) {
+      return;
+    }
+    const index = sameKey.indexOf(registration);
+    if(index === -1) {
+      return;
+    }
+    sameKey.splice(index, 1);
+    if(sameKey.length === 0) {
+      this.byKey.delete(registration.key);
+    }
+  }
+
+  public get isEmpty(): boolean {
+    return this.all.size === 0;
+  }
+
+  public [Symbol.iterator](): IterableIterator<Registration> {
+    return this.all.values();
+  }
+}
+
+/** The (event, handler) pairs that are incognito. Never mutated while it is {@link NO_INCOGNITO}. */
+class IncognitoIndex {
+  public total = 0;
+  private readonly handlersByEvent = new Map<ListenerKey, Set<GenericHandler>>();
+
+  public has(event: ListenerKey, handler: GenericHandler): boolean {
+    return this.handlersByEvent.get(event)?.has(handler) ?? false;
+  }
+
+  public countFor(event: ListenerKey): number {
+    return this.handlersByEvent.get(event)?.size ?? 0;
+  }
+
+  public add(event: ListenerKey, handler: GenericHandler): void {
+    let handlers = this.handlersByEvent.get(event);
+    if(!handlers) {
+      handlers = new Set();
+      this.handlersByEvent.set(event, handlers);
+    }
+    if(!handlers.has(handler)) {
+      handlers.add(handler);
+      this.total += 1;
+    }
+  }
+
+  public delete(event: ListenerKey, handler: GenericHandler): void {
+    const handlers = this.handlersByEvent.get(event);
+    if(handlers?.delete(handler)) {
+      this.total -= 1;
+      if(handlers.size === 0) {
+        this.handlersByEvent.delete(event);
+      }
+    }
+  }
+}
+
+/** Listeners beyond the first that a stacking duplicate strategy counts. Never mutated while it is {@link NO_SURPLUS}. */
+class StackedSurplus {
+  public sum = 0;
+  private readonly byEvent = new Map<ListenerKey, number>();
+
+  public get(event: ListenerKey): number {
+    return this.byEvent.get(event) ?? 0;
+  }
+
+  public adjust(event: ListenerKey, delta: number): void {
+    const current = this.get(event);
+    const next = Math.max(current + delta, 0);
+    this.sum += next - current;
+    if(next === 0) {
+      this.byEvent.delete(event);
+    } else {
+      this.byEvent.set(event, next);
+    }
+  }
+}
+
+const NO_INCOGNITO = new IncognitoIndex();
+const NO_SURPLUS = new StackedSurplus();
+
+/**
+ * Owns the registrations, the handlers an event is delivered to, and the duplicate-subscription
+ * stacks. Subscriptions released while another release is running wait for it to finish.
  * @internal
  */
 export class SubscriptionManager<TEventMap extends EventMap> {
 
   /**
-   * Teardown hooks for one `on`, `once` or `tap` registration. Methods on a class, rather than
-   * closures, so a registration allocates one object instead of five. Declared inside
-   * {@link SubscriptionManager} so it can reach the manager's private members.
+   * Every registration, found by the handler the caller passed: the first of a chain linked by
+   * {@link Registration.next}, or a {@link RegistrationIndex} once the handler has many
    */
-  private static readonly SingleEventFrameMeta = class<T extends EventMap> implements IntentFrameMeta {
-    public readonly honorDisposalConfig: boolean;
-    private readonly manager: SubscriptionManager<T>;
-    private readonly lifecycle: LifecycleManager<T>;
-    private readonly listenableKey: EventKeys<T>|WILDCARD;
-    private readonly incognito: boolean;
-    private readonly emitHandler: GenericHandler;
-    private readonly intents: Map<GenericHandler, Map<any, HandlerIntent>>;
-    private readonly userHandler: GenericHandler;
-    private readonly byKey: Map<any, HandlerIntent>;
-
-    constructor(params: {
-      manager: SubscriptionManager<T>;
-      lifecycle: LifecycleManager<T>;
-      honorDisposalConfig: boolean;
-      listenableKey: EventKeys<T>|WILDCARD;
-      incognito: boolean;
-      emitHandler: GenericHandler;
-      intents: Map<GenericHandler, Map<any, HandlerIntent>>;
-      userHandler: GenericHandler;
-      byKey: Map<any, HandlerIntent>;
-    }) {
-      this.manager = params.manager;
-      this.lifecycle = params.lifecycle;
-      this.honorDisposalConfig = params.honorDisposalConfig;
-      this.listenableKey = params.listenableKey;
-      this.incognito = params.incognito;
-      this.emitHandler = params.emitHandler;
-      this.intents = params.intents;
-      this.userHandler = params.userHandler;
-      this.byKey = params.byKey;
-    }
-
-    public onFullyCleared(): void {
-      this.manager.detachEmitHandler(this.listenableKey, this.emitHandler);
-      this.byKey.delete(this.listenableKey);
-      if(this.byKey.size === 0) {
-        this.intents.delete(this.userHandler);
-      }
-    }
-
-    public adjustStackedObservability(delta: number): void {
-      this.manager.adjustSingleStackedObservability(this.listenableKey, this.incognito, delta);
-    }
-
-    public fireLifecycleOwnListenerWillRemove(): void {
-      if(!this.incognito) {
-        this.lifecycle.ownListenerWillRemove(this.listenableKey);
-      }
-    }
-
-    public fireLifecycleOwnListenerDidRemove(): void {
-      if(!this.incognito) {
-        this.lifecycle.ownListenerDidRemove(this.listenableKey);
-      }
-    }
-  };
-
-  /** Teardown hooks for one `any` registration. */
-  private static readonly AnyFrameMeta = class<T extends EventMap> implements IntentFrameMeta {
-    public readonly honorDisposalConfig: boolean = true;
-    private readonly manager: SubscriptionManager<T>;
-    private readonly lifecycle: LifecycleManager<T>;
-    private readonly anyIntents: Map<GenericHandler, Map<string, AnyIntent<T>>>;
-    private readonly intent: AnyIntent<T>;
-    private readonly uniqueEvents: EventKeys<T>[];
-    private readonly intentsForHandler: Map<string, AnyIntent<T>>;
-    private readonly eventsKey: string;
-    private readonly handler: GenericHandler;
-
-    constructor(params: {
-      manager: SubscriptionManager<T>;
-      lifecycle: LifecycleManager<T>;
-      anyIntents: Map<GenericHandler, Map<string, AnyIntent<T>>>;
-      intent: AnyIntent<T>;
-      uniqueEvents: EventKeys<T>[];
-      intentsForHandler: Map<string, AnyIntent<T>>;
-      eventsKey: string;
-      handler: GenericHandler;
-    }) {
-      this.manager = params.manager;
-      this.lifecycle = params.lifecycle;
-      this.anyIntents = params.anyIntents;
-      this.intent = params.intent;
-      this.uniqueEvents = params.uniqueEvents;
-      this.intentsForHandler = params.intentsForHandler;
-      this.eventsKey = params.eventsKey;
-      this.handler = params.handler;
-    }
-
-    public onFullyCleared(): void {
-      this.manager.teardownAnyEmitHandlers(this.intent);
-      this.intentsForHandler.delete(this.eventsKey);
-      if(this.intentsForHandler.size === 0) {
-        this.anyIntents.delete(this.handler);
-      }
-    }
-
-    public adjustStackedObservability(delta: number): void {
-      this.manager.adjustAnyStackedObservability(this.uniqueEvents, this.intent.incognito, delta);
-    }
-
-    public fireLifecycleOwnListenerWillRemove(): void {
-      if(this.intent.incognito) {
-        return;
-      }
-      for(const e of this.uniqueEvents) {
-        this.lifecycle.ownListenerWillRemove(e);
-      }
-    }
-
-    public fireLifecycleOwnListenerDidRemove(): void {
-      if(this.intent.incognito) {
-        return;
-      }
-      for(const e of this.uniqueEvents) {
-        this.lifecycle.ownListenerDidRemove(e);
-      }
-    }
-  };
-
-  private readonly onIntents = new Map<
-    GenericHandler,
-    Map<EventKeys<TEventMap>|WILDCARD, HandlerIntent>
-  >();
-  private readonly onceIntents = new Map<
-    GenericHandler,
-    Map<EventKeys<TEventMap>|WILDCARD, HandlerIntent>
-  >();
-  private readonly anyIntents = new Map<GenericHandler, Map<string, AnyIntent<TEventMap>>>();
-  private readonly tapIntents = new Map<
-    GenericHandler,
-    Map<typeof WILDCARD, HandlerIntent>
-  >();
-  private readonly incognitoByHandler = new Map<
-    GenericHandler,
-    Set<EventKeys<TEventMap>|WILDCARD>
-  >();
+  private readonly registrations = new Map<GenericHandler, Registration | RegistrationIndex>();
   private readonly handlersByEvent = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
-  private readonly stackedListenerSurplusByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
   /**
-   * Number of (event, handler) pairs in `handlersByEvent`. This and the counts below are kept in
-   * step with the maps above, so the lifecycle checks on every add and remove stay O(1)
-   * instead of rebuilding the full listener map each time.
+   * Number of (event, handler) pairs in `handlersByEvent`, kept in step with it so the lifecycle
+   * checks on every add and remove stay O(1) instead of rebuilding the full listener map each time.
    */
   private handlerTotal = 0;
-  /** How many of those pairs are incognito, in total and per event */
-  private incognitoTotal = 0;
-  private readonly incognitoCountByEvent = new Map<EventKeys<TEventMap>|WILDCARD, number>();
-  /** Sum of `stackedListenerSurplusByEvent` */
-  private stackedSurplusSum = 0;
+  private incognito = NO_INCOGNITO;
+  private surplus = NO_SURPLUS;
   /** Handler sets an emit is iterating right now; adding to one of these must not be seen by that emit */
   private readonly setsBeingIterated: Set<GenericHandler>[] = [];
-  private readonly unsubQueue: {
-    subscription: Subscription;
-    dispose: () => void;
-  }[] = [];
-  private _purgingUnsubQueue: boolean = false;
+  private releasing = false;
+  /** Releases requested while one is running; created the first time that happens */
+  private deferredReleases: {registration: Registration; subscription: Subscription}[] | undefined;
 
   private readonly host: SubscriptionHost;
   private readonly options: Pick<MaterializedBusOptions, 'duplicateSubscriptionStrategy'>;
@@ -229,18 +225,16 @@ export class SubscriptionManager<TEventMap extends EventMap> {
   }
 
   public off(event: EventKeys<TEventMap>|WILDCARD, handler: GenericHandler): void {
-    const intent = this.onIntents.get(handler)?.get(event);
-    if(!intent?.frames.length) {
+    const registration = this.find('on', handler, event);
+    if(!registration?.frames.length) {
       return;
     }
-    const strategy = this.options.duplicateSubscriptionStrategy;
-    if(strategy.disposal === 'collapse') {
-      const frames = intent.frames.slice();
-      for(const frame of frames) {
+    if(this.options.duplicateSubscriptionStrategy.disposal === 'collapse') {
+      for(const frame of registration.frames.slice()) {
         frame();
       }
     } else {
-      intent.frames[0]();
+      registration.frames[0]();
     }
   }
 
@@ -252,23 +246,24 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     return this.handlersByEvent.get(event);
   }
 
+  /** Extra listeners a stacking duplicate strategy adds to `event` beyond its distinct handlers */
   public stackedSurplusFor(event: EventKeys<TEventMap>|WILDCARD): number {
-    return this.stackedListenerSurplusByEvent.get(event) ?? 0;
+    return this.surplus.get(event);
   }
 
   public stackedSurplusTotal(): number {
-    return this.stackedSurplusSum;
+    return this.surplus.sum;
   }
 
   /** Distinct handlers registered for `event` on this bus, optionally excluding incognito ones */
   public ownHandlerCountFor(event: EventKeys<TEventMap>|WILDCARD, includeIncognito: boolean): number {
     const size = this.handlersByEvent.get(event)?.size ?? 0;
-    return includeIncognito ? size : size - (this.incognitoCountByEvent.get(event) ?? 0);
+    return includeIncognito ? size : size - this.incognito.countFor(event);
   }
 
   /** Distinct (event, handler) registrations on this bus, optionally excluding incognito ones */
   public ownHandlerTotal(includeIncognito: boolean): number {
-    return includeIncognito ? this.handlerTotal : this.handlerTotal - this.incognitoTotal;
+    return includeIncognito ? this.handlerTotal : this.handlerTotal - this.incognito.total;
   }
 
   /**
@@ -276,52 +271,32 @@ export class SubscriptionManager<TEventMap extends EventMap> {
    */
   public releaseAll(includeIncognito: boolean = true): void {
     const pending: Subscription[] = [];
-    const collect = (intents: Map<GenericHandler, Map<any, HandlerIntent>>) => {
-      for(const byKey of intents.values()) {
-        for(const intent of byKey.values()) {
-          if(includeIncognito || !intent.incognito) {
-            pending.push(...intent.frames);
+    for(const kind of ['on', 'once', 'any', 'tap'] as const) {
+      for(const entry of this.registrations.values()) {
+        for(const r of registrationsOf(entry)) {
+          if(r.kind === kind && (includeIncognito || !r.incognito)) {
+            pending.push(...r.frames);
           }
         }
       }
-    };
-    collect(this.onIntents);
-    collect(this.onceIntents);
-    collect(this.anyIntents);
-    collect(this.tapIntents);
+    }
     over(pending)();
     if(!includeIncognito) {
       return;
     }
     this.handlersByEvent.clear();
-    this.incognitoByHandler.clear();
-    this.stackedListenerSurplusByEvent.clear();
+    this.registrations.clear();
     this.handlerTotal = 0;
-    this.incognitoTotal = 0;
-    this.stackedSurplusSum = 0;
-    this.incognitoCountByEvent.clear();
-    this.onIntents.clear();
-    this.onceIntents.clear();
-    this.anyIntents.clear();
-    this.tapIntents.clear();
+    this.incognito = NO_INCOGNITO;
+    this.surplus = NO_SURPLUS;
   }
-
 
   public on(
     event: EventKeys<TEventMap>|WILDCARD,
     handler: GenericHandler,
     options?: SubscribeOptions
   ): Subscription {
-    return this.registerHandlerIntent({
-      kind: 'on',
-      intents: this.onIntents,
-      listenableKey: event,
-      listenableLabel: String(event),
-      userHandler: handler,
-      emitHandler: handler,
-      options,
-      honorDisposalConfig: true
-    });
+    return this.subscribeToEvent('on', event, handler, options);
   }
 
   public once(
@@ -329,33 +304,15 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     handler: GenericHandler,
     options?: SubscribeOptions
   ): Subscription {
-    const emitHandler = unnamed(((payload: any) => {
-      const intent = this.onceIntents.get(handler)?.get(event);
-      if(!intent?.frames.length) {
-        return;
-      }
-      const times = Math.max(intent.invokeCount, 1);
-      // tear down every once frame for this identity before invoking (once semantics).
-      const frames = intent.frames.slice();
-      for(const frame of frames) {
-        frame();
-      }
-      for(let i = 0; i < times; i++) {
-        handler(payload);
-      }
-    }) as GenericHandler);
+    return this.subscribeToEvent('once', event, handler, options);
+  }
 
-    return this.registerHandlerIntent({
-      kind: 'once',
-      intents: this.onceIntents,
-      listenableKey: event,
-      listenableLabel: String(event),
-      userHandler: handler,
-      emitHandler,
-      options,
-      // once ignores disposal config: always pop one frame
-      honorDisposalConfig: false
-    });
+  /** Observe every event as a `{event, payload}` message; an `any` on every event would not see future ones */
+  public tap(
+    handler: TapHandler<TEventMap>,
+    options?: SubscribeOptions
+  ): Subscription {
+    return this.subscribeToEvent('tap', WILDCARD, handler as GenericHandler, options);
   }
 
   public any(
@@ -365,298 +322,297 @@ export class SubscriptionManager<TEventMap extends EventMap> {
   ): Subscription {
     const uniqueEvents = canonicalizeEventKeys(events);
     const eventsKey = uniqueEvents.map(String).join('\0');
-    const strategy = this.options.duplicateSubscriptionStrategy;
-    let byKey = this.anyIntents.get(handler as GenericHandler);
-    if(!byKey) {
-      byKey = new Map();
-      this.anyIntents.set(handler as GenericHandler, byKey);
-    }
-    const intentsForHandler = byKey;
-
-    const existing = byKey.get(eventsKey);
+    const existing = this.find('any', handler as GenericHandler, eventsKey);
     if(existing) {
-      this.logDuplicate('any', uniqueEvents.map(String).join(','));
-      if(strategy.disposal === 'collapse') {
-        if(strategy.invocation === 'stack') {
-          existing.invokeCount += 1;
-        }
-        if(strategy.observability === 'stack') {
-          existing.observabilityCount += 1;
-          this.adjustAnyStackedObservability(uniqueEvents, existing.incognito, 1);
-        }
-        return existing.frames[0];
-      }
-      return this.pushIntentFrame(existing, new SubscriptionManager.AnyFrameMeta<TEventMap>({
-        manager: this,
-        lifecycle: this.lifecycle,
-        anyIntents: this.anyIntents,
-        intent: existing,
-        uniqueEvents,
-        intentsForHandler,
-        eventsKey,
-        handler: handler as GenericHandler
-      }));
+      return this.subscribeAgain(existing, uniqueEvents.map(String).join(','));
     }
 
-    const wrappers = new Map<EventKeys<TEventMap>, GenericHandler>();
-    const intent: AnyIntent<TEventMap> = {
-      frames: [],
-      invokeCount: 1,
-      observabilityCount: 1,
-      emitHandler: handler as GenericHandler,
-      incognito: options?.incognito === true,
-      events: uniqueEvents,
-      wrappers
-    };
-
+    const registration = new AnyRegistration(
+      handler as GenericHandler,
+      eventsKey,
+      options?.incognito === true,
+      uniqueEvents
+    );
     for(const e of uniqueEvents) {
       const wrapper = unnamed(((payload: any) => {
-        const times = Math.max(intent.invokeCount, 1);
+        const times = Math.max(registration.invokeCount, 1);
         for(let i = 0; i < times; i++) {
           (handler as EventSink<TEventMap>)(e as any, payload);
         }
       }) as GenericHandler);
-      wrappers.set(e, wrapper);
-      this.attachEmitHandler(e, wrapper, intent.incognito, true);
+      registration.wrappers.push(wrapper);
+      this.attachEmitHandler(e, wrapper, registration.incognito);
     }
-    byKey.set(eventsKey, intent);
-    return this.pushIntentFrame(intent, new SubscriptionManager.AnyFrameMeta<TEventMap>({
-      manager: this,
-      lifecycle: this.lifecycle,
-      anyIntents: this.anyIntents,
-      intent,
-      uniqueEvents,
-      intentsForHandler,
-      eventsKey,
-      handler: handler as GenericHandler
-    }));
+    this.index(registration);
+    return this.addFrame(registration);
   }
 
-  private adjustAnyStackedObservability(
-    events: EventKeys<TEventMap>[],
-    incognito: boolean,
-    delta: number
-  ): void {
-    for(const e of events) {
-      this.adjustStackedListenerSurplus(e, delta, incognito);
-      if(!incognito) {
-        if(delta > 0) {
-          this.lifecycle.ownListenerWillAdd(e);
-          this.lifecycle.ownListenerDidAdd(e);
-        } else if(delta < 0) {
-          this.lifecycle.ownListenerWillRemove(e);
-          this.lifecycle.ownListenerDidRemove(e);
-        }
-      }
-    }
-  }
-
-  private teardownAnyEmitHandlers(intent: AnyIntent<TEventMap>): void {
-    for(const e of intent.events) {
-      const wrapper = intent.wrappers.get(e);
-      if(wrapper) {
-        this.detachEmitHandler(e, wrapper);
-      }
-    }
-  }
-
-  public tap(
-    handler: TapHandler<TEventMap>,
+  private subscribeToEvent(
+    kind: 'on' | 'once' | 'tap',
+    event: EventKeys<TEventMap>|WILDCARD,
+    handler: GenericHandler,
     options?: SubscribeOptions
   ): Subscription {
-    const existing = this.tapIntents.get(handler as GenericHandler)?.get(WILDCARD);
-    const emitHandler: GenericHandler = existing?.emitHandler ?? ((event, payload) => {
-      const intent = this.tapIntents.get(handler as GenericHandler)?.get(WILDCARD);
-      const times = Math.max(intent?.invokeCount ?? 1, 1);
-      for(let i = 0; i < times; i++) {
-        handler({event, payload} as PipedMessage<TEventMap>);
-      }
-    });
-
-    return this.registerHandlerIntent({
-      kind: 'tap',
-      intents: this.tapIntents,
-      listenableKey: WILDCARD,
-      listenableLabel: '*',
-      userHandler: handler as GenericHandler,
-      emitHandler,
-      options,
-      honorDisposalConfig: true
-    });
-  }
-
-  private registerHandlerIntent(params: {
-    kind: string;
-    intents: Map<GenericHandler, Map<any, HandlerIntent>>;
-    listenableKey: EventKeys<TEventMap>|WILDCARD;
-    listenableLabel: string;
-    userHandler: GenericHandler;
-    emitHandler: GenericHandler;
-    options?: SubscribeOptions;
-    honorDisposalConfig: boolean;
-  }): Subscription {
-    const {
-      kind,
-      intents,
-      listenableKey,
-      listenableLabel,
-      userHandler,
-      emitHandler,
-      options,
-      honorDisposalConfig
-    } = params;
-    const strategy = this.options.duplicateSubscriptionStrategy;
-    let byKey = intents.get(userHandler);
-    if(!byKey) {
-      byKey = new Map();
-      intents.set(userHandler, byKey);
-    }
-    const existing = byKey.get(listenableKey);
+    const existing = this.find(kind, handler, event);
     if(existing) {
-      this.logDuplicate(kind, listenableLabel);
-      // once: honorDisposalConfig false → never collapse (always pop one frame)
-      const disposalCollapse = honorDisposalConfig && strategy.disposal === 'collapse';
-      if(disposalCollapse) {
-        if(strategy.invocation === 'stack') {
-          existing.invokeCount += 1;
-        }
-        if(strategy.observability === 'stack') {
-          existing.observabilityCount += 1;
-          this.adjustSingleStackedObservability(listenableKey, existing.incognito, 1);
-        }
-        return existing.frames[0];
-      }
-      return this.pushIntentFrame(existing, new SubscriptionManager.SingleEventFrameMeta<TEventMap>({
-        manager: this,
-        lifecycle: this.lifecycle,
-        honorDisposalConfig,
-        listenableKey,
-        incognito: existing.incognito,
-        emitHandler: existing.emitHandler,
-        intents,
-        userHandler,
-        byKey
-      }));
+      return this.subscribeAgain(existing, String(event));
     }
 
-    const incognito = options?.incognito === true;
-    const intent: HandlerIntent = {
-      frames: [],
-      invokeCount: 1,
-      observabilityCount: 1,
-      emitHandler,
-      incognito
-    };
-    byKey.set(listenableKey, intent);
-    this.attachEmitHandler(listenableKey, emitHandler, incognito, true);
-    return this.pushIntentFrame(intent, new SubscriptionManager.SingleEventFrameMeta<TEventMap>({
-      manager: this,
-      lifecycle: this.lifecycle,
-      honorDisposalConfig,
-      listenableKey,
-      incognito,
-      emitHandler,
-      intents,
-      userHandler,
-      byKey
-    }));
-  }
-
-  private adjustSingleStackedObservability(
-    event: EventKeys<TEventMap>|WILDCARD,
-    incognito: boolean,
-    delta: number
-  ): void {
-    this.adjustStackedListenerSurplus(event, delta, incognito);
-    if(!incognito) {
-      if(delta > 0) {
-        this.lifecycle.ownListenerWillAdd(event);
-        this.lifecycle.ownListenerDidAdd(event);
-      } else if(delta < 0) {
-        this.lifecycle.ownListenerWillRemove(event);
-        this.lifecycle.ownListenerDidRemove(event);
-      }
+    const registration = new Registration(kind, handler, event, options?.incognito === true);
+    if(kind === 'once') {
+      registration.emitHandler = (payload: any) => this.fireOnce(registration, payload);
+    } else if(kind === 'tap') {
+      registration.emitHandler = (e: any, payload: any) => this.fireTap(registration, e, payload);
     }
+    this.index(registration);
+    this.attachEmitHandler(event, registration.emitHandler, registration.incognito);
+    return this.addFrame(registration);
   }
 
-  private pushIntentFrame(intent: HandlerIntent, meta: IntentFrameMeta): Subscription {
+  /** Handles a subscribe call for something already registered, as the duplicate strategy says */
+  private subscribeAgain(registration: Registration, label: string): Subscription {
     const strategy = this.options.duplicateSubscriptionStrategy;
-    const isDuplicateFrame = intent.frames.length > 0;
-    if(isDuplicateFrame) {
+    this.logger.onDuplicateSubscription(registration.kind, label, strategy.logLevel);
+    if(registration.honorsDisposalStrategy && strategy.disposal === 'collapse') {
       if(strategy.invocation === 'stack') {
-        intent.invokeCount += 1;
+        registration.invokeCount += 1;
       }
       if(strategy.observability === 'stack') {
-        intent.observabilityCount += 1;
-        meta.adjustStackedObservability(1);
+        registration.observabilityCount += 1;
+        this.adjustObservability(registration, 1);
       }
+      return registration.frames[0];
     }
-
-    const sub = subscriptionWrapper(() => {
-      this.unsubQueue.push({
-        subscription: sub,
-        dispose: () => this.disposeIntentFrame(intent, sub, meta)
-      });
-      this.purgeUnsubQueue();
-    });
-    intent.frames.push(sub);
-    return sub;
+    return this.addFrame(registration);
   }
 
-  private disposeIntentFrame(
-    intent: HandlerIntent,
-    sub: Subscription,
-    meta: IntentFrameMeta
-  ): void {
-    const idx = intent.frames.indexOf(sub);
+  private addFrame(registration: Registration): Subscription {
+    const strategy = this.options.duplicateSubscriptionStrategy;
+    if(registration.frames.length > 0) {
+      if(strategy.invocation === 'stack') {
+        registration.invokeCount += 1;
+      }
+      if(strategy.observability === 'stack') {
+        registration.observabilityCount += 1;
+        this.adjustObservability(registration, 1);
+      }
+    }
+    const subscription: Subscription = unnamed(() => this.release(registration, subscription)) as Subscription;
+    subscription.unsubscribe = subscription;
+    if(registration.frames === NO_FRAMES) {
+      registration.frames = [subscription];
+    } else {
+      registration.frames.push(subscription);
+    }
+    return subscription;
+  }
+
+  private release(registration: Registration, subscription: Subscription): void {
+    if(this.releasing) {
+      (this.deferredReleases ??= []).push({registration, subscription});
+      return;
+    }
+    this.releasing = true;
+    try {
+      this.disposeFrame(registration, subscription);
+      for(let next = this.deferredReleases?.shift(); next; next = this.deferredReleases?.shift()) {
+        this.disposeFrame(next.registration, next.subscription);
+      }
+    } finally {
+      this.releasing = false;
+    }
+  }
+
+  private disposeFrame(registration: Registration, subscription: Subscription): void {
+    const idx = registration.frames.indexOf(subscription);
     if(idx === -1) {
       return;
     }
     const strategy = this.options.duplicateSubscriptionStrategy;
-    const collapse = meta.honorDisposalConfig && strategy.disposal === 'collapse';
+    const collapse = registration.honorsDisposalStrategy && strategy.disposal === 'collapse';
 
     if(collapse) {
-      const obs = intent.observabilityCount;
-      intent.frames.length = 0;
-      intent.invokeCount = 0;
-      intent.observabilityCount = 0;
-      if(obs > 1) {
-        for(let i = 0; i < obs - 1; i++) {
-          meta.adjustStackedObservability(-1);
-        }
+      const observed = registration.observabilityCount;
+      registration.frames.length = 0;
+      registration.invokeCount = 0;
+      registration.observabilityCount = 0;
+      for(let i = 0; i < observed - 1; i++) {
+        this.adjustObservability(registration, -1);
       }
-      meta.fireLifecycleOwnListenerWillRemove();
-      meta.onFullyCleared();
-      meta.fireLifecycleOwnListenerDidRemove();
+      this.releaseRegistration(registration);
       return;
     }
 
-    intent.frames.splice(idx, 1);
-    if(strategy.invocation === 'stack' && intent.invokeCount > 0) {
-      intent.invokeCount -= 1;
+    registration.frames.splice(idx, 1);
+    if(strategy.invocation === 'stack' && registration.invokeCount > 0) {
+      registration.invokeCount -= 1;
     }
 
-    if(strategy.observability === 'stack' && intent.observabilityCount > 1) {
-      intent.observabilityCount -= 1;
-      meta.adjustStackedObservability(-1);
+    if(strategy.observability === 'stack' && registration.observabilityCount > 1) {
+      registration.observabilityCount -= 1;
+      this.adjustObservability(registration, -1);
     } else if(strategy.observability === 'stack') {
-      intent.observabilityCount = 0;
+      registration.observabilityCount = 0;
     }
 
-    if(intent.frames.length === 0) {
-      meta.fireLifecycleOwnListenerWillRemove();
-      meta.onFullyCleared();
-      meta.fireLifecycleOwnListenerDidRemove();
+    if(registration.frames.length === 0) {
+      this.releaseRegistration(registration);
     }
+  }
+
+  /** Stops delivering to a registration whose last frame is gone */
+  private releaseRegistration(registration: Registration): void {
+    const events = this.eventsOf(registration);
+    if(!registration.incognito) {
+      for(const e of events) {
+        this.lifecycle.ownListenerWillRemove(e as EventKeys<TEventMap>);
+      }
+    }
+    if(registration instanceof AnyRegistration) {
+      registration.events.forEach((e, i) => {
+        this.detachEmitHandler(e as EventKeys<TEventMap>, registration.wrappers[i]);
+      });
+    } else {
+      this.detachEmitHandler(registration.key as EventKeys<TEventMap>, registration.emitHandler);
+    }
+    this.unindex(registration);
+    if(!registration.incognito) {
+      for(const e of events) {
+        this.lifecycle.ownListenerDidRemove(e as EventKeys<TEventMap>);
+      }
+    }
+  }
+
+  /** Reports the listener a stacked duplicate added or removed to the lifecycle, without changing the handler sets */
+  private adjustObservability(registration: Registration, delta: number): void {
+    const incognito = registration.incognito;
+    for(const e of this.eventsOf(registration)) {
+      if(incognito) {
+        continue;
+      }
+      this.adjustSurplus(e, delta);
+      if(delta > 0) {
+        this.lifecycle.ownListenerWillAdd(e as EventKeys<TEventMap>);
+        this.lifecycle.ownListenerDidAdd(e as EventKeys<TEventMap>);
+      } else if(delta < 0) {
+        this.lifecycle.ownListenerWillRemove(e as EventKeys<TEventMap>);
+        this.lifecycle.ownListenerDidRemove(e as EventKeys<TEventMap>);
+      }
+    }
+  }
+
+  private adjustSurplus(event: ListenerKey, delta: number): void {
+    if(delta > 0 && this.surplus === NO_SURPLUS) {
+      this.surplus = new StackedSurplus();
+    }
+    this.surplus.adjust(event, delta);
+    if(this.surplus.sum === 0) {
+      this.surplus = NO_SURPLUS;
+    }
+  }
+
+  private eventsOf(registration: Registration): ListenerKey[] {
+    return registration instanceof AnyRegistration ? registration.events : [registration.key];
+  }
+
+  private fireOnce(registration: Registration, payload: any): void {
+    if(!registration.frames.length) {
+      return;
+    }
+    const times = Math.max(registration.invokeCount, 1);
+    for(const frame of registration.frames.slice()) {
+      frame();
+    }
+    for(let i = 0; i < times; i++) {
+      registration.handler(payload);
+    }
+  }
+
+  private fireTap(registration: Registration, event: any, payload: any): void {
+    const times = Math.max(registration.invokeCount, 1);
+    for(let i = 0; i < times; i++) {
+      (registration.handler as TapHandler<TEventMap>)({event, payload} as PipedMessage<TEventMap>);
+    }
+  }
+
+  private find(kind: RegistrationKind, handler: GenericHandler, key: ListenerKey): Registration | undefined {
+    const entry = this.registrations.get(handler);
+    if(entry instanceof RegistrationIndex) {
+      return entry.find(kind, key);
+    }
+    for(let r = entry; r; r = r.next) {
+      if(r.kind === kind && r.key === key) {
+        return r;
+      }
+    }
+    return undefined;
+  }
+
+  /** Added after the handler's existing registrations, so they are released in the order they were made */
+  private index(registration: Registration): void {
+    const entry = this.registrations.get(registration.handler);
+    if(!entry) {
+      this.registrations.set(registration.handler, registration);
+    } else if(entry instanceof RegistrationIndex) {
+      entry.add(registration);
+    } else {
+      this.chain(entry, registration);
+    }
+  }
+
+  private chain(head: Registration, registration: Registration): void {
+    let tail = head;
+    let length = 1;
+    while(tail.next) {
+      tail = tail.next;
+      length += 1;
+    }
+    if(length < MAX_CHAINED_REGISTRATIONS) {
+      tail.next = registration;
+      return;
+    }
+    const index = new RegistrationIndex();
+    for(let r: Registration | undefined = head; r;) {
+      const following = r.next;
+      r.next = undefined;
+      index.add(r);
+      r = following;
+    }
+    index.add(registration);
+    this.registrations.set(registration.handler, index);
+  }
+
+  private unindex(registration: Registration): void {
+    const entry = this.registrations.get(registration.handler);
+    if(entry instanceof RegistrationIndex) {
+      entry.delete(registration);
+      if(entry.isEmpty) {
+        this.registrations.delete(registration.handler);
+      }
+    } else if(entry === registration) {
+      if(registration.next) {
+        this.registrations.set(registration.handler, registration.next);
+      } else {
+        this.registrations.delete(registration.handler);
+      }
+    } else {
+      let previous = entry;
+      while(previous && previous.next !== registration) {
+        previous = previous.next;
+      }
+      if(previous) {
+        previous.next = registration.next;
+      }
+    }
+    registration.next = undefined;
   }
 
   private attachEmitHandler(
     event: EventKeys<TEventMap>|WILDCARD,
     handler: GenericHandler,
-    incognito: boolean,
-    fireLifecycle: boolean
+    incognito: boolean
   ): void {
-    if(fireLifecycle && !incognito) {
+    if(!incognito) {
       this.lifecycle.ownListenerWillAdd(event);
     }
     const prev = this.handlersByEvent.get(event);
@@ -674,11 +630,14 @@ export class SubscriptionManager<TEventMap extends EventMap> {
       this.handlerTotal += 1;
     }
     if(incognito) {
-      this.markIncognito(handler, event);
+      if(this.incognito === NO_INCOGNITO) {
+        this.incognito = new IncognitoIndex();
+      }
+      this.incognito.add(event, handler);
     }
     this.host.invalidateListenerCachesUpstream();
     this.host.invalidateOwnListenerCache();
-    if(fireLifecycle && !incognito) {
+    if(!incognito) {
       this.lifecycle.ownListenerDidAdd(event);
     }
     if(added) {
@@ -697,7 +656,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     const removed = set.delete(handler);
     if(removed) {
       this.handlerTotal -= 1;
-      this.unmarkIncognito(handler, event);
+      this.incognito.delete(event, handler);
       if(set.size === 0) {
         this.handlersByEvent.delete(event);
       }
@@ -707,93 +666,16 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     }
   }
 
+  /** Distinct handlers for `event`, plus the extra listeners stacked duplicates add */
   public ownListenerCountForEvent(event: EventKeys<TEventMap>|WILDCARD): number {
-    const setSize = this.handlersByEvent.get(event)?.size ?? 0;
-    const extra = this.stackedListenerSurplusByEvent.get(event) ?? 0;
-    return setSize + extra;
-  }
-
-  private adjustStackedListenerSurplus(
-    event: EventKeys<TEventMap>|WILDCARD,
-    delta: number,
-    incognito: boolean
-  ): void {
-    if(incognito) {
-      return;
-    }
-    const curr = this.stackedListenerSurplusByEvent.get(event) ?? 0;
-    const next = Math.max(curr + delta, 0);
-    this.stackedSurplusSum += next - curr;
-    if(next === 0) {
-      this.stackedListenerSurplusByEvent.delete(event);
-    } else {
-      this.stackedListenerSurplusByEvent.set(event, next);
-    }
-  }
-
-  private logDuplicate(kind: string, listenable: string): void {
-    this.logger.onDuplicateSubscription(
-      kind,
-      listenable,
-      this.options.duplicateSubscriptionStrategy.logLevel
-    );
-  }
-
-  private purgeUnsubQueue() {
-    if(this._purgingUnsubQueue) {
-      return;
-    }
-    this._purgingUnsubQueue = true;
-    while(this.unsubQueue.length) {
-      const {dispose} = this.unsubQueue.shift();
-      dispose();
-    }
-    this._purgingUnsubQueue = false;
+    return (this.handlersByEvent.get(event)?.size ?? 0) + this.surplus.get(event);
   }
 
   public isIncognito(
     handler: GenericHandler,
     event: EventKeys<TEventMap>|WILDCARD
   ): boolean {
-    return this.incognitoByHandler.get(handler)?.has(event) ?? false;
-  }
-
-  private markIncognito(
-    handler: GenericHandler,
-    event: EventKeys<TEventMap>|WILDCARD
-  ): void {
-    let events = this.incognitoByHandler.get(handler);
-    if(!events) {
-      events = new Set();
-      this.incognitoByHandler.set(handler, events);
-    }
-    if(!events.has(event)) {
-      events.add(event);
-      this.incognitoTotal += 1;
-      this.incognitoCountByEvent.set(event, (this.incognitoCountByEvent.get(event) ?? 0) + 1);
-    }
-  }
-
-  private unmarkIncognito(
-    handler: GenericHandler,
-    event: EventKeys<TEventMap>|WILDCARD
-  ): void {
-    const events = this.incognitoByHandler.get(handler);
-    if(!events) {
-      return;
-    }
-    if(events.delete(event)) {
-      this.incognitoTotal -= 1;
-      const remaining = (this.incognitoCountByEvent.get(event) ?? 0) - 1;
-      if(remaining > 0) {
-        this.incognitoCountByEvent.set(event, remaining);
-      } else {
-        this.incognitoCountByEvent.delete(event);
-      }
-    }
-    if(events.size === 0) {
-      this.incognitoByHandler.delete(handler);
-    }
+    return this.incognito.has(event, handler);
   }
 
   public consumeEvent(event: EventKeys<TEventMap>|WILDCARD, ...args: any[]): boolean {
@@ -822,21 +704,26 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     return false;
   }
 
+  /** How often a stacking `invocation` strategy delivers one event to an `on` handler */
   private invokeTimesFor(event: EventKeys<TEventMap>|WILDCARD, emitHandler: GenericHandler): number {
-    // `on` intents are keyed by the user's handler, which is the emit handler itself
-    const intent = this.onIntents.get(emitHandler)?.get(event);
-    if(intent?.emitHandler === emitHandler) {
-      return Math.max(intent.invokeCount, 1);
+    if(this.options.duplicateSubscriptionStrategy.invocation !== 'stack') {
+      return 1;
     }
-    // once / any / pipe wrappers handle multiplicity internally
-    return 1;
+    const registration = this.find('on', emitHandler, event);
+    return registration ? Math.max(registration.invokeCount, 1) : 1;
   }
 }
 
-/**
- * @ignore
- * Stable unique event keys for any-intent identity (order-independent).
- */
+function* registrationsOf(entry: Registration | RegistrationIndex): IterableIterator<Registration> {
+  if(entry instanceof RegistrationIndex) {
+    yield* entry;
+    return;
+  }
+  for(let r: Registration | undefined = entry; r; r = r.next) {
+    yield r;
+  }
+}
+
 function canonicalizeEventKeys<T extends string | number | symbol>(events: T[]): T[] {
   const seen = new Set<T>();
   const unique: T[] = [];

@@ -1135,8 +1135,126 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('a handler subscribed to many events', () => {
+    const EVENT_COUNT = 40;
+    let looseBus: Strongbus.Bus<Record<string, number>>;
+    let events: string[];
+
+    beforeEach(() => {
+      looseBus = new Strongbus.Bus<Record<string, number>>();
+      events = Array.from({length: EVENT_COUNT}, (_, i) => `event${i}`);
+    });
+
+    it('receives each event it subscribed to, once', () => {
+      events.forEach((e) => looseBus.on(e, singleEventHandler));
+
+      events.forEach((e, i) => looseBus.emit(e, i));
+
+      expect(singleEventHandler).toHaveBeenCalledTimes(EVENT_COUNT);
+      expect(singleEventHandler.calls.argsFor(EVENT_COUNT - 1)).toEqual([EVENT_COUNT - 1]);
+    });
+
+    it('is removed from one event without touching the others', () => {
+      events.forEach((e) => looseBus.on(e, singleEventHandler));
+
+      looseBus.off(events[20], singleEventHandler);
+
+      expect(looseBus.hasListenersFor(events[20])).toBeFalse();
+      expect(looseBus.getListenerCount()).toBe(EVENT_COUNT - 1);
+    });
+
+    it('is removed from every event in any order', () => {
+      events.forEach((e) => looseBus.on(e, singleEventHandler));
+
+      events.slice().reverse().forEach((e) => looseBus.off(e, singleEventHandler));
+
+      expect(looseBus.hasListeners()).toBeFalse();
+      expect(looseBus.getEventCount()).toBe(0);
+    });
+
+    it('can subscribe again after being removed from everything', () => {
+      events.forEach((e) => looseBus.on(e, singleEventHandler));
+      events.forEach((e) => looseBus.off(e, singleEventHandler));
+
+      looseBus.on(events[0], singleEventHandler);
+      looseBus.emit(events[0], 1);
+
+      expect(singleEventHandler).toHaveBeenCalledTimes(1);
+      expect(looseBus.getListenerCount()).toBe(1);
+    });
+
+    it('keeps an `on` and a `once` of the same event independent', () => {
+      events.forEach((e) => looseBus.on(e, singleEventHandler));
+      events.forEach((e) => looseBus.once(e, singleEventHandler));
+
+      looseBus.emit(events[3], 1);
+      looseBus.emit(events[3], 1);
+
+      expect(singleEventHandler).toHaveBeenCalledTimes(3);
+      expect(looseBus.getListenerCountFor(events[3])).toBe(1);
+    });
+
+    it('collapses a duplicate `on` of an event it already has', () => {
+      events.forEach((e) => looseBus.on(e, singleEventHandler));
+      const again = looseBus.on(events[EVENT_COUNT - 1], singleEventHandler);
+
+      looseBus.emit(events[EVENT_COUNT - 1], 1);
+      again();
+
+      expect(singleEventHandler).toHaveBeenCalledTimes(1);
+      expect(looseBus.hasListenersFor(events[EVENT_COUNT - 1])).toBeFalse();
+    });
+
+    it('stacks duplicates per event under the stacking strategy', () => {
+      looseBus = new Strongbus.Bus<Record<string, number>>({
+        duplicateSubscriptionStrategy: Strongbus.DuplicateSubscriptionStrategy.EventEmitter
+      });
+      events.forEach((e) => looseBus.on(e, singleEventHandler));
+      looseBus.on(events[5], singleEventHandler);
+
+      looseBus.emit(events[5], 1);
+      looseBus.emit(events[6], 1);
+
+      expect(singleEventHandler).toHaveBeenCalledTimes(3);
+      expect(looseBus.getListenerCountFor(events[5])).toBe(2);
+    });
+
+    it('is released in the order it subscribed by `clear`', () => {
+      const released: string[] = [];
+      looseBus.hook('didRemoveListener', (e) => released.push(String(e)));
+      const onceEvents = events.slice(0, 5).reverse();
+      events.forEach((e) => looseBus.on(e, singleEventHandler));
+      onceEvents.forEach((e) => looseBus.once(e, singleEventHandler));
+
+      looseBus.clear();
+
+      expect(released).toEqual([...events, ...onceEvents]);
+    });
+
+    it('is released by `destroy` along with its `once` and `any` registrations', () => {
+      events.forEach((e) => looseBus.on(e, singleEventHandler));
+      looseBus.once(events[0], singleEventHandler);
+      looseBus.any(events.slice(0, 3), singleEventHandler);
+
+      looseBus.destroy();
+
+      expect(looseBus.hasListeners()).toBeFalse();
+    });
+
+    it('can unsubscribe all of its events from inside an emit', () => {
+      const subscriptions = events.map((e) => looseBus.on(e, () => subscriptions.forEach((s) => s())));
+
+      expect(() => looseBus.emit(events[0], 1)).not.toThrow();
+      expect(looseBus.hasListeners()).toBeFalse();
+    });
+  });
+
   describe('memory footprint of subscriptions', () => {
-    it('costs three subscriptions on a bus less than 3.3 KB', () => {
+    it('costs an empty bus less than 4.2 KB', () => {
+      expect(bytesRetainedPer(() => new Strongbus.Bus<TestEventMap>())).toBeLessThan(4200);
+    });
+
+    it('costs three subscriptions on a bus less than 2 KB', () => {
       const handler = (): void => undefined;
       const empty = bytesRetainedPer(() => new Strongbus.Bus<TestEventMap>());
       const subscribed = bytesRetainedPer(() => {
@@ -1147,7 +1265,7 @@ describe('Strongbus.Bus', () => {
         return subscribedBus;
       });
 
-      expect(subscribed - empty).toBeLessThan(3300);
+      expect(subscribed - empty).toBeLessThan(2000);
     });
   });
 
@@ -1207,6 +1325,21 @@ describe('Strongbus.Bus', () => {
       expect(upstream.hasListeners()).toBeTrue();
       expect(timeIt(() => subs.forEach((sub) => sub()))).toBeLessThan(BUDGET_MS);
       expect(upstream.hasListeners()).toBeFalse();
+    });
+
+    it('registers, emits to and removes one handler on many events in linear time', () => {
+      const events = Array.from({length: HANDLER_COUNT}, (_, i) => `event-${i}`);
+      const looseBus = new Strongbus.Bus<any>({logger: quietLogger});
+      const handler = jasmine.createSpy('handler');
+      let subs: Strongbus.Subscription[];
+
+      expect(timeIt(() => {
+        subs = events.map((event) => looseBus.on(event, handler));
+      })).toBeLessThan(BUDGET_MS);
+      expect(timeIt(() => events.forEach((event) => looseBus.emit(event, 1)))).toBeLessThan(BUDGET_MS);
+      expect(handler).toHaveBeenCalledTimes(HANDLER_COUNT);
+      expect(timeIt(() => subs.forEach((sub) => sub()))).toBeLessThan(BUDGET_MS);
+      expect(looseBus.hasListeners()).toBeFalse();
     });
 
     describe('given a downstream bus with listeners', () => {
@@ -3593,6 +3726,35 @@ describe('Strongbus.Bus', () => {
       expect(singleEventHandler).not.toHaveBeenCalled();
       expect(eventSink).not.toHaveBeenCalled();
       expect(bus.getListenerCount({includeIncognito: true})).toBe(0);
+    });
+
+    describe('given handlers that mix kinds', () => {
+      const first = (): void => undefined;
+      const second = (): void => undefined;
+
+      beforeEach(() => {
+        bus.once('foo', first);
+        bus.on('bar', second);
+        bus.on('baz', first);
+      });
+
+      it('releases kind by kind, and handlers within a kind in the order they first subscribed to anything', () => {
+        const released: string[] = [];
+        bus.hook('didRemoveListener', (event) => released.push(String(event)));
+
+        bus.clear();
+
+        expect(released).toEqual(['baz', 'bar', 'foo']);
+      });
+
+      it('releases in the same order on destroy', () => {
+        const released: string[] = [];
+        bus.hook('didRemoveListener', (event) => released.push(String(event)));
+
+        bus.destroy();
+
+        expect(released).toEqual(['baz', 'bar', 'foo']);
+      });
     });
 
     it('keeps lifecycle hooks, which see the removals and later additions', () => {
