@@ -264,7 +264,8 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
     }
     // callbacks may pipe or unpipe; iterate a snapshot so edge changes wait for the next round
     for(const upstream of [...upstreams]) {
-      if(upstream.graph.downstreams.get(this)?.incognito !== false) {
+      const edge = upstream.graph.downstreams.get(this);
+      if(!edge || edge.incognito) {
         continue;
       }
       try {
