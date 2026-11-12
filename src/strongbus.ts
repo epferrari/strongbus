@@ -733,7 +733,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
 
   // these members' public types are generic aliases merged in from the surfaces above, which a class
   // method cannot express without breaking Wide-to-Narrow bus assignability. Installing them on the
-  // prototype still keeps a bus from allocating a closure for each one.
+  // prototype means a bus binds each one only the first time it is read, like its other methods.
   static {
     const methods = {
       any(this: Bus<any>, events: EventKeys<any>[], handler: EventSink<any>, options?: SubscribeOptions): Subscription {
