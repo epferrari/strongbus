@@ -285,7 +285,7 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
             break;
         }
       } catch(e) {
-        this.lifecycle.emitHandlerError(e, event);
+        this.lifecycle.reportHandlerError(e, event);
       }
     }
   }
