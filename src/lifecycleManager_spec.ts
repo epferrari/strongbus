@@ -10,7 +10,7 @@ describe('LifecycleManager', () => {
   let manager: LifecycleManager<TestEventMap>;
   let order: string[];
   let logger: StrongbusLogger<TestEventMap>;
-  let lifecycleOptions: {coalesceDownstreamLifecycleEvents: boolean};
+  let lifecycleOptions: {coalesceDownstreamLifecycleEvents: boolean; suppressDefaultUnhandledErrorLogging: boolean};
 
   beforeEach(() => {
     order = [];
@@ -20,7 +20,7 @@ describe('LifecycleManager', () => {
       thresholds: {info: 100, warn: 500, error: Infinity},
       verbose: false
     });
-    lifecycleOptions = {coalesceDownstreamLifecycleEvents: false};
+    lifecycleOptions = {coalesceDownstreamLifecycleEvents: false, suppressDefaultUnhandledErrorLogging: true};
     host = jasmine.createSpyObj('host', [
       'hasListeners',
       'getListenerCount',
@@ -28,7 +28,8 @@ describe('LifecycleManager', () => {
       'getListenerCountForUpTo',
       'getOwnListenerCount',
       'accountForDownstreamListeners',
-      'accountForRemovedDownstreamListeners'
+      'accountForRemovedDownstreamListeners',
+      'forwardListenerLifecycle'
     ]);
     host.hasListeners.and.returnValue(false);
     host.getListenerCount.and.returnValue(0);
@@ -61,7 +62,7 @@ describe('LifecycleManager', () => {
       manager.hook('error', first);
       manager.hook('error', second);
 
-      manager.emitHandlerError(error, 'foo');
+      manager.reportHandlerError(error, 'foo');
 
       expect(first).toHaveBeenCalledOnceWith({error, event: 'foo'});
       expect(second).toHaveBeenCalledOnceWith({error, event: 'foo'});
@@ -72,7 +73,7 @@ describe('LifecycleManager', () => {
       manager.hook('error', onError);
       manager.hook('error', onError);
 
-      manager.emitHandlerError(error, 'foo');
+      manager.reportHandlerError(error, 'foo');
 
       expect(onError).toHaveBeenCalledTimes(1);
     });
@@ -81,7 +82,7 @@ describe('LifecycleManager', () => {
       const onError = jasmine.createSpy('onError');
       manager.hook('error', onError)();
 
-      manager.emitHandlerError(error, 'foo');
+      manager.reportHandlerError(error, 'foo');
 
       expect(onError).not.toHaveBeenCalled();
     });
@@ -95,9 +96,9 @@ describe('LifecycleManager', () => {
       const unsubscribeThird = manager.hook('error', third);
 
       unsubscribeSecond();
-      manager.emitHandlerError(error, 'foo');
+      manager.reportHandlerError(error, 'foo');
       unsubscribeThird();
-      manager.emitHandlerError(error, 'foo');
+      manager.reportHandlerError(error, 'foo');
 
       expect(first).toHaveBeenCalledTimes(2);
       expect(second).not.toHaveBeenCalled();
@@ -110,7 +111,7 @@ describe('LifecycleManager', () => {
       manager.hook('error', first)();
       manager.hook('error', second);
 
-      manager.emitHandlerError(error, 'foo');
+      manager.reportHandlerError(error, 'foo');
 
       expect(first).not.toHaveBeenCalled();
       expect(second).toHaveBeenCalledTimes(1);
@@ -122,7 +123,7 @@ describe('LifecycleManager', () => {
       manager.hook('error', () => unsubscribeSecond());
       unsubscribeSecond = manager.hook('error', second);
 
-      manager.emitHandlerError(error, 'foo');
+      manager.reportHandlerError(error, 'foo');
 
       expect(second).not.toHaveBeenCalled();
     });
@@ -133,10 +134,10 @@ describe('LifecycleManager', () => {
         manager.hook('error', late);
       });
 
-      manager.emitHandlerError(error, 'foo');
+      manager.reportHandlerError(error, 'foo');
       expect(late).not.toHaveBeenCalled();
 
-      manager.emitHandlerError(error, 'foo');
+      manager.reportHandlerError(error, 'foo');
       expect(late).toHaveBeenCalledTimes(1);
     });
   });
@@ -179,7 +180,7 @@ describe('LifecycleManager', () => {
   it('coalesces downstream attach hooks when configured', () => {
     const coalescing = new LifecycleManager<TestEventMap>({
       host,
-      options: {coalesceDownstreamLifecycleEvents: true},
+      options: {coalesceDownstreamLifecycleEvents: true, suppressDefaultUnhandledErrorLogging: true},
       logger
     });
     coalescing.hook('willAddListener', (event) => order.push(`willAdd:${event}`));

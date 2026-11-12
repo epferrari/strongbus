@@ -1,3 +1,4 @@
+import type {ForwardedLifecycle} from './busGraphNode';
 import {type StrongbusLogger} from './strongbusLogger';
 import type {MaterializedBusOptions} from './types/materializedBusOptions';
 import {Lifecycle} from './types/lifecycle';
@@ -18,6 +19,11 @@ export type DownstreamSnapshotEntry<TEventMap extends EventMap> = {
 /** @internal */
 export type DownstreamSnapshot<TEventMap extends EventMap> = DownstreamSnapshotEntry<TEventMap>[];
 
+type LifecycleOptions = Pick<
+  MaterializedBusOptions,
+  'coalesceDownstreamLifecycleEvents' | 'suppressDefaultUnhandledErrorLogging'
+>;
+
 /**
  * Bus bookkeeping callbacks supplied to {@link LifecycleManager}.
  * Shared resources (`logger`, `options`) are constructor deps, not host fields.
@@ -33,6 +39,7 @@ export interface LifecycleHost<TEventMap extends EventMap> {
   getListenerCountForUpTo(event: EventKeys<TEventMap>|WILDCARD, cap: number): number;
   accountForDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void;
   accountForRemovedDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void;
+  forwardListenerLifecycle(event: ForwardedLifecycle, subject: EventKeys<TEventMap>|WILDCARD): void;
 }
 
 /**
@@ -42,14 +49,14 @@ export interface LifecycleHost<TEventMap extends EventMap> {
 export class LifecycleManager<TEventMap extends EventMap = EventMap> {
   private readonly handlers = new Map<Lifecycle, HandlerEntry>();
   private readonly host: LifecycleHost<TEventMap>;
-  private readonly options: Pick<MaterializedBusOptions, 'coalesceDownstreamLifecycleEvents'>;
+  private readonly options: LifecycleOptions;
   private readonly logger: StrongbusLogger<TEventMap>;
 
   private _active = false;
 
   constructor(params: {
     host: LifecycleHost<TEventMap>;
-    options: Pick<MaterializedBusOptions, 'coalesceDownstreamLifecycleEvents'>;
+    options: LifecycleOptions;
     logger: StrongbusLogger<TEventMap>;
   }) {
     this.host = params.host;
@@ -209,11 +216,16 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
     }
   }
 
-  public emitHandlerError(
+  public reportHandlerError(
     error: unknown,
     event: EventKeys<TEventMap>|WILDCARD | Lifecycle
   ): void {
-    this.emitLifecycleEvent(Lifecycle.error, {error: normalizeError(error), event});
+    const normalized = normalizeError(error);
+    if(this.handlers.has(Lifecycle.error)) {
+      this.emitLifecycleEvent(Lifecycle.error, {error: normalized, event});
+    } else if(!this.options.suppressDefaultUnhandledErrorLogging) {
+      this.logger.onUnhandledError(event, normalized);
+    }
   }
 
   public destroy(): void {
@@ -229,6 +241,9 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
       for(const fn of entry) {
         this.invokeLifecycleHandler(fn, event, payload);
       }
+    }
+    if(isForwardedLifecycle(event)) {
+      this.host.forwardListenerLifecycle(event, payload as EventKeys<TEventMap>|WILDCARD);
     }
   }
 
@@ -250,7 +265,7 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
               eventHandlerError: errorPayload.error
           });
         } else {
-          this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
+          this.reportHandlerError(e, event);
         }
       });
     } catch(e) {
@@ -263,10 +278,17 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
             eventHandlerError: errorPayload.error
         });
       } else {
-        this.emitLifecycleEvent(Lifecycle.error, {error: normalizeError(e), event});
+        this.reportHandlerError(e, event);
       }
     }
   }
+}
+
+function isForwardedLifecycle(event: Lifecycle): event is ForwardedLifecycle {
+  return event === Lifecycle.willAddListener
+    || event === Lifecycle.didAddListener
+    || event === Lifecycle.willRemoveListener
+    || event === Lifecycle.didRemoveListener;
 }
 
 /** A lone handler is stored bare; a `Set` is only allocated once a second handler is added. */

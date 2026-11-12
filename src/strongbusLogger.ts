@@ -90,6 +90,10 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
     this.warn(buildCyclicPipe(this.name, dest));
   }
 
+  public onUnhandledError(event: unknown, error: Error): void {
+    this.error(buildUnhandledError(this.name, event, error));
+  }
+
   public onErrorHandlerFailed(details: ErrorHandlerFailureDetails): void {
     this.error(buildErrorHandlerFailed(details));
   }
@@ -313,6 +317,14 @@ function buildCyclicPipe(source: string, dest: string): StrongbusLogRecord {
   };
 }
 
+function buildUnhandledError(name: string, event: unknown, error: Error): StrongbusLogRecord {
+  return {
+    code: StrongbusLogCode.UnhandledError,
+    message: `${name} encountered error in '${String(event)}' callback. Use <bus>.hook('error', handler) to take over error reporting.`,
+    context: {event, error}
+  };
+}
+
 function buildErrorHandlerFailed(context: ErrorHandlerFailureDetails): StrongbusLogRecord {
   return {
     code: StrongbusLogCode.ErrorHandlerFailed,
@@ -364,6 +376,7 @@ export class StrongbusLogMessages {
   public static unsoundPipeGraphResolved = buildUnsoundPipeGraphResolved;
   public static unsoundPipeEdgeFilterUpgrade = buildUnsoundPipeEdgeFilterUpgrade;
   public static cyclicPipe = buildCyclicPipe;
+  public static unhandledError = buildUnhandledError;
   public static errorHandlerFailed = buildErrorHandlerFailed;
   public static asyncErrorHandlerFailed = buildAsyncErrorHandlerFailed;
   public static useAfterDestroy = buildUseAfterDestroy;

@@ -32,6 +32,9 @@ export interface ListenerThresholds {
  * `'throw'` throws instead. When set to any of these, `emit` and `destroy` become silent no-ops.
  * Introspection is never affected. Calls made while `destroy()` is still running are skipped and
  * logged at debug under every setting, including `false`.
+ * @prop suppressDefaultUnhandledErrorLogging [true] - when a handler throws or rejects and the bus has
+ * no `error` hook, `true` drops the error; `false` logs `StrongbusLogCode.UnhandledError` through `logger`.
+ * The default will change to `false` in the next major version.
  */
 export interface Options {
   name?: string;
@@ -42,6 +45,7 @@ export interface Options {
   duplicateSubscriptionStrategy?: Partial<DuplicateSubscriptionStrategy>;
   onUnhandledEvent?: 'throw'|'ignore'|((event: string|number|symbol, payload: unknown) => void);
   onUseAfterDestroy?: false|Exclude<LogLevel, 'never'>|'throw';
+  suppressDefaultUnhandledErrorLogging?: boolean;
 }
 
 /** Options accepted by {@link Bus.configure}; `name` is per-instance only. */
