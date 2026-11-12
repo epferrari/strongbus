@@ -1,5 +1,3 @@
-import {autobind} from 'core-decorators';
-
 import type {EventDispatcher} from './eventDispatcher';
 import type {IntrospectionManager} from './introspectionManager';
 import {
@@ -15,15 +13,20 @@ import type {MonitoringHook} from './types/surfaces/monitoringSurface';
 import type {SubscribeOptions} from './types/surfaces/subscriptionSurface';
 import type {EventKeys} from './types/utility';
 import {EMPTY_MAP, EMPTY_SET} from './utils/emptyCollections';
-import {over} from './utils/over';
 
 /** @internal Options for attaching a pipe graph edge. */
 export type DownstreamLinkOptions<TEventMap extends EventMap> = SubscribeOptions & {
   filter?: PipePredicate<TEventMap>;
 };
 
+/** @internal Listener lifecycle events a node forwards to the nodes that pipe into it. */
+export type ForwardedLifecycle =
+  | typeof Lifecycle.willAddListener
+  | typeof Lifecycle.didAddListener
+  | typeof Lifecycle.willRemoveListener
+  | typeof Lifecycle.didRemoveListener;
+
 type BusNodeEdge<TEventMap extends EventMap> = {
-  unlink: VoidFunction;
   incognito: boolean;
   filter?: PipePredicate<TEventMap>;
 };
@@ -67,7 +70,6 @@ class PipeGraphState<TEventMap extends EventMap> {
  * Base for {@link Bus}: owns the pipe graph and peer delivery via `protected`
  * methods so graph helpers are not part of the public `Bus` surface.
  */
-@autobind
 export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
   private readonly graph = new PipeGraphState<TEventMap>();
 
@@ -111,30 +113,11 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
 
     const filter = options?.filter;
     const incognito = options?.incognito === true;
-    if(incognito) {
-      this.graph.addDownstream(downstream, {
-        unlink: () => undefined,
-        incognito: true,
-        filter
-      });
-    } else {
-      this.graph.addDownstream(downstream, {
-        unlink: over([
-          downstream.lifecycle.hook(Lifecycle.willAddListener, (event) =>
-            this.lifecycle.onDownstreamWillAdd(event as EventKeys<TEventMap>|WILDCARD)),
-          downstream.lifecycle.hook(Lifecycle.didAddListener, (event) =>
-            this.lifecycle.onDownstreamDidAdd(event as EventKeys<TEventMap>|WILDCARD)),
-          downstream.lifecycle.hook(Lifecycle.willRemoveListener, (event) =>
-            this.lifecycle.onDownstreamWillRemove(event as EventKeys<TEventMap>|WILDCARD)),
-          downstream.lifecycle.hook(Lifecycle.didRemoveListener, (event) =>
-            this.lifecycle.onDownstreamDidRemove(event as EventKeys<TEventMap>|WILDCARD))
-        ]),
-        incognito: false,
-        filter
-      });
+    this.graph.addDownstream(downstream, {incognito, filter});
+    downstream.onConnectedAsDownstreamNode(this);
+    if(!incognito) {
       this.lifecycle.onDownstreamAttached(this.buildSnapshot(downstream));
     }
-    downstream.onConnectedAsDownstreamNode(this);
     this.invalidateListenerCachesUpstream();
     if(!filter) {
       for(const upstream of upstreams) {
@@ -156,7 +139,6 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
     if(!edge.incognito) {
       this.lifecycle.onDownstreamDetached(this.buildSnapshot(downstream));
     }
-    edge.unlink();
     this.graph.downstreams.delete(downstream);
     downstream.onDisconnectedAsDownstreamNode(this);
     this.resolveWarnedPathsTo(downstream);
@@ -188,8 +170,7 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
   }
 
   protected releaseAllDownstreamEdges(): void {
-    for(const [downstream, edge] of this.graph.downstreams) {
-      edge.unlink();
+    for(const downstream of this.graph.downstreams.keys()) {
       downstream.onDisconnectedAsDownstreamNode(this);
       this.resolveWarnedPathsTo(downstream);
     }
@@ -288,6 +269,47 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
    */
   protected acceptFromUpstream(event: any, payload?: any): boolean {
     return this.dispatcher.dispatchEvent(event, payload, true);
+  }
+
+  /**
+   * Tell every upstream that pipes into this node, except incognito ones, that this node's
+   * listeners changed. A failure reaching one upstream is reported on this node's error hooks and
+   * does not stop the rest.
+   */
+  protected forwardListenerLifecycle(
+    event: ForwardedLifecycle,
+    subject: EventKeys<TEventMap>|WILDCARD
+  ): void {
+    const {upstreams} = this.graph;
+    if(!upstreams.size) {
+      return;
+    }
+    // callbacks may pipe or unpipe; iterate a snapshot so edge changes wait for the next round
+    for(const upstream of [...upstreams]) {
+      const edge = upstream.graph.downstreams.get(this);
+      if(!edge || edge.incognito) {
+        continue;
+      }
+      try {
+        const {lifecycle} = upstream;
+        switch(event) {
+          case Lifecycle.willAddListener:
+            lifecycle.onDownstreamWillAdd(subject);
+            break;
+          case Lifecycle.didAddListener:
+            lifecycle.onDownstreamDidAdd(subject);
+            break;
+          case Lifecycle.willRemoveListener:
+            lifecycle.onDownstreamWillRemove(subject);
+            break;
+          case Lifecycle.didRemoveListener:
+            lifecycle.onDownstreamDidRemove(subject);
+            break;
+        }
+      } catch(e) {
+        this.lifecycle.reportHandlerError(e, event);
+      }
+    }
   }
 
   /**

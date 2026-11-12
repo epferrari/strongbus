@@ -55,7 +55,7 @@ import {subscribeListenable} from './utils/subscribeListenable';
 import {subscriptionWrapper} from './utils/subscriptionWrapper';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import {isSubscribeOptions} from './utils/isSubscribeOptions';
-import {BusGraphNode} from './busGraphNode';
+import {BusGraphNode, type ForwardedLifecycle} from './busGraphNode';
 import {IntrospectionManager, type IntrospectionHost} from './introspectionManager';
 import {SubscriptionManager, type SubscriptionHost} from './subscriptionManager';
 import {EventDispatcher, type EventDispatcherHost} from './eventDispatcher';
@@ -88,7 +88,8 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     coalesceDownstreamLifecycleEvents: true,
     duplicateSubscriptionStrategy: resolveDuplicateSubscriptionStrategy(),
     onUnhandledEvent: 'ignore',
-    onUseAfterDestroy: false
+    onUseAfterDestroy: false,
+    suppressDefaultUnhandledErrorLogging: true
   };
 
   /**
@@ -191,6 +192,13 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
 
     public accountForRemovedDownstreamListeners(_event: EventKeys<T>|WILDCARD, _count: number): void {
       this.bus.introspection.invalidateCombinedListenerCache();
+    }
+
+    public forwardListenerLifecycle(
+      event: ForwardedLifecycle,
+      subject: EventKeys<T>|WILDCARD
+    ): void {
+      this.bus.forwardListenerLifecycle(event, subject);
     }
 
     public invalidateOwnListenerCache(): void {

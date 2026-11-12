@@ -1,5 +1,3 @@
-import {autobind} from 'core-decorators';
-
 import type {ListenerThresholds} from './types/options';
 import {
   StrongbusLogCode,
@@ -31,7 +29,6 @@ export type LogLevel = 'never' | 'debug' | 'info' | 'warn' | 'error';
  * Domain-oriented adapter over {@link Logger} / {@link LoggerProvider}.
  * @internal
  */
-@autobind
 export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
   private readonly name: string;
   private readonly provider: LoggerProvider|undefined;
@@ -48,10 +45,11 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
   }
 
   public onAddListener(event: EventKeys<TEventMap>|WILDCARD, n: number) {
-    (this.verbose
-      ? this.onAddListenerVerbose
-      : this.onAddListenerNonVerbose
-    )(event, n);
+    if(this.verbose) {
+      this.onAddListenerVerbose(event, n);
+    } else {
+      this.onAddListenerNonVerbose(event, n);
+    }
   }
 
   public onListenerRemoved(event: EventKeys<TEventMap>|WILDCARD, count: number): void {
@@ -90,6 +88,10 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
 
   public onCyclicPipe(dest: string): void {
     this.warn(buildCyclicPipe(this.name, dest));
+  }
+
+  public onUnhandledError(event: unknown, error: Error): void {
+    this.error(buildUnhandledError(this.name, event, error));
   }
 
   public onErrorHandlerFailed(details: ErrorHandlerFailureDetails): void {
@@ -315,6 +317,14 @@ function buildCyclicPipe(source: string, dest: string): StrongbusLogRecord {
   };
 }
 
+function buildUnhandledError(name: string, event: unknown, error: Error): StrongbusLogRecord {
+  return {
+    code: StrongbusLogCode.UnhandledError,
+    message: `${name} encountered error in '${String(event)}' callback. Use <bus>.hook('error', handler) to take over error reporting.`,
+    context: {event, error}
+  };
+}
+
 function buildErrorHandlerFailed(context: ErrorHandlerFailureDetails): StrongbusLogRecord {
   return {
     code: StrongbusLogCode.ErrorHandlerFailed,
@@ -366,6 +376,7 @@ export class StrongbusLogMessages {
   public static unsoundPipeGraphResolved = buildUnsoundPipeGraphResolved;
   public static unsoundPipeEdgeFilterUpgrade = buildUnsoundPipeEdgeFilterUpgrade;
   public static cyclicPipe = buildCyclicPipe;
+  public static unhandledError = buildUnhandledError;
   public static errorHandlerFailed = buildErrorHandlerFailed;
   public static asyncErrorHandlerFailed = buildAsyncErrorHandlerFailed;
   public static useAfterDestroy = buildUseAfterDestroy;

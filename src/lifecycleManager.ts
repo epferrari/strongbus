@@ -1,5 +1,4 @@
-import {autobind} from 'core-decorators';
-
+import type {ForwardedLifecycle} from './busGraphNode';
 import {type StrongbusLogger} from './strongbusLogger';
 import type {MaterializedBusOptions} from './types/materializedBusOptions';
 import {Lifecycle} from './types/lifecycle';
@@ -21,6 +20,11 @@ export type DownstreamSnapshotEntry<TEventMap extends EventMap> = {
 /** @internal */
 export type DownstreamSnapshot<TEventMap extends EventMap> = DownstreamSnapshotEntry<TEventMap>[];
 
+type LifecycleOptions = Pick<
+  MaterializedBusOptions,
+  'coalesceDownstreamLifecycleEvents' | 'suppressDefaultUnhandledErrorLogging'
+>;
+
 /**
  * Bus bookkeeping callbacks supplied to {@link LifecycleManager}.
  * Shared resources (`logger`, `options`) are constructor deps, not host fields.
@@ -36,24 +40,24 @@ export interface LifecycleHost<TEventMap extends EventMap> {
   getListenerCountForUpTo(event: EventKeys<TEventMap>|WILDCARD, cap: number): number;
   accountForDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void;
   accountForRemovedDownstreamListeners(event: EventKeys<TEventMap>|WILDCARD, count: number): void;
+  forwardListenerLifecycle(event: ForwardedLifecycle, subject: EventKeys<TEventMap>|WILDCARD): void;
 }
 
 /**
  * Owns active/idle state and lifecycle hook dispatch for a {@link Bus}.
  * @internal
  */
-@autobind
 export class LifecycleManager<TEventMap extends EventMap = EventMap> {
-  private handlers = EMPTY_MAP as Map<Lifecycle, Set<GenericHandler>>;
+  private handlers = EMPTY_MAP as Map<Lifecycle, HandlerEntry>;
   private readonly host: LifecycleHost<TEventMap>;
-  private readonly options: Pick<MaterializedBusOptions, 'coalesceDownstreamLifecycleEvents'>;
+  private readonly options: LifecycleOptions;
   private readonly logger: StrongbusLogger<TEventMap>;
 
   private _active = false;
 
   constructor(params: {
     host: LifecycleHost<TEventMap>;
-    options: Pick<MaterializedBusOptions, 'coalesceDownstreamLifecycleEvents'>;
+    options: LifecycleOptions;
     logger: StrongbusLogger<TEventMap>;
   }) {
     this.host = params.host;
@@ -216,11 +220,16 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
     }
   }
 
-  public emitHandlerError(
+  public reportHandlerError(
     error: unknown,
     event: EventKeys<TEventMap>|WILDCARD | Lifecycle
   ): void {
-    this.emitLifecycleEvent(Lifecycle.error, {error: normalizeError(error), event});
+    const normalized = normalizeError(error);
+    if(this.handlers.has(Lifecycle.error)) {
+      this.emitLifecycleEvent(Lifecycle.error, {error: normalized, event});
+    } else if(!this.options.suppressDefaultUnhandledErrorLogging) {
+      this.logger.onUnhandledError(event, normalized);
+    }
   }
 
   public destroy(): void {
@@ -229,60 +238,94 @@ export class LifecycleManager<TEventMap extends EventMap = EventMap> {
   }
 
   private emitLifecycleEvent<L extends Lifecycle>(event: L, payload: Lifecycle.EventMap<TEventMap>[L]): void {
-    const handlers = this.handlers.get(event);
-    if(handlers && handlers.size) {
-      for(const fn of handlers) {
-        try {
-          const execution = fn(payload);
+    const entry = this.handlers.get(event);
+    if(typeof entry === 'function') {
+      this.invokeLifecycleHandler(entry, event, payload);
+    } else if(entry) {
+      for(const fn of entry) {
+        this.invokeLifecycleHandler(fn, event, payload);
+      }
+    }
+    if(isForwardedLifecycle(event)) {
+      this.host.forwardListenerLifecycle(event, payload as EventKeys<TEventMap>|WILDCARD);
+    }
+  }
 
-          (execution as Promise<any>)?.catch?.((e) => {
-            if(event === Lifecycle.error) {
-              const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
-              this.logger.onAsyncErrorHandlerFailed({
-                  errorHandler: fn.name,
-                  errorHandlerError: e,
-                  originalEvent: errorPayload.event,
-                  eventHandlerError: errorPayload.error
-              });
-            } else {
-              this.emitLifecycleEvent(Lifecycle.error, {error: e, event});
-            }
+  private invokeLifecycleHandler<L extends Lifecycle>(
+    fn: GenericHandler,
+    event: L,
+    payload: Lifecycle.EventMap<TEventMap>[L]
+  ): void {
+    try {
+      const execution = fn(payload);
+
+      (execution as Promise<any>)?.catch?.((e) => {
+        if(event === Lifecycle.error) {
+          const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
+          this.logger.onAsyncErrorHandlerFailed({
+              errorHandler: fn.name,
+              errorHandlerError: e,
+              originalEvent: errorPayload.event,
+              eventHandlerError: errorPayload.error
           });
-        } catch(e) {
-          if(event === Lifecycle.error) {
-            const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
-            this.logger.onErrorHandlerFailed({
-                errorHandler: fn.name,
-                errorHandlerError: e,
-                originalEvent: errorPayload.event,
-                eventHandlerError: errorPayload.error
-            });
-          } else {
-            this.emitLifecycleEvent(Lifecycle.error, {error: normalizeError(e), event});
-          }
+        } else {
+          this.reportHandlerError(e, event);
         }
+      });
+    } catch(e) {
+      if(event === Lifecycle.error) {
+        const errorPayload = payload as Lifecycle.EventMap<TEventMap>['error'];
+        this.logger.onErrorHandlerFailed({
+            errorHandler: fn.name,
+            errorHandlerError: e,
+            originalEvent: errorPayload.event,
+            eventHandlerError: errorPayload.error
+        });
+      } else {
+        this.reportHandlerError(e, event);
       }
     }
   }
 }
 
-function addHandler<TKey>(bus: Map<TKey, Set<GenericHandler>>, event: TKey, handler: GenericHandler): void {
+function isForwardedLifecycle(event: Lifecycle): event is ForwardedLifecycle {
+  return event === Lifecycle.willAddListener
+    || event === Lifecycle.didAddListener
+    || event === Lifecycle.willRemoveListener
+    || event === Lifecycle.didRemoveListener;
+}
+
+/** A lone handler is stored bare; a `Set` is only allocated once a second handler is added. */
+type HandlerEntry = GenericHandler | Set<GenericHandler>;
+
+function addHandler<TKey>(bus: Map<TKey, HandlerEntry>, event: TKey, handler: GenericHandler): void {
   if(!handler) {
     return;
   }
-  const prevSet = bus.get(event);
-  const newSet = new Set<GenericHandler>(prevSet);
-  newSet.add(handler);
-  bus.set(event, newSet);
+  const prev = bus.get(event);
+  if(!prev) {
+    bus.set(event, handler);
+  } else if(typeof prev === 'function') {
+    if(prev !== handler) {
+      bus.set(event, new Set([prev, handler]));
+    }
+  } else {
+    const next = new Set<GenericHandler>(prev);
+    next.add(handler);
+    bus.set(event, next);
+  }
 }
 
-function removeHandler<TKey>(bus: Map<TKey, Set<GenericHandler>>, event: TKey, handler: GenericHandler): void {
-  const set = bus.get(event);
-  if(!set) {
-    return;
-  }
-  set.delete(handler);
-  if(set.size === 0) {
+function removeHandler<TKey>(bus: Map<TKey, HandlerEntry>, event: TKey, handler: GenericHandler): void {
+  const entry = bus.get(event);
+  if(entry === handler) {
     bus.delete(event);
+  } else if(entry && typeof entry !== 'function') {
+    entry.delete(handler);
+    // a stored Set always holds at least two handlers, so one left means it goes back to bare
+    if(entry.size === 1) {
+      const [remaining] = entry;
+      bus.set(event, remaining);
+    }
   }
 }
