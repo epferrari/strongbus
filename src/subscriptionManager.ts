@@ -270,17 +270,15 @@ export class SubscriptionManager<TEventMap extends EventMap> {
    * @param includeIncognito - when `false`, incognito registrations are left in place
    */
   public releaseAll(includeIncognito: boolean = true): void {
-    const pending: Subscription[] = [];
-    for(const kind of ['on', 'once', 'any', 'tap'] as const) {
-      for(const entry of this.registrations.values()) {
-        for(const r of registrationsOf(entry)) {
-          if(r.kind === kind && (includeIncognito || !r.incognito)) {
-            pending.push(...r.frames);
-          }
+    const pending: Record<RegistrationKind, Subscription[]> = {on: [], once: [], any: [], tap: []};
+    for(const entry of this.registrations.values()) {
+      for(const r of registrationsOf(entry)) {
+        if(includeIncognito || !r.incognito) {
+          pending[r.kind].push(...r.frames);
         }
       }
     }
-    over(pending)();
+    over([...pending.on, ...pending.once, ...pending.any, ...pending.tap])();
     if(!includeIncognito) {
       return;
     }
