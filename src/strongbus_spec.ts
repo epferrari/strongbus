@@ -2553,6 +2553,234 @@ describe('Strongbus.Bus', () => {
     });
   });
 
+  describe('listener lifecycle across pipes', () => {
+    let seen: string[];
+
+    function createBus(label: string): Strongbus.Bus<TestEventMap> {
+      const piped = new Strongbus.Bus<TestEventMap>({name: label});
+      piped.hook('didAddListener', (event) => seen.push(`${label}:didAdd:${event}`));
+      piped.hook('didRemoveListener', (event) => seen.push(`${label}:didRemove:${event}`));
+      return piped;
+    }
+
+    beforeEach(() => {
+      seen = [];
+    });
+
+    it('reports a downstream\'s listeners being added and removed to the upstream', () => {
+      const upstream = createBus('up');
+      const downstream = createBus('down');
+      upstream.pipe(downstream);
+
+      downstream.on('foo', singleEventHandler).unsubscribe();
+
+      expect(seen).toEqual(['down:didAdd:foo', 'up:didAdd:foo', 'down:didRemove:foo', 'up:didRemove:foo']);
+    });
+
+    it('reports wildcard listeners', () => {
+      const upstream = createBus('up');
+      const downstream = createBus('down');
+      upstream.pipe(downstream);
+
+      downstream.tap(eventSink);
+
+      expect(seen).toContain(`up:didAdd:${Strongbus.WILDCARD}`);
+    });
+
+    it('reports through a chain to the first bus', () => {
+      const [a, b, c] = ['a', 'b', 'c'].map(createBus);
+      a.pipe(b);
+      b.pipe(c);
+
+      c.on('foo', singleEventHandler);
+
+      expect(seen).toEqual(['c:didAdd:foo', 'b:didAdd:foo', 'a:didAdd:foo']);
+      expect(a.hasListenersFor('foo')).toBe(true);
+    });
+
+    it('notifies the upstream after the downstream\'s own hooks, including ones added after the pipe', () => {
+      const upstream = createBus('up');
+      const downstream = new Strongbus.Bus<TestEventMap>();
+      upstream.pipe(downstream);
+      downstream.hook('didAddListener', () => seen.push('down:late hook'));
+
+      downstream.on('foo', singleEventHandler);
+
+      expect(seen).toEqual(['down:late hook', 'up:didAdd:foo']);
+    });
+
+    it('stops reporting once the pipe is removed', () => {
+      const upstream = createBus('up');
+      const downstream = createBus('down');
+      upstream.pipe(downstream);
+      upstream.unpipe(downstream);
+
+      downstream.on('foo', singleEventHandler);
+
+      expect(seen).toEqual(['down:didAdd:foo']);
+    });
+
+    it('stops reporting once the upstream clears its downstream pipes', () => {
+      const upstream = createBus('up');
+      const downstream = createBus('down');
+      upstream.pipe(downstream);
+      upstream.clear({scope: Strongbus.ListenerScope.DOWNSTREAM});
+
+      downstream.on('foo', singleEventHandler);
+
+      expect(seen).toEqual(['down:didAdd:foo']);
+    });
+
+    it('stops reporting once the downstream clears its upstream pipes', () => {
+      const upstream = createBus('up');
+      const downstream = createBus('down');
+      upstream.pipe(downstream);
+      downstream.clear({scope: Strongbus.ListenerScope.ANY});
+
+      downstream.on('foo', singleEventHandler);
+
+      expect(seen).toEqual(['down:didAdd:foo']);
+    });
+
+    it('reports the downstream\'s listeners going away when the downstream is destroyed', () => {
+      const upstream = createBus('up');
+      const downstream = new Strongbus.Bus<TestEventMap>();
+      upstream.pipe(downstream);
+      downstream.on('foo', singleEventHandler);
+      seen.length = 0;
+
+      downstream.destroy();
+
+      expect(seen).toEqual(['up:didRemove:foo']);
+      expect(upstream.hasListenersFor('foo')).toBe(false);
+    });
+
+    describe('with an incognito pipe', () => {
+      it('does not report to the upstream', () => {
+        const upstream = createBus('up');
+        const downstream = createBus('down');
+        upstream.pipe(downstream, {incognito: true});
+
+        downstream.on('foo', singleEventHandler).unsubscribe();
+
+        expect(seen).toEqual(['down:didAdd:foo', 'down:didRemove:foo']);
+      });
+
+      it('still reports to the downstream\'s other upstreams', () => {
+        const visible = createBus('visible');
+        const hidden = createBus('hidden');
+        const downstream = new Strongbus.Bus<TestEventMap>();
+        visible.pipe(downstream);
+        hidden.pipe(downstream, {incognito: true});
+
+        downstream.on('foo', singleEventHandler);
+
+        expect(seen).toEqual(['visible:didAdd:foo']);
+      });
+    });
+
+    describe('with several upstreams', () => {
+      it('reports once per path through a diamond', () => {
+        const [top, left, right, bottom] = ['top', 'left', 'right', 'bottom'].map(createBus);
+        top.pipe(left);
+        top.pipe(right);
+        left.pipe(bottom);
+        right.pipe(bottom);
+
+        bottom.on('foo', singleEventHandler);
+
+        expect(seen.filter((entry) => entry === 'top:didAdd:foo').length).toBe(2);
+      });
+
+      it('reports to each of 1,000 upstreams', () => {
+        const downstream = new Strongbus.Bus<TestEventMap>();
+        for(let i = 0; i < 1000; i++) {
+          createBus(`up${i}`).pipe(downstream);
+        }
+
+        downstream.on('foo', singleEventHandler);
+
+        expect(new Set(seen).size).toBe(1000);
+      });
+
+      it('does not notify an upstream that an earlier one unpiped during the same round', () => {
+        const first = createBus('first');
+        const second = createBus('second');
+        const downstream = new Strongbus.Bus<TestEventMap>();
+        first.pipe(downstream);
+        second.pipe(downstream);
+        first.hook('didAddListener', () => second.unpipe(downstream));
+
+        downstream.on('foo', singleEventHandler);
+
+        expect(seen).not.toContain('second:didAdd:foo');
+      });
+
+      it('keeps notifying the other upstreams when one upstream\'s hook throws', () => {
+        const first = new Strongbus.Bus<TestEventMap>();
+        first.hook('didAddListener', () => {
+          throw new Error('boom');
+        });
+        const second = createBus('second');
+        const downstream = new Strongbus.Bus<TestEventMap>();
+        first.pipe(downstream);
+        second.pipe(downstream);
+
+        downstream.on('foo', singleEventHandler);
+
+        expect(seen).toEqual(['second:didAdd:foo']);
+      });
+    });
+
+    describe('when a lifecycle hook changes the graph', () => {
+      it('reports a listener the upstream adds while the downstream is being attached', () => {
+        const upstream = new Strongbus.Bus<TestEventMap>();
+        const downstream = new Strongbus.Bus<TestEventMap>();
+        downstream.on('foo', singleEventHandler);
+        let added = false;
+        upstream.hook('didAddListener', () => {
+          if(!added) {
+            added = true;
+            downstream.on('bar', singleEventHandler);
+          }
+        });
+
+        upstream.pipe(downstream);
+
+        expect(upstream.getListenerCountFor('foo')).toBe(1);
+        expect(upstream.getListenerCountFor('bar')).toBe(1);
+      });
+
+      it('lets a downstream pipe onward from inside its own listener hook', () => {
+        const upstream = new Strongbus.Bus<TestEventMap>();
+        const downstream = new Strongbus.Bus<TestEventMap>();
+        upstream.pipe(downstream);
+        downstream.hook('didAddListener', () => {
+          downstream.pipe(() => true).pipe(new Strongbus.Bus<TestEventMap>());
+        });
+
+        downstream.on('foo', singleEventHandler);
+        downstream.on('foo', eventSink);
+
+        expect(upstream.getListenerCountFor('foo')).toBe(2);
+      });
+    });
+  });
+
+  describe('memory footprint', () => {
+    it('costs a pipe less than 3 KB', () => {
+      const unpiped = bytesRetainedPer(() => [new Strongbus.Bus<TestEventMap>(), new Strongbus.Bus<TestEventMap>()]);
+      const piped = bytesRetainedPer(() => {
+        const upstream = new Strongbus.Bus<TestEventMap>();
+        const downstream = new Strongbus.Bus<TestEventMap>();
+        upstream.pipe(downstream);
+        return [upstream, downstream];
+      });
+
+      expect(piped - unpiped).toBeLessThan(3000);
+    });
+  });
+
   describe('#monitor', () => {
     let handleActiveChange: jasmine.Spy;
 
