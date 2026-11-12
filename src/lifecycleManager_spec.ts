@@ -53,6 +53,95 @@ describe('LifecycleManager', () => {
     manager.hook('idle', () => order.push('idle'));
   });
 
+  describe('#hook', () => {
+    const error = new Error('boom');
+
+    it('calls every handler hooked on the same event', () => {
+      const first = jasmine.createSpy('first');
+      const second = jasmine.createSpy('second');
+      manager.hook('error', first);
+      manager.hook('error', second);
+
+      manager.reportHandlerError(error, 'foo');
+
+      expect(first).toHaveBeenCalledOnceWith({error, event: 'foo'});
+      expect(second).toHaveBeenCalledOnceWith({error, event: 'foo'});
+    });
+
+    it('calls a handler hooked twice on the same event once', () => {
+      const onError = jasmine.createSpy('onError');
+      manager.hook('error', onError);
+      manager.hook('error', onError);
+
+      manager.reportHandlerError(error, 'foo');
+
+      expect(onError).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops calling a handler once it is unsubscribed', () => {
+      const onError = jasmine.createSpy('onError');
+      manager.hook('error', onError)();
+
+      manager.reportHandlerError(error, 'foo');
+
+      expect(onError).not.toHaveBeenCalled();
+    });
+
+    it('keeps calling the remaining handlers as others unsubscribe', () => {
+      const first = jasmine.createSpy('first');
+      const second = jasmine.createSpy('second');
+      const third = jasmine.createSpy('third');
+      manager.hook('error', first);
+      const unsubscribeSecond = manager.hook('error', second);
+      const unsubscribeThird = manager.hook('error', third);
+
+      unsubscribeSecond();
+      manager.reportHandlerError(error, 'foo');
+      unsubscribeThird();
+      manager.reportHandlerError(error, 'foo');
+
+      expect(first).toHaveBeenCalledTimes(2);
+      expect(second).not.toHaveBeenCalled();
+      expect(third).toHaveBeenCalledTimes(1);
+    });
+
+    it('accepts new handlers after the last one unsubscribes', () => {
+      const first = jasmine.createSpy('first');
+      const second = jasmine.createSpy('second');
+      manager.hook('error', first)();
+      manager.hook('error', second);
+
+      manager.reportHandlerError(error, 'foo');
+
+      expect(first).not.toHaveBeenCalled();
+      expect(second).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips a handler unsubscribed by an earlier handler in the same emission', () => {
+      const second = jasmine.createSpy('second');
+      let unsubscribeSecond: () => void;
+      manager.hook('error', () => unsubscribeSecond());
+      unsubscribeSecond = manager.hook('error', second);
+
+      manager.reportHandlerError(error, 'foo');
+
+      expect(second).not.toHaveBeenCalled();
+    });
+
+    it('does not call a handler added during the same emission', () => {
+      const late = jasmine.createSpy('late');
+      manager.hook('error', () => {
+        manager.hook('error', late);
+      });
+
+      manager.reportHandlerError(error, 'foo');
+      expect(late).not.toHaveBeenCalled();
+
+      manager.reportHandlerError(error, 'foo');
+      expect(late).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('brackets activation when the first own listener is added', () => {
     host.hasListeners.and.returnValue(true);
 
