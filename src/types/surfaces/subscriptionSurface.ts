@@ -5,8 +5,6 @@ import type {Bus} from '../../strongbus';
 import type {Subscription, EventMap, Listenable, SubscribableListenable} from '../events';
 import type {
   EventHandler,
-  EventSink,
-  TapHandler,
   PipePredicate,
   InferPipeDownstreamMap,
   PipePayloadOverlap
@@ -74,22 +72,6 @@ export type SubscriptionSurfaceScan<TEventMap extends EventMap> = {
   >(params: ScanParams<T, TEventMap, TMap>): CancelablePromise<T>;
 }['bivarianceHack'];
 
-/** @internal Callable shape of {@link SubscriptionSurface.any}. */
-export type SubscriptionSurfaceAny<TEventMap extends EventMap> = {
-  bivarianceHack<
-    TMap extends AnyEventMap<TEventMap>,
-    TEvents extends SubscribableEventKeys<TMap>[] & SubscribableEventKeys<TEventMap>[]
-  >(events: TEvents, handler: EventSink<TMap>, options?: SubscribeOptions): Subscription;
-}['bivarianceHack'];
-
-/** @internal Callable shape of {@link SubscriptionSurface.tap}. */
-export type SubscriptionSurfaceTap<TEventMap extends EventMap> = {
-  bivarianceHack<TMap extends PipeEventMap<TEventMap>>(
-    handler: TapHandler<TMap>,
-    options?: SubscribeOptions
-  ): Subscription;
-}['bivarianceHack'];
-
 /**
  * Handle returned by {@link SubscriptionSurface.pipe} when given a {@link PipePredicate}.
  * Call {@link FilteredPipeHandle.pipe} to attach a filtered graph edge.
@@ -102,19 +84,6 @@ export type FilteredPipeHandle<TEventMap extends EventMap> = {
     ): TDownstream;
   }['bivarianceHack'];
 };
-
-/** @internal Callable shape of {@link SubscriptionSurface.pipe}. */
-export type SubscriptionSurfacePipe<TEventMap extends EventMap> = {
-  bivarianceHack: {
-    <TMap extends PipeEventMap<TEventMap>>(
-      predicate: PipePredicate<TMap>
-    ): FilteredPipeHandle<TMap>;
-    <TDownstream extends Bus<any>>(
-      downstream: TDownstream & PipePayloadOverlap<TEventMap, InferPipeDownstreamMap<TDownstream>>,
-      options?: SubscribeOptions
-    ): TDownstream;
-  };
-}['bivarianceHack'];
 
 /**
  * Callable shape of {@link SubscriptionSurface.next}.
@@ -136,11 +105,6 @@ export type SubscriptionSurfaceNext<TEventMap extends EventMap> = {
       options?: SubscribeOptions
     ): CancelablePromise<NextResult<TEventMap, T>>;
   };
-}['bivarianceHack'];
-
-/** @internal Callable shape of {@link SubscriptionSurface.unpipe}. */
-export type SubscriptionSurfaceUnpipe<TEventMap extends EventMap> = {
-  bivarianceHack<TDownstream extends Bus<any>>(downstream: TDownstream): void;
 }['bivarianceHack'];
 
 /**
