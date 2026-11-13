@@ -31,16 +31,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run, rather than using a hook registered during `pipe()`. Downstream hooks registered after
   `pipe()` now run before the upstream is notified, instead of after.
 - **Less memory per pipe** — A non-incognito `pipe()` no longer registers four lifecycle hooks on
-  the downstream bus. Under esbuild with `keepNames`, this reduces two piped buses from 14,284 B
-  to 11,402 B, and three chained buses from 23,644 B to 17,884 B.
+  the downstream bus. Under esbuild with `keepNames`, two piped buses hold about 20% less
+  memory, and three chained buses about 24% less.
 - **Less memory per bus for the internal methods it uses** — The classes a `Bus` delegates to no
   longer use `@autobind`, so a bus no longer keeps a bound copy of each internal method it calls.
-  `Bus` and `Scanner` still autobind because callers destructure their methods. Unbundled, three
-  subscriptions on a bus dropped from 3,687 B to 2,949 B.
+  `Bus` and `Scanner` still autobind because callers destructure their methods. Unbundled, a bus
+  with three subscriptions holds about 20% less memory.
 - **Subscription closures are anonymous** — Under esbuild with `keepNames`, closures for
-  subscriptions, `once`, or `any` events previously carried a redefined `name` costing about 250 B.
-  They are now created without a name, appearing as anonymous functions in stack traces and
-  profiles. A bus with two `on`s and an `any` over two events dropped from 10,380 B to 9,220 B.
+  subscriptions, `once`, or `any` events previously carried a redefined `name`. They are now
+  created without a name, appearing as anonymous functions in stack traces and profiles. A bus
+  with two `on`s and an `any` over two events holds about 11% less memory.
+- **Less memory per subscription** — A bus previously tracked subscriptions across multiple maps per
+  kind, handler, and event, allocating around ten `Map`s and `Set`s for a few listeners. It now
+  stores one registration per distinct kind, handler, and event, and frees incognito bookkeeping
+  when the last incognito subscription is removed. Duplicate subscription behavior is unchanged.
+  Under esbuild with `keepNames`, an empty bus holds about 25% less memory, and a bus with two
+  `on`s and an `any` over two events about 24% less.
+- **Collections are allocated on first use** — A new bus previously created seven `Map`s and
+  `Set`s, plus a `ScannerPools`, for the pipe graph, lifecycle hooks, in-flight `next` / `scan`
+  promises, and subscriptions, even if unused. These now start as shared empty collections and
+  are replaced on first write, deferring the cost until the feature is used. Under esbuild with
+  `keepNames`, an empty bus holds about 45% less memory, and two piped buses about 22% less.
+- **A lone lifecycle hook is stored without a `Set`** — Hooking a lifecycle event previously
+  allocated a `Set`, even though most buses hook each event at most once. A single handler is
+  now stored directly, and a `Set` is only created for a second, different handler. On Node 24,
+  hooks hold about 53% less memory on a bus with one `error` hook, and about 82% less on a bus
+  with four hooks.
+- **`any`, `tap`, `pipe`, and `unpipe` are prototype methods** — These were previously instance
+  fields, allocating four closures per bus at construction. They are now methods on
+  `Bus.prototype`, bound on first read like other `Bus` methods so destructuring still works.
+  They are no longer own enumerable properties, meaning `Object.keys(bus)` and `{...bus}` omit
+  them, matching `on` and `emit`. Their types are unchanged.
 
 ### Fixed
 
