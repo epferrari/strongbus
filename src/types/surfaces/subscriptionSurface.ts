@@ -186,7 +186,9 @@ export interface SubscriptionSurface<TEventMap extends EventMap = EventMap> {
     options?: SubscribeOptions
   ): Subscription;
 
-  any: SubscriptionSurfaceAny<TEventMap>;
+  // `any`, `tap`, `pipe` and `unpipe` take their types from the Bus methods: a generic signature is only
+  // assignable Wide-to-Narrow when both sides instantiate the same declaration
+  any: Bus<TEventMap>['any'];
 
   /**
    * Await the first matching event as a `CancelablePromise` of `{event, payload}`.
@@ -210,11 +212,11 @@ export interface SubscriptionSurface<TEventMap extends EventMap = EventMap> {
    * Observe every raised event as a correlated {@link PipedMessage}.
    * Does not create a graph edge. Unsubscribe via the returned {@link Subscription}.
    */
-  tap: SubscriptionSurfaceTap<TEventMap>;
+  tap: Bus<TEventMap>['tap'];
 
-  pipe: SubscriptionSurfacePipe<TEventMap>;
+  pipe: Bus<TEventMap>['pipe'];
 
-  unpipe: SubscriptionSurfaceUnpipe<TEventMap>;
+  unpipe: Bus<TEventMap>['unpipe'];
 }
 
 /**

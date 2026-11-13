@@ -12,7 +12,9 @@ import type {
   EventSink,
   TapHandler,
   PipePredicate,
-  GenericHandler
+  GenericHandler,
+  InferPipeDownstreamMap,
+  PipePayloadOverlap
 } from './types/eventHandlers';
 import type {Logger} from './types/logger';
 import {
@@ -29,12 +31,10 @@ import {
 import {ListenerScope, type IntrospectionOptions} from './types/listenerScope';
 import type {
   SubscriptionSurface,
-  SubscriptionSurfaceAny,
   SubscriptionSurfaceNext,
-  SubscriptionSurfacePipe,
   SubscriptionSurfaceScan,
-  SubscriptionSurfaceTap,
-  SubscriptionSurfaceUnpipe,
+  AnyEventMap,
+  PipeEventMap,
   FilteredPipeHandle,
   NextResult,
   SubscribeOptions
@@ -354,34 +354,29 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    * Duplicate `any` with the same event set (order-independent) and handler honors
    * {@link Options.duplicateSubscriptionStrategy}.
    */
-  public any: SubscriptionSurfaceAny<TEventMap> = ((
-    events,
-    handler,
-    options?: SubscribeOptions
-  ) => {
+  public any<
+    TMap extends AnyEventMap<TEventMap>,
+    TEvents extends SubscribableEventKeys<TMap>[] & SubscribableEventKeys<TEventMap>[]
+  >(events: TEvents, handler: EventSink<TMap>, options?: SubscribeOptions): Subscription {
     if(this.guard('any')) {
       return inertSubscription();
     }
-    return this.subscriptions.any(
-      events as EventKeys<TEventMap>[],
-      handler as unknown as EventSink<TEventMap>,
-      options
-    );
-  }) as SubscriptionSurfaceAny<TEventMap>;
+    return this.subscriptions.any(events, handler as unknown as EventSink<TEventMap>, options);
+  }
 
   /**
    * Observe every raised event as a correlated `{event, payload}` message.
    * Does not create a graph edge. Unsubscribe via the returned {@link Subscription}.
    */
-  public tap: SubscriptionSurfaceTap<TEventMap> = ((
-    handler: TapHandler<TEventMap>,
+  public tap<TMap extends PipeEventMap<TEventMap>>(
+    handler: TapHandler<TMap>,
     options?: SubscribeOptions
-  ) => {
+  ): Subscription {
     if(this.guard('tap')) {
       return inertSubscription();
     }
-    return this.subscriptions.tap(handler, options);
-  }) as SubscriptionSurfaceTap<TEventMap>;
+    return this.subscriptions.tap(handler as unknown as TapHandler<TEventMap>, options);
+  }
 
   /**
    * Attach a graph edge to another {@link Bus}, or return a {@link FilteredPipeHandle}
@@ -394,31 +389,36 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
    *
    * Requires a real {@link Bus} instance — not a hand-rolled surface duck type.
    */
-  public pipe: SubscriptionSurfacePipe<TEventMap> = ((
+  public pipe<TMap extends PipeEventMap<TEventMap>>(
+    predicate: PipePredicate<TMap>
+  ): FilteredPipeHandle<TMap>;
+  public pipe<TDownstream extends Bus<any>>(
+    downstream: TDownstream & PipePayloadOverlap<TEventMap, InferPipeDownstreamMap<TDownstream>>,
+    options?: SubscribeOptions
+  ): TDownstream;
+  public pipe(
     dest: PipePredicate<TEventMap> | Bus<any>,
     options?: SubscribeOptions
-  ): FilteredPipeHandle<TEventMap> | Bus<any> => {
+  ): FilteredPipeHandle<TEventMap> | Bus<any> {
     if(this.guard('pipe')) {
       return typeof dest === 'function' ? inertFilteredPipeHandle() : dest;
     } else if(typeof dest === 'function') {
-      return this.createFilteredPipeHandle(dest as PipePredicate<TEventMap>);
+      return this.createFilteredPipeHandle(dest);
     } else if(dest.guardAsPipeTarget(this.name)) {
       return dest;
     }
     return this.connectDownstreamNode(dest, options) as Bus<any>;
-  }) as SubscriptionSurfacePipe<TEventMap>;
+  }
 
   /**
    * Stop piping events into a bus previously passed to {@link Bus.pipe}.
    */
-  public unpipe: SubscriptionSurfaceUnpipe<TEventMap> = ((
-    dest: Bus<any>
-  ) => {
+  public unpipe<TDownstream extends Bus<any>>(dest: TDownstream): void {
     if(this.guard('unpipe')) {
       return;
     }
     this.disconnectDownstreamNode(dest);
-  }) as SubscriptionSurfaceUnpipe<TEventMap>;
+  }
 
   /**
    * Utility for resolving/rejecting a promise based on the reception of an event.
