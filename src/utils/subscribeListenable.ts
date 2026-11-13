@@ -1,6 +1,7 @@
 import {type EventMap, type Subscription, WILDCARD, type Listenable} from '../types/events';
 import type {EventHandler, EventSink, TapHandler} from '../types/eventHandlers';
-import type {SubscribeOptions, SubscriptionSurfacePipe, SubscriptionSurfaceTap} from '../types/surfaces/subscriptionSurface';
+import type {Bus} from '../strongbus';
+import type {SubscribeOptions} from '../types/surfaces/subscriptionSurface';
 import type {EventKeys, SubscribableEventKeys} from '../types/utility';
 
 export interface ListenableSubscriber<TEventMap extends EventMap> {
@@ -14,8 +15,8 @@ export interface ListenableSubscriber<TEventMap extends EventMap> {
     handler: EventSink<TEventMap>,
     options?: SubscribeOptions
   ): Subscription;
-  pipe: SubscriptionSurfacePipe<TEventMap>;
-  tap: SubscriptionSurfaceTap<TEventMap>;
+  pipe: Bus<TEventMap>['pipe'];
+  tap: Bus<TEventMap>['tap'];
 }
 
 export function subscribeListenable<TEventMap extends EventMap>(
