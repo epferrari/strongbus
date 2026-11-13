@@ -10,6 +10,7 @@ import type {EventMap} from './types/events';
 import type {EventKeys, VoidEventKeys} from './types/utility';
 import {over} from './utils/over';
 import {bytesRetainedPer} from './support/heapFootprint';
+import {haveSameHiddenClass} from './support/hiddenClass';
 
 type TestEventMap = {
   foo: string;
@@ -1277,6 +1278,27 @@ describe('Strongbus.Bus', () => {
       expect(Object.keys({...fresh})).toEqual(jasmine.arrayContaining(methods));
       expect(fresh.pipe).toBe(fresh.pipe);
       expect(Object.keys(fresh)).toEqual(jasmine.arrayContaining(methods));
+    });
+
+    it('leave a bus with one hidden class however they are read or replaced', () => {
+      const fresh = new Strongbus.Bus<TestEventMap>();
+      const readInOrder = (...names: ('any' | 'tap' | 'pipe' | 'unpipe')[]): Strongbus.Bus<TestEventMap> => {
+        const readBus = new Strongbus.Bus<TestEventMap>();
+        names.forEach((name) => readBus[name]);
+        return readBus;
+      };
+      const replaced = new Strongbus.Bus<TestEventMap>();
+      replaced.pipe = ((): undefined => undefined) as unknown as typeof replaced.pipe;
+
+      const buses = [
+        readInOrder('pipe'),
+        readInOrder('unpipe', 'any'),
+        readInOrder('tap', 'pipe', 'any', 'unpipe'),
+        readInOrder('any', 'tap'),
+        replaced
+      ];
+
+      expect(buses.every((other) => haveSameHiddenClass(fresh, other))).toBe(true);
     });
 
     it('can be replaced on one bus with a spy without affecting others', () => {
