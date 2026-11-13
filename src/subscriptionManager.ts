@@ -5,6 +5,7 @@ import type {SubscribeOptions} from './types/surfaces/subscriptionSurface';
 import type {EventKeys} from './types/utility';
 import type {LifecycleManager} from './lifecycleManager';
 import {type StrongbusLogger} from './strongbusLogger';
+import {EMPTY_MAP} from './utils/emptyCollections';
 import {over} from './utils/over';
 import {unnamed} from './utils/unnamed';
 
@@ -192,8 +193,8 @@ export class SubscriptionManager<TEventMap extends EventMap> {
    * Every registration, found by the handler the caller passed: the first of a chain linked by
    * {@link Registration.next}, or a {@link RegistrationIndex} once the handler has many
    */
-  private readonly registrations = new Map<GenericHandler, Registration | RegistrationIndex>();
-  private readonly handlersByEvent = new Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>();
+  private registrations = EMPTY_MAP as Map<GenericHandler, Registration | RegistrationIndex>;
+  private handlersByEvent = EMPTY_MAP as Map<EventKeys<TEventMap>|WILDCARD, Set<GenericHandler>>;
   /**
    * Number of (event, handler) pairs in `handlersByEvent`, kept in step with it so the lifecycle
    * checks on every add and remove stay O(1) instead of rebuilding the full listener map each time.
@@ -282,8 +283,8 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     if(!includeIncognito) {
       return;
     }
-    this.handlersByEvent.clear();
-    this.registrations.clear();
+    this.handlersByEvent = EMPTY_MAP;
+    this.registrations = EMPTY_MAP;
     this.handlerTotal = 0;
     this.incognito = NO_INCOGNITO;
     this.surplus = NO_SURPLUS;
@@ -553,6 +554,9 @@ export class SubscriptionManager<TEventMap extends EventMap> {
   private index(registration: Registration): void {
     const entry = this.registrations.get(registration.handler);
     if(!entry) {
+      if(this.registrations === EMPTY_MAP) {
+        this.registrations = new Map();
+      }
       this.registrations.set(registration.handler, registration);
     } else if(entry instanceof RegistrationIndex) {
       entry.add(registration);
@@ -620,6 +624,9 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     let next = prev;
     if(!next) {
       next = new Set<GenericHandler>();
+      if(this.handlersByEvent === EMPTY_MAP) {
+        this.handlersByEvent = new Map();
+      }
       this.handlersByEvent.set(event, next);
     } else if(this.setsBeingIterated.includes(next)) {
       next = new Set<GenericHandler>(prev);
