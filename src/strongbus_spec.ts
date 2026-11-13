@@ -1268,17 +1268,6 @@ describe('Strongbus.Bus', () => {
       expect(singleEventHandler).not.toHaveBeenCalledWith('owl');
     });
 
-    it('are own enumerable properties of the bus before and after they are read', () => {
-      const methods = ['any', 'tap', 'pipe', 'unpipe'];
-      const fresh = new Strongbus.Bus<TestEventMap>();
-
-      expect(methods.every((name) => Object.prototype.hasOwnProperty.call(fresh, name))).toBe(true);
-      expect(Object.keys(fresh)).toEqual(jasmine.arrayContaining(methods));
-      expect(Object.keys({...fresh})).toEqual(jasmine.arrayContaining(methods));
-      expect(fresh.pipe).toBe(fresh.pipe);
-      expect(Object.keys(fresh)).toEqual(jasmine.arrayContaining(methods));
-    });
-
     it('can be replaced on one bus with a spy without affecting others', () => {
       const other = new Strongbus.Bus<TestEventMap>();
       const pipe = spyOn(bus, 'pipe').and.callThrough();

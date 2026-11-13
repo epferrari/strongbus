@@ -248,9 +248,6 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
 
   constructor(options?: Options) {
     super();
-    for(const [name, descriptor] of Bus.ownMethods) {
-      Object.defineProperty(this, name, descriptor);
-    }
     this.options = Bus.mergeOptions(Bus.defaultOptions, options);
     this.name = `${uniqueName(this.options.name)} ${this.constructor.name}`;
     this.logger = new StrongbusLogger<TEventMap>({
@@ -735,11 +732,8 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   }
 
   // these members' public types are generic aliases merged in from the surfaces above, which a class
-  // method cannot express without breaking Wide-to-Narrow bus assignability. Each bus gets them as own
-  // enumerable accessors, as when they were fields; because every bus shares these descriptors, V8
-  // keeps them on the hidden class, and a bus binds each method only the first time it is read.
-  private static ownMethods: [string, PropertyDescriptor][];
-
+  // method cannot express without breaking Wide-to-Narrow bus assignability. Installing them on the
+  // prototype means a bus binds each one only the first time it is read, like its other methods.
   static {
     const methods = {
       any(this: Bus<any>, events: EventKeys<any>[], handler: EventSink<any>, options?: SubscribeOptions): Subscription {
@@ -779,18 +773,13 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
       }
     };
 
-    Bus.ownMethods = Object.entries(methods).map(([name, method]): [string, PropertyDescriptor] => [name, {
-      enumerable: true,
-      configurable: true,
-      get(this: Bus<any>) {
-        const bound = (method as (...args: any[]) => unknown).bind(this);
-        Object.defineProperty(this, name, {value: bound, writable: true, enumerable: true, configurable: true});
-        return bound;
-      },
-      set(this: Bus<any>, value: unknown) {
-        Object.defineProperty(this, name, {value, writable: true, enumerable: true, configurable: true});
-      }
-    }]);
+    for(const [name, method] of Object.entries(methods)) {
+      Object.defineProperty(
+        Bus.prototype,
+        name,
+        autobind(Bus.prototype, name, {value: method, writable: true, configurable: true})
+      );
+    }
   }
 
 }
