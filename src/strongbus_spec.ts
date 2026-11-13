@@ -1267,6 +1267,22 @@ describe('Strongbus.Bus', () => {
 
       expect(subscribed - empty).toBeLessThan(2000);
     });
+
+    it('costs a bus that dropped its only incognito subscription what it costs after dropping a plain one', () => {
+      const handler = (): void => undefined;
+      const afterPlain = bytesRetainedPer(() => {
+        const plainBus = new Strongbus.Bus<TestEventMap>();
+        plainBus.on('foo', handler)();
+        return plainBus;
+      });
+      const afterIncognito = bytesRetainedPer(() => {
+        const incognitoBus = new Strongbus.Bus<TestEventMap>();
+        incognitoBus.on('foo', handler, {incognito: true})();
+        return incognitoBus;
+      });
+
+      expect(afterIncognito - afterPlain).toBeLessThan(100);
+    });
   });
 
   describe('listener bookkeeping with many handlers', () => {
