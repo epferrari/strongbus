@@ -271,17 +271,15 @@ export class SubscriptionManager<TEventMap extends EventMap> {
    * @param includeIncognito - when `false`, incognito registrations are left in place
    */
   public releaseAll(includeIncognito: boolean = true): void {
-    const pending: Subscription[] = [];
-    for(const kind of ['on', 'once', 'any', 'tap'] as const) {
-      for(const entry of this.registrations.values()) {
-        for(const r of registrationsOf(entry)) {
-          if(r.kind === kind && (includeIncognito || !r.incognito)) {
-            pending.push(...r.frames);
-          }
+    const pending: Record<RegistrationKind, Subscription[]> = {on: [], once: [], any: [], tap: []};
+    for(const entry of this.registrations.values()) {
+      for(const r of registrationsOf(entry)) {
+        if(includeIncognito || !r.incognito) {
+          pending[r.kind].push(...r.frames);
         }
       }
     }
-    over(pending)();
+    over([...pending.on, ...pending.once, ...pending.any, ...pending.tap])();
     if(!includeIncognito) {
       return;
     }
@@ -503,7 +501,10 @@ export class SubscriptionManager<TEventMap extends EventMap> {
   }
 
   private adjustSurplus(event: ListenerKey, delta: number): void {
-    if(delta > 0 && this.surplus === NO_SURPLUS) {
+    if(this.surplus === NO_SURPLUS) {
+      if(delta <= 0) {
+        return;
+      }
       this.surplus = new StackedSurplus();
     }
     this.surplus.adjust(event, delta);
@@ -663,7 +664,12 @@ export class SubscriptionManager<TEventMap extends EventMap> {
     const removed = set.delete(handler);
     if(removed) {
       this.handlerTotal -= 1;
-      this.incognito.delete(event, handler);
+      if(this.incognito !== NO_INCOGNITO) {
+        this.incognito.delete(event, handler);
+        if(this.incognito.total === 0) {
+          this.incognito = NO_INCOGNITO;
+        }
+      }
       if(set.size === 0) {
         this.handlersByEvent.delete(event);
       }
