@@ -5,7 +5,7 @@ import type {LeakDetectionOptions, ListenerThresholds, Options} from './options'
 /**
  * {@link LeakDetectionOptions} after defaults are applied. `enabled` is `false` once
  * `leakDetection: false` is merged in, and the other settings are kept so a later
- * `leakDetection` object turns detection back on with them.
+ * `leakDetection` object, `thresholds`, or `verbose` turns detection back on with them.
  * @internal
  */
 export type MaterializedLeakDetection = {
@@ -34,7 +34,8 @@ export type MaterializedBusOptions = Omit<
 
 /**
  * Merge leak-detection overrides onto `base`. The deprecated `thresholds` and `verbose`
- * apply first, so `leakDetection` wins where both set the same thing.
+ * apply first, so `leakDetection` wins where both set the same thing. On their own they
+ * turn detection back on, as setting a finite threshold did before `leakDetection: false` existed.
  * @internal
  */
 export function resolveLeakDetection(
@@ -44,6 +45,7 @@ export function resolveLeakDetection(
   const {leakDetection, thresholds, verbose} = overrides;
   const legacy: MaterializedLeakDetection = {
     ...base,
+    enabled: base.enabled || thresholds !== undefined || verbose !== undefined,
     thresholds: {...base.thresholds, ...thresholds},
     cadence: verbose === undefined ? base.cadence : (verbose ? 'every' : 'boundary')
   };

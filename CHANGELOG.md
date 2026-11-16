@@ -11,8 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`options.leakDetection`** — Groups memory-leak detection settings: `thresholds`, and `cadence`
   (`'boundary'`, the default, or `'every'`), which replaces the `verbose` boolean. Set it to `false` to turn
-  detection off for a bus; a later `Bus.configure` with a `leakDetection` object turns it back on with the
-  bus's earlier settings. Leak messages still go through `logger`.
+  detection off for a bus; a later `Bus.configure` with a `leakDetection` object, `thresholds`, or `verbose`
+  turns it back on with the bus's earlier settings. Leak messages still go through `logger`.
 - **`leakDetection.pipeEdges`** (default `false`) — Counts edges to buses this bus pipes into, which
   previously went uncounted even though each edge retains the downstream bus and its listeners. `true` counts
   each edge as one listener for `'*'`, alongside `tap` handlers. `{thresholds}` counts edges on their own,
@@ -22,8 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Deprecated
 
 - **`options.thresholds` and `options.verbose`** — Use `leakDetection.thresholds` and `leakDetection.cadence`
-  (`verbose: true` is `cadence: 'every'`). Both still work; `leakDetection` wins when both are set, and they
-  never turn a disabled bus's detection back on.
+  (`verbose: true` is `cadence: 'every'`). Both, and the `Bus.defaultThresholds` and `Bus.verbose` setters,
+  work as before, including turning detection back on after `leakDetection: false`. `leakDetection` wins
+  when both are set in the same call.
 
 ## [3.2.0]
 

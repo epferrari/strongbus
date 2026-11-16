@@ -758,8 +758,8 @@ new Bus<Events>({leakDetection: false}); // never log leak warnings for this bus
 
 `false` turns detection off but keeps the bus's settings, so a later `Bus.configure({leakDetection: {...}})` turns it
 back on with them. The top-level `thresholds` and `verbose` options are deprecated aliases for
-`leakDetection.thresholds` and `leakDetection.cadence` (`verbose: true` is `'every'`); `leakDetection` wins where both
-are set.
+`leakDetection.thresholds` and `leakDetection.cadence` (`verbose: true` is `'every'`). They also turn detection back
+on, as setting a threshold always resumed logging; `leakDetection` wins where both are set in the same call.
 
 Thresholds apply per bus, to that bus's **own** listeners only (including incognito ones). Listeners added to a
 downstream bus are checked against the downstream's thresholds alone, never the upstream's. This differs from

@@ -37,9 +37,11 @@ export interface LeakDetectionOptions {
  * `'ignore'` (default no-op), `'throw'`, or a custom `(event, payload) => void` callback
  * @prop name `"Anonymous"` - A name for the bus. Included in warn/info/error potential memory leak messages and unhandled event errors thrown
  * @prop leakDetection {@link LeakDetectionOptions} - memory-leak detection settings, or `false` to turn it off
- * @prop thresholds - deprecated, use `leakDetection.thresholds`. Overridden by `leakDetection` when both are set
+ * @prop thresholds - deprecated, use `leakDetection.thresholds`. Turns leak detection back on if it was off.
+ * Overridden by `leakDetection` when both are set
  * @prop logger {@link Logger | () => Logger} - Where Strongbus logs, including potential memory leaks. When omitted, a built-in console adapter is used.
- * @prop verbose - deprecated, use `leakDetection.cadence` (`true` is `'every'`). Overridden by `leakDetection` when both are set
+ * @prop verbose - deprecated, use `leakDetection.cadence` (`true` is `'every'`). Turns leak detection back on if it
+ * was off. Overridden by `leakDetection` when both are set
  * @prop coalesceDownstreamLifecycleEvents [true] - when true, coalesce will/did add/remove hooks to one
  * emission per event key during `pipe()` / `unpipe()` reconcile of a heavily-subscribed downstream bus
  * @prop duplicateSubscriptionStrategy - how duplicate listenable+handler registrations behave

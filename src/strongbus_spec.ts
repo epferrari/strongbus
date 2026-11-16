@@ -209,13 +209,59 @@ describe('Strongbus.Bus', () => {
       expect((new Strongbus.Bus() as any).options.leakDetection.pipeEdges).toBeTrue();
     });
 
-    it('does not re-enable leak detection through the deprecated options', () => {
+    it('re-enables leak detection through the deprecated thresholds option', () => {
       Strongbus.Bus.configure({leakDetection: false});
       Strongbus.Bus.configure({thresholds: {info: 3}});
 
       const {leakDetection} = (new Strongbus.Bus() as any).options;
+      expect(leakDetection.enabled).toBeTrue();
+      expect(leakDetection.thresholds.info).toBe(3);
+    });
+
+    it('re-enables leak detection through the deprecated verbose option', () => {
+      Strongbus.Bus.configure({leakDetection: false});
+      Strongbus.Bus.configure({verbose: false});
+
+      const {leakDetection} = (new Strongbus.Bus() as any).options;
+      expect(leakDetection.enabled).toBeTrue();
+      expect(leakDetection.cadence).toBe('boundary');
+    });
+
+    it('re-enables leak detection through the deprecated static setters', () => {
+      Strongbus.Bus.configure({leakDetection: false});
+      Strongbus.Bus.defaultThresholds = {warn: 7};
+      expect((new Strongbus.Bus() as any).options.leakDetection).toEqual(
+        jasmine.objectContaining({enabled: true, thresholds: {info: 100, warn: 7, error: Infinity}})
+      );
+
+      Strongbus.Bus.configure({leakDetection: false});
+      Strongbus.Bus.verbose = true;
+      expect((new Strongbus.Bus() as any).options.leakDetection).toEqual(
+        jasmine.objectContaining({enabled: true, cadence: 'every'})
+      );
+    });
+
+    it('prefers leakDetection: false over deprecated options in the same call', () => {
+      Strongbus.Bus.configure({leakDetection: false, thresholds: {info: 3}, verbose: true});
+
+      const {leakDetection} = (new Strongbus.Bus() as any).options;
       expect(leakDetection.enabled).toBeFalse();
       expect(leakDetection.thresholds.info).toBe(3);
+      expect(leakDetection.cadence).toBe('every');
+    });
+
+    it('logs again once deprecated thresholds are configured after leakDetection: false', () => {
+      const logger: jasmine.SpyObj<Logger> = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+      Strongbus.Bus.configure({leakDetection: false});
+      Strongbus.Bus.configure({thresholds: {info: 2}});
+      const configured = new Strongbus.Bus<TestEventMap>({name: 'Configured', logger});
+
+      configured.on('foo', () => undefined);
+      configured.on('foo', () => undefined);
+
+      expect(logger.info).toHaveBeenCalledOnceWith(
+        StrongbusLogMessages.infoThresholdReached('Configured Bus', 2, 'foo')
+      );
     });
 
     it('does not apply name via configure', () => {
