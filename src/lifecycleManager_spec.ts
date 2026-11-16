@@ -20,7 +20,8 @@ describe('LifecycleManager', () => {
       leakDetection: {
         enabled: true,
         thresholds: {info: 100, warn: 500, error: Infinity},
-        cadence: 'boundary'
+        cadence: 'boundary',
+        pipeEdges: false
       }
     });
     lifecycleOptions = {coalesceDownstreamLifecycleEvents: false, suppressDefaultUnhandledErrorLogging: true};

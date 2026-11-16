@@ -87,7 +87,8 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
         warn: 500,
         error: Infinity
       },
-      cadence: 'boundary'
+      cadence: 'boundary',
+      pipeEdges: false
     },
     coalesceDownstreamLifecycleEvents: true,
     duplicateSubscriptionStrategy: resolveDuplicateSubscriptionStrategy(),
@@ -213,6 +214,10 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
 
     public hasDownstream(): boolean {
       return this.bus.hasDownstream();
+    }
+
+    public downstreamEdgeCount(): number {
+      return this.bus.downstreamEdgeCount();
     }
 
     public someDownstream(
@@ -720,6 +725,10 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     if((scope & ListenerScope.ANY) === ListenerScope.ANY) {
       this.releaseAllUpstreamEdges(includeIncognito);
     }
+  }
+
+  protected ownWildcardListenerCount(): number {
+    return this.subscriptions.ownListenerCountForEvent(WILDCARD);
   }
 
   private trackInFlight<P extends CancelablePromise<any>>(p: P, incognito: boolean): P {

@@ -17,6 +17,8 @@ import {unnamed} from './utils/unnamed';
 export interface SubscriptionHost {
   invalidateOwnListenerCache(): void;
   invalidateListenerCachesUpstream(): void;
+  /** Edges to buses this bus pipes into, incognito ones included */
+  downstreamEdgeCount(): number;
 }
 
 type ListenerKey = string | number | symbol;
@@ -209,13 +211,13 @@ export class SubscriptionManager<TEventMap extends EventMap> {
   private deferredReleases: {registration: Registration; subscription: Subscription}[] | undefined;
 
   private readonly host: SubscriptionHost;
-  private readonly options: Pick<MaterializedBusOptions, 'duplicateSubscriptionStrategy'>;
+  private readonly options: Pick<MaterializedBusOptions, 'duplicateSubscriptionStrategy' | 'leakDetection'>;
   private readonly logger: StrongbusLogger<TEventMap>;
   private readonly lifecycle: LifecycleManager<TEventMap>;
 
   constructor(params: {
     host: SubscriptionHost;
-    options: Pick<MaterializedBusOptions, 'duplicateSubscriptionStrategy'>;
+    options: Pick<MaterializedBusOptions, 'duplicateSubscriptionStrategy' | 'leakDetection'>;
     logger: StrongbusLogger<TEventMap>;
     lifecycle: LifecycleManager<TEventMap>;
   }) {
@@ -649,7 +651,7 @@ export class SubscriptionManager<TEventMap extends EventMap> {
       this.lifecycle.ownListenerDidAdd(event);
     }
     if(added) {
-      this.logger.onAddListener(event, this.ownListenerCountForEvent(event));
+      this.logger.onAddListener(event, this.leakCountFor(event));
     }
   }
 
@@ -675,8 +677,17 @@ export class SubscriptionManager<TEventMap extends EventMap> {
       }
       this.host.invalidateListenerCachesUpstream();
       this.host.invalidateOwnListenerCache();
-      this.logger.onListenerRemoved(event, this.ownListenerCountForEvent(event));
+      this.logger.onListenerRemoved(event, this.leakCountFor(event));
     }
+  }
+
+  /** What leak detection counts for `event`: own listeners, plus pipe edges for `'*'` under `pipeEdges: true` */
+  private leakCountFor(event: EventKeys<TEventMap>|WILDCARD): number {
+    const count = this.ownListenerCountForEvent(event);
+    if(event === WILDCARD && this.options.leakDetection.pipeEdges === true) {
+      return count + this.host.downstreamEdgeCount();
+    }
+    return count;
   }
 
   /** Distinct handlers for `event`, plus the extra listeners stacked duplicates add */

@@ -12,6 +12,8 @@ export type MaterializedLeakDetection = {
   enabled: boolean;
   thresholds: Required<ListenerThresholds>;
   cadence: Required<LeakDetectionOptions>['cadence'];
+  /** Partial thresholds stay partial, so they keep following `thresholds` when it is configured later. */
+  pipeEdges: Required<LeakDetectionOptions>['pipeEdges'];
 };
 
 /**
@@ -53,8 +55,21 @@ export function resolveLeakDetection(
   return {
     enabled: true,
     thresholds: {...legacy.thresholds, ...leakDetection.thresholds},
-    cadence: leakDetection.cadence ?? legacy.cadence
+    cadence: leakDetection.cadence ?? legacy.cadence,
+    pipeEdges: resolvePipeEdges(legacy.pipeEdges, leakDetection.pipeEdges)
   };
+}
+
+function resolvePipeEdges(
+  base: MaterializedLeakDetection['pipeEdges'],
+  override: LeakDetectionOptions['pipeEdges']
+): MaterializedLeakDetection['pipeEdges'] {
+  if(override === undefined) {
+    return base;
+  } else if(typeof base === 'object' && typeof override === 'object') {
+    return {thresholds: {...base.thresholds, ...override.thresholds}};
+  }
+  return override;
 }
 
 const DEFAULT_DUPLICATE_SUBSCRIPTION_STRATEGY: DuplicateSubscriptionStrategy = {

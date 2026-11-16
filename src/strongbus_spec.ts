@@ -3,7 +3,7 @@ import {CancelablePromise, parallel, sleep, TimeoutExpiredError} from 'jaasync';
 
 import * as Strongbus from './';
 import type {Scanner} from './scanner';
-import {StrongbusLogMessages} from './strongbusLogger';
+import {PIPE_EDGES, StrongbusLogMessages} from './strongbusLogger';
 import type {Logger} from './types/logger';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import type {EventMap} from './types/events';
@@ -67,7 +67,8 @@ describe('Strongbus.Bus', () => {
         expect(leakDetection).toEqual({
           enabled: true,
           thresholds: {info: 100, warn: 500, error: Infinity},
-          cadence: 'boundary'
+          cadence: 'boundary',
+          pipeEdges: false
         });
       });
 
@@ -197,6 +198,15 @@ describe('Strongbus.Bus', () => {
       expect(leakDetection.enabled).toBeTrue();
       expect(leakDetection.thresholds.info).toBe(3);
       expect(leakDetection.cadence).toBe('every');
+    });
+
+    it('merges successive pipeEdges thresholds, and replaces them with a boolean', () => {
+      Strongbus.Bus.configure({leakDetection: {pipeEdges: {thresholds: {info: 5}}}});
+      Strongbus.Bus.configure({leakDetection: {pipeEdges: {thresholds: {warn: 9}}}});
+      expect((new Strongbus.Bus() as any).options.leakDetection.pipeEdges).toEqual({thresholds: {info: 5, warn: 9}});
+
+      Strongbus.Bus.configure({leakDetection: {pipeEdges: true}});
+      expect((new Strongbus.Bus() as any).options.leakDetection.pipeEdges).toBeTrue();
     });
 
     it('does not re-enable leak detection through the deprecated options', () => {
@@ -574,7 +584,7 @@ describe('Strongbus.Bus', () => {
         });
       });
 
-      it('does not count pipe edges as upstream listeners', () => {
+      it('does not count pipe edges as upstream listeners by default', () => {
         const upstream = new Strongbus.Bus<TestEventMap>({
           name: 'Upstream',
           logger: upstreamLogger,
@@ -609,6 +619,113 @@ describe('Strongbus.Bus', () => {
           StrongbusLogMessages.infoThresholdReached('Downstream Bus', 2, 'bar')
         );
         expectNoLogs(upstreamLogger, 'upstream');
+      });
+
+      describe('and the upstream bus sets `leakDetection.pipeEdges=true`', () => {
+        const thresholds = {info: 2, warn: 3, error: 4};
+        let upstream: Strongbus.Bus<TestEventMap>;
+
+        function pipeInto(n: number, options?: Strongbus.SubscribeOptions): Strongbus.Bus<TestEventMap>[] {
+          return Array.from({length: n}, () => upstream.pipe(new Strongbus.Bus<TestEventMap>(), options));
+        }
+
+        beforeEach(() => {
+          upstream = new Strongbus.Bus<TestEventMap>({
+            name: 'Upstream',
+            logger: upstreamLogger,
+            leakDetection: {thresholds, pipeEdges: true}
+          });
+        });
+
+        it('counts each pipe edge as a "*" listener', () => {
+          pipeInto(2);
+          expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, '*')
+          );
+        });
+
+        it('counts pipe edges and taps together when an edge is added', () => {
+          upstream.tap(() => undefined);
+          pipeInto(1);
+          expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, '*')
+          );
+        });
+
+        it('counts pipe edges and taps together when a tap is added', () => {
+          pipeInto(1);
+          upstream.tap(() => undefined);
+          expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, '*')
+          );
+        });
+
+        it('counts incognito pipe edges', () => {
+          pipeInto(2, {incognito: true});
+          expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, '*')
+          );
+        });
+
+        it('does not count a repeated pipe to the same bus', () => {
+          const [downstream] = pipeInto(1);
+          upstream.pipe(downstream);
+          expectNoLogs(upstreamLogger, 'upstream');
+        });
+
+        it('logs when unpiping drops the count below a threshold', () => {
+          const [downstream] = pipeInto(3);
+          upstreamLogger.info.calls.reset();
+
+          upstream.unpipe(downstream);
+          expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.memoryPressureReducedBelowWarnThreshold('Upstream Bus', thresholds, 2, '*')
+          );
+        });
+
+        it('still does not count listeners on the downstream bus', () => {
+          const [downstream] = pipeInto(1);
+          addListeners(downstream, 10);
+          expectNoLogs(upstreamLogger, 'upstream');
+        });
+      });
+
+      describe('and the upstream bus sets `leakDetection.pipeEdges={thresholds}`', () => {
+        let upstream: Strongbus.Bus<TestEventMap>;
+
+        function pipeInto(n: number): void {
+          for(let i = 0; i < n; i++) {
+            upstream.pipe(new Strongbus.Bus<TestEventMap>());
+          }
+        }
+
+        it('counts pipe edges on their own, against the pipe edge thresholds', () => {
+          upstream = new Strongbus.Bus<TestEventMap>({
+            name: 'Upstream',
+            logger: upstreamLogger,
+            leakDetection: {thresholds: {info: 2}, pipeEdges: {thresholds: {info: 10}}}
+          });
+          upstream.tap(() => undefined);
+          pipeInto(9);
+          expectNoLogs(upstreamLogger, 'below pipe edge info threshold');
+
+          pipeInto(1);
+          expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 10, PIPE_EDGES)
+          );
+        });
+
+        it('falls back to the listener thresholds for unset keys', () => {
+          upstream = new Strongbus.Bus<TestEventMap>({
+            name: 'Upstream',
+            logger: upstreamLogger,
+            leakDetection: {thresholds: {warn: 3}, pipeEdges: {thresholds: {info: 2}}}
+          });
+          pipeInto(4);
+          expect(upstreamLogger.warn).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.warnThresholdExceeded('Upstream Bus', 3, 4, PIPE_EDGES)
+          );
+        });
       });
     });
 
