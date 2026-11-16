@@ -26,7 +26,7 @@ memory-leak detection.
 - **[Configurable duplicate subscriptions](#options)** — `duplicateSubscriptionStrategy` controls counting, invoke,
   dispose, and logging for the same listenable+handler, with presets aligned to familiar APIs
   (`EventEmitter` (Node-style), `EventTarget` (Browser-style), `SharedHandler`).
-- **[Memory-leak detection](#memory-leak-detection)** — configurable per-event listener thresholds with info/warn/error logging.
+- **[Memory-leak detection](#memory-leak-detection)** — configurable per-event listener thresholds with info/warn/error logging, and optional pipe-edge counting.
 
 ## Installation
 
@@ -161,7 +161,8 @@ delivery (capture / bubble style), see
 Pipe into another `Bus`, counting the downstream's listeners as handlers on this bus (unless
 `{incognito: true}` — see [Incognito subscriptions](#incognito-subscriptions)). Returns the downstream bus
 (so pipes chain and subclasses are preserved). The downstream must be a real `Bus` instance. Downstream
-listeners do not count toward this bus's [memory-leak thresholds](#memory-leak-detection).
+listeners do not count toward this bus's [memory-leak thresholds](#memory-leak-detection); the edge itself can,
+with [`leakDetection.pipeEdges`](#pipe-edges).
 
 Shared events must be payload-compatible: identical types, or a one-way widen within the same primitive
 family (`'a'|'b' → string`, `true → boolean`, `1|2 → number`). Object payloads still require an exact match.
@@ -672,10 +673,10 @@ hook can send a final event to downstreams that are still attached.
 - `name` — included in logs and unhandled-event errors.
 - `onUnhandledEvent` — `'ignore'` (default), `'throw'`, or a `(event, payload) => void` callback
   invoked when an event is emitted with no listeners.
-- `thresholds` — per-event listener-count thresholds (`info`/`warn`/`error`) for memory-leak logging.
+- `leakDetection` — listener-count thresholds, logging cadence, and pipe-edge counting for memory-leak logging, or
+  `false` to turn it off. See [Memory-leak detection](#memory-leak-detection).
 - `logger` — a `Logger`, or a `() => Logger` provider.
-- `verbose` — log on every listener past a threshold (`true`), or only at threshold boundaries
-  (`false`, default).
+- `thresholds`, `verbose` — deprecated; use `leakDetection.thresholds` and `leakDetection.cadence`.
 - `onUseAfterDestroy` — `false` (default), a log level, or `'throw'`: how to treat calls on a destroyed bus.
   See [Teardown](#teardown).
 - `suppressDefaultUnhandledErrorLogging` — `true` (default) drops a handler error when the bus has no `error` hook;
@@ -709,13 +710,14 @@ hook can send a final event to downstreams that are still attached.
 const bus = new Bus<Events>({
   name: 'MyBus',
   onUnhandledEvent: 'throw',
-  thresholds: {warn: 50},
+  leakDetection: {thresholds: {warn: 50}},
   // logger omitted → built-in console adapter (record.message → console)
   duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy.SharedHandler
 });
 ```
 
-See the [Options](https://epferrari.github.io/strongbus/docs/latest/interfaces/Options.html) and
+See the [Options](https://epferrari.github.io/strongbus/docs/latest/interfaces/Options.html),
+[LeakDetectionOptions](https://epferrari.github.io/strongbus/docs/latest/interfaces/LeakDetectionOptions.html), and
 [ListenerThresholds](https://epferrari.github.io/strongbus/docs/latest/interfaces/ListenerThresholds.html) API docs for the
 canonical defaults and types.
 
@@ -724,7 +726,7 @@ Defaults for all instances can be set globally with `Bus.configure()`:
 ```typescript
 Bus.configure({
   onUnhandledEvent: 'throw',
-  thresholds: {warn: 50},
+  leakDetection: {thresholds: {warn: 50}},
   logger: myLogger
 });
 ```
@@ -733,23 +735,62 @@ Bus.configure({
 
 ## Memory-leak detection
 
-When the number of listeners for a single event crosses a configured threshold, Strongbus logs a message at the
-corresponding severity (`info`/`warn`/`error`). This surfaces leaks from subscriptions that are never released.
-With `verbose: false` (the default), messages are throttled to threshold boundaries and multiples rather than every listener. Set `verbose: true` to log on every listener added above a threshold.
-
-Thresholds apply per bus, to that bus's **own** listeners only (including incognito ones). Piping does not carry
-listener counts into an upstream's leak detection: a `pipe(bus)` edge is not counted as a listener, and listeners
-added to a downstream bus are checked against the downstream's thresholds alone. This differs from introspection,
-where `getListenerCount` and friends on the upstream do include downstream listeners.
+When the number of listeners for a single event crosses a configured threshold, Strongbus logs a message through
+`logger` at the corresponding severity (`info`/`warn`/`error`). This surfaces leaks from subscriptions that are never
+released. Configure it with `leakDetection`:
 
 ```typescript
-const upstream = new Bus<Events>({thresholds: {info: 10}});
-const downstream = new Bus<Events>({thresholds: {info: Infinity, warn: Infinity, error: Infinity}});
+new Bus<Events>({
+  leakDetection: {
+    thresholds: {info: 100, warn: 500, error: Infinity}, // the defaults; set any subset
+    cadence: 'boundary',                                 // default; or 'every'
+    pipeEdges: false                                     // default; or true, or {thresholds}
+  }
+});
+
+new Bus<Events>({leakDetection: false}); // never log leak warnings for this bus
+```
+
+- `thresholds` — per-event listener counts at which to log.
+- `cadence` — `'boundary'` throttles messages to threshold crossings and their multiples; `'every'` logs on every
+  listener added above a threshold.
+- `pipeEdges` — whether edges to buses this bus pipes into count, described below.
+
+`false` turns detection off but keeps the bus's settings, so a later `Bus.configure({leakDetection: {...}})` turns it
+back on with them. The top-level `thresholds` and `verbose` options are deprecated aliases for
+`leakDetection.thresholds` and `leakDetection.cadence` (`verbose: true` is `'every'`); `leakDetection` wins where both
+are set.
+
+Thresholds apply per bus, to that bus's **own** listeners only (including incognito ones). Listeners added to a
+downstream bus are checked against the downstream's thresholds alone, never the upstream's. This differs from
+introspection, where `getListenerCount` and friends on the upstream do include downstream listeners.
+
+```typescript
+const upstream = new Bus<Events>({leakDetection: {thresholds: {info: 10}}});
+const downstream = new Bus<Events>({leakDetection: false});
 upstream.pipe(downstream);
 
 for (let i = 0; i < 1000; i++) downstream.on('message', (msg) => handle(msg));
 upstream.getListenerCountFor('message'); // 1000
-// no leak logs from either bus: `downstream` has disabled its thresholds, and `upstream` has no own listeners
+// no leak logs from either bus: `downstream` has detection off, and `upstream` has no own listeners
+```
+
+### Pipe edges
+
+A `pipe(bus)` edge retains the downstream bus, and every listener on it, until it is unpiped. By default edges are not
+counted, so a bus that keeps piping into short-lived buses without unpiping them leaks without a log. Set
+`pipeEdges` to count them:
+
+- `true` — each edge counts as one listener for `'*'`, alongside `tap` handlers and against `thresholds`. A pipe
+  forwards every event the way a tap observes every event, so they share a count.
+- `{thresholds}` — edges get their own count, logged as `"downstream pipes"`, against these thresholds. Unset keys
+  fall back to `leakDetection.thresholds`. Use this for hubs that legitimately fan out to many buses.
+
+Incognito edges count, as incognito taps do. Piping the same bus again is not counted, and `unpipe` / `clear` log when
+the count drops back below a threshold.
+
+```typescript
+const hub = new Bus<Events>({leakDetection: {pipeEdges: {thresholds: {info: 1000, warn: 5000}}}});
 ```
 
 ## License
