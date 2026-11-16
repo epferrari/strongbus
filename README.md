@@ -160,7 +160,8 @@ delivery (capture / bubble style), see
 
 Pipe into another `Bus`, counting the downstream's listeners as handlers on this bus (unless
 `{incognito: true}` — see [Incognito subscriptions](#incognito-subscriptions)). Returns the downstream bus
-(so pipes chain and subclasses are preserved). The downstream must be a real `Bus` instance.
+(so pipes chain and subclasses are preserved). The downstream must be a real `Bus` instance. Downstream
+listeners do not count toward this bus's [memory-leak thresholds](#memory-leak-detection).
 
 Shared events must be payload-compatible: identical types, or a one-way widen within the same primitive
 family (`'a'|'b' → string`, `true → boolean`, `1|2 → number`). Object payloads still require an exact match.
@@ -735,6 +736,21 @@ Bus.configure({
 When the number of listeners for a single event crosses a configured threshold, Strongbus logs a message at the
 corresponding severity (`info`/`warn`/`error`). This surfaces leaks from subscriptions that are never released.
 With `verbose: false` (the default), messages are throttled to threshold boundaries and multiples rather than every listener. Set `verbose: true` to log on every listener added above a threshold.
+
+Thresholds apply per bus, to that bus's **own** listeners only (including incognito ones). Piping does not carry
+listener counts into an upstream's leak detection: a `pipe(bus)` edge is not counted as a listener, and listeners
+added to a downstream bus are checked against the downstream's thresholds alone. This differs from introspection,
+where `getListenerCount` and friends on the upstream do include downstream listeners.
+
+```typescript
+const upstream = new Bus<Events>({thresholds: {info: 10}});
+const downstream = new Bus<Events>({thresholds: {info: Infinity, warn: Infinity, error: Infinity}});
+upstream.pipe(downstream);
+
+for (let i = 0; i < 1000; i++) downstream.on('message', (msg) => handle(msg));
+upstream.getListenerCountFor('message'); // 1000
+// no leak logs from either bus: `downstream` has disabled its thresholds, and `upstream` has no own listeners
+```
 
 ## License
 
