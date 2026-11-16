@@ -294,38 +294,38 @@ describe('StrongbusLogger', () => {
     describe('given pipeEdges=false', () => {
       it('does not log', () => {
         const subject = createLogger();
-        subject.onPipeEdgeAdded(thresholds.info, 0);
-        subject.onPipeEdgeRemoved(thresholds.info - 1, 0);
+        subject.onPipeEdgeAdded(thresholds.info);
+        subject.onPipeEdgeRemoved(thresholds.info - 1);
         expect(logger.info).not.toHaveBeenCalled();
       });
     });
 
     describe('given pipeEdges=true', () => {
-      it('checks edges plus own wildcard listeners against the listener thresholds as "*"', () => {
-        createLogger({pipeEdges: true}).onPipeEdgeAdded(thresholds.info - 3, 3);
+      it('checks edges against the listener thresholds', () => {
+        createLogger({pipeEdges: true}).onPipeEdgeAdded(thresholds.info);
         expect(logger.info).toHaveBeenCalledWith(
-          StrongbusLogMessages.infoThresholdReached(name, thresholds.info, '*')
+          StrongbusLogMessages.infoThresholdReached(name, thresholds.info, PIPE_EDGES)
         );
       });
 
-      it('logs when edges plus own wildcard listeners drop below a threshold', () => {
-        createLogger({pipeEdges: true}).onPipeEdgeRemoved(thresholds.info - 4, 3);
+      it('logs when edges drop below a listener threshold', () => {
+        createLogger({pipeEdges: true}).onPipeEdgeRemoved(thresholds.info - 1);
         expect(logger.info).toHaveBeenCalledWith(
-          StrongbusLogMessages.memoryPressureReducedBelowInfoThreshold(name, thresholds.info - 1, '*')
+          StrongbusLogMessages.memoryPressureReducedBelowInfoThreshold(name, thresholds.info - 1, PIPE_EDGES)
         );
       });
 
       it('does not log when leak detection is disabled', () => {
         const subject = createLogger({pipeEdges: true, enabled: false});
-        subject.onPipeEdgeAdded(thresholds.info, 0);
-        subject.onPipeEdgeRemoved(thresholds.info - 1, 0);
+        subject.onPipeEdgeAdded(thresholds.info);
+        subject.onPipeEdgeRemoved(thresholds.info - 1);
         expect(logger.info).not.toHaveBeenCalled();
       });
     });
 
     describe('given pipeEdges={thresholds}', () => {
-      it('checks edges alone against the pipe edge thresholds', () => {
-        createLogger({pipeEdges: {thresholds: {info: 2}}}).onPipeEdgeAdded(2, 50);
+      it('checks edges against the pipe edge thresholds', () => {
+        createLogger({pipeEdges: {thresholds: {info: 2}}}).onPipeEdgeAdded(2);
         expect(logger.info).toHaveBeenCalledWith(
           StrongbusLogMessages.infoThresholdReached(name, 2, PIPE_EDGES)
         );
@@ -333,14 +333,14 @@ describe('StrongbusLogger', () => {
 
       it('falls back to the listener thresholds for unset keys', () => {
         const count = thresholds.warn + 1;
-        createLogger({pipeEdges: {thresholds: {info: 2}}}).onPipeEdgeAdded(count, 0);
+        createLogger({pipeEdges: {thresholds: {info: 2}}}).onPipeEdgeAdded(count);
         expect(logger.warn).toHaveBeenCalledWith(
           StrongbusLogMessages.warnThresholdExceeded(name, thresholds.warn, count, PIPE_EDGES)
         );
       });
 
       it('logs when edges drop below a pipe edge threshold', () => {
-        createLogger({pipeEdges: {thresholds: {info: 2}}}).onPipeEdgeRemoved(1, 50);
+        createLogger({pipeEdges: {thresholds: {info: 2}}}).onPipeEdgeRemoved(1);
         expect(logger.info).toHaveBeenCalledWith(
           StrongbusLogMessages.memoryPressureReducedBelowInfoThreshold(name, 1, PIPE_EDGES)
         );

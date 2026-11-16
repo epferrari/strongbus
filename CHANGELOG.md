@@ -14,13 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   detection off for a bus; a later `Bus.configure` with a `leakDetection` object, `thresholds`, or `verbose`
   turns it back on with the bus's earlier settings. Leak messages still go through `logger`.
 - **`leakDetection.pipeEdges`** (default `false`) — Counts edges to buses this bus pipes into, which
-  previously went uncounted even though each edge retains the downstream bus and its listeners. `true` counts
-  each edge as one listener for `'*'`, alongside `tap` handlers. `{thresholds}` counts edges on their own,
-  logged as `"downstream pipes"`, with unset keys falling back to `leakDetection.thresholds`. Incognito edges
-  count. Listeners on a downstream bus still never count toward the upstream's thresholds.
+  previously went uncounted even though each edge retains the downstream bus and its listeners. Edges get
+  their own count, logged as `"downstream pipes"` and separate from `tap` handlers and other listeners. `true`
+  checks it against `leakDetection.thresholds`; `{thresholds}` checks it against its own thresholds, with
+  unset keys falling back to `leakDetection.thresholds`. Incognito edges count. Listeners on a downstream bus
+  still never count toward the upstream's thresholds.
 
   **Upcoming breaking change:** the next major version will default `pipeEdges` to `true`, so pipe edges
-  count alongside `tap` handlers against the default thresholds (`info: 100`, `warn: 500`). Buses that
+  are counted against the default thresholds (`info: 100`, `warn: 500`). Buses that
   legitimately pipe into many buses should set `pipeEdges: {thresholds}` to fit their fan-out, or
   `pipeEdges: false` to keep today's behavior.
 

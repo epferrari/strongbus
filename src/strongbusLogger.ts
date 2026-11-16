@@ -26,7 +26,7 @@ export type ErrorHandlerFailureDetails = {
 export type LogLevel = 'never' | 'debug' | 'info' | 'warn' | 'error';
 
 /**
- * What leak messages name in place of an event when pipe edges are counted on their own.
+ * What leak messages name in place of an event for pipe edge counts.
  * @internal
  */
 export const PIPE_EDGES = 'downstream pipes';
@@ -63,34 +63,31 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
     }
   }
 
-  /**
-   * @param edges - downstream edges after the one added
-   * @param wildcardListeners - own `'*'` listeners, which edges join under `pipeEdges: true`
-   */
-  public onPipeEdgeAdded(edges: number, wildcardListeners: number): void {
-    const {enabled, pipeEdges, thresholds} = this.leakDetection;
-    if(!enabled || pipeEdges === false) {
-      return;
-    } else if(pipeEdges === true) {
-      this.checkAdded(WILDCARD, edges + wildcardListeners, thresholds);
-    } else {
-      this.checkAdded(PIPE_EDGES, edges, {...thresholds, ...pipeEdges.thresholds});
+  /** @param edges - downstream edges after the one added */
+  public onPipeEdgeAdded(edges: number): void {
+    const thresholds = this.pipeEdgeThresholds();
+    if(thresholds) {
+      this.checkAdded(PIPE_EDGES, edges, thresholds);
     }
   }
 
-  /**
-   * @param edges - downstream edges after the one removed
-   * @param wildcardListeners - own `'*'` listeners, which edges join under `pipeEdges: true`
-   */
-  public onPipeEdgeRemoved(edges: number, wildcardListeners: number): void {
+  /** @param edges - downstream edges after the one removed */
+  public onPipeEdgeRemoved(edges: number): void {
+    const thresholds = this.pipeEdgeThresholds();
+    if(thresholds) {
+      this.checkRemoved(PIPE_EDGES, edges, thresholds);
+    }
+  }
+
+  /** The thresholds pipe edges are checked against, or `undefined` when they are not counted */
+  private pipeEdgeThresholds(): Required<ListenerThresholds>|undefined {
     const {enabled, pipeEdges, thresholds} = this.leakDetection;
     if(!enabled || pipeEdges === false) {
-      return;
+      return undefined;
     } else if(pipeEdges === true) {
-      this.checkRemoved(WILDCARD, edges + wildcardListeners, thresholds);
-    } else {
-      this.checkRemoved(PIPE_EDGES, edges, {...thresholds, ...pipeEdges.thresholds});
+      return thresholds;
     }
+    return {...thresholds, ...pipeEdges.thresholds};
   }
 
   private checkAdded(subject: LeakSubject<TEventMap>, n: number, thresholds: Required<ListenerThresholds>): void {

@@ -86,9 +86,6 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
 
   public abstract readonly name: string;
 
-  /** Own `'*'` listeners, incognito ones included, for leak detection to count pipe edges alongside. */
-  protected abstract ownWildcardListenerCount(): number;
-
   /**
    * Attach a graph edge to another node.
    */
@@ -127,7 +124,7 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
         this.warnUnsoundPath(upstream, downstream);
       }
     }
-    this.logger.onPipeEdgeAdded(this.graph.downstreams.size, this.ownWildcardListenerCount());
+    this.logger.onPipeEdgeAdded(this.graph.downstreams.size);
     return node;
   }
 
@@ -147,7 +144,7 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
     downstream.onDisconnectedAsDownstreamNode(this);
     this.resolveWarnedPathsTo(downstream);
     this.invalidateListenerCachesUpstream();
-    this.logger.onPipeEdgeRemoved(this.graph.downstreams.size, this.ownWildcardListenerCount());
+    this.logger.onPipeEdgeRemoved(this.graph.downstreams.size);
   }
 
   /**
@@ -235,10 +232,6 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
 
   protected hasDownstream(): boolean {
     return this.graph.downstreams.size > 0;
-  }
-
-  protected downstreamEdgeCount(): number {
-    return this.graph.downstreams.size;
   }
 
   protected someDownstream(

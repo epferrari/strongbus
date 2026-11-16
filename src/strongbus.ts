@@ -216,10 +216,6 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
       return this.bus.hasDownstream();
     }
 
-    public downstreamEdgeCount(): number {
-      return this.bus.downstreamEdgeCount();
-    }
-
     public someDownstream(
       includeIncognito: boolean,
       fn: (downstream: IntrospectionManager<T>) => boolean
@@ -725,10 +721,6 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     if((scope & ListenerScope.ANY) === ListenerScope.ANY) {
       this.releaseAllUpstreamEdges(includeIncognito);
     }
-  }
-
-  protected ownWildcardListenerCount(): number {
-    return this.subscriptions.ownListenerCountForEvent(WILDCARD);
   }
 
   private trackInFlight<P extends CancelablePromise<any>>(p: P, incognito: boolean): P {

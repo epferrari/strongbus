@@ -683,33 +683,34 @@ describe('Strongbus.Bus', () => {
           });
         });
 
-        it('counts each pipe edge as a "*" listener', () => {
+        it('counts pipe edges against the listener thresholds', () => {
           pipeInto(2);
           expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
-            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, '*')
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, PIPE_EDGES)
           );
         });
 
-        it('counts pipe edges and taps together when an edge is added', () => {
+        it('counts pipe edges separately from taps', () => {
           upstream.tap(() => undefined);
           pipeInto(1);
+          expectNoLogs(upstreamLogger, 'one tap and one pipe edge');
+
+          upstream.tap(() => undefined);
           expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
             StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, '*')
           );
-        });
+          upstreamLogger.info.calls.reset();
 
-        it('counts pipe edges and taps together when a tap is added', () => {
           pipeInto(1);
-          upstream.tap(() => undefined);
           expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
-            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, '*')
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, PIPE_EDGES)
           );
         });
 
         it('counts incognito pipe edges', () => {
           pipeInto(2, {incognito: true});
           expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
-            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, '*')
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, PIPE_EDGES)
           );
         });
 
@@ -725,7 +726,7 @@ describe('Strongbus.Bus', () => {
 
           upstream.unpipe(downstream);
           expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
-            StrongbusLogMessages.memoryPressureReducedBelowWarnThreshold('Upstream Bus', thresholds, 2, '*')
+            StrongbusLogMessages.memoryPressureReducedBelowWarnThreshold('Upstream Bus', thresholds, 2, PIPE_EDGES)
           );
         });
 
@@ -745,7 +746,7 @@ describe('Strongbus.Bus', () => {
           }
         }
 
-        it('counts pipe edges on their own, against the pipe edge thresholds', () => {
+        it('counts pipe edges against the pipe edge thresholds', () => {
           upstream = new Strongbus.Bus<TestEventMap>({
             name: 'Upstream',
             logger: upstreamLogger,

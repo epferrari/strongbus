@@ -779,12 +779,13 @@ upstream.getListenerCountFor('message'); // 1000
 
 A `pipe(bus)` edge retains the downstream bus, and every listener on it, until it is unpiped. By default edges are not
 counted, so a bus that keeps piping into short-lived buses without unpiping them leaks without a log. Set
-`pipeEdges` to count them:
+`pipeEdges` to count them. Edges get their own count, logged as `"downstream pipes"` and kept separate from every
+event's listeners, `tap` handlers included. The two settings differ only in the thresholds that count is checked
+against:
 
-- `true` — each edge counts as one listener for `'*'`, alongside `tap` handlers and against `thresholds`. A pipe
-  forwards every event the way a tap observes every event, so they share a count.
-- `{thresholds}` — edges get their own count, logged as `"downstream pipes"`, against these thresholds. Unset keys
-  fall back to `leakDetection.thresholds`. Use this for hubs that legitimately fan out to many buses.
+- `true` — `leakDetection.thresholds`.
+- `{thresholds}` — these thresholds, with unset keys falling back to `leakDetection.thresholds`. Use this for hubs
+  that legitimately fan out to many buses.
 
 Incognito edges count, as incognito taps do. Piping the same bus again is not counted, and `unpipe` / `clear` log when
 the count drops back below a threshold.
