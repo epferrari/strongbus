@@ -1,21 +1,78 @@
 import type {LoggerProvider} from './logger';
 import type {DuplicateSubscriptionStrategy} from './duplicateSubscriptionStrategy';
-import type {ListenerThresholds, Options} from './options';
+import type {LeakDetectionOptions, ListenerThresholds, Options} from './options';
+
+/**
+ * {@link LeakDetectionOptions} after defaults are applied. `enabled` is `false` once
+ * `leakDetection: false` is merged in, and the other settings are kept so a later
+ * `leakDetection` object, `thresholds`, or `verbose` turns detection back on with them.
+ * @internal
+ */
+export type MaterializedLeakDetection = {
+  enabled: boolean;
+  thresholds: Required<ListenerThresholds>;
+  cadence: Required<LeakDetectionOptions>['cadence'];
+  /** Partial thresholds stay partial, so they keep following `thresholds` when it is configured later. */
+  downstreamPipes: Required<LeakDetectionOptions>['downstreamPipes'];
+};
 
 /**
  * Bus options after defaults are applied — every field is present and nested
- * shapes (`thresholds`, `duplicateSubscriptionStrategy`) are fully filled in.
+ * shapes (`leakDetection`, `duplicateSubscriptionStrategy`) are fully filled in.
+ * The deprecated `thresholds` and `verbose` are folded into `leakDetection`.
  * `logger` stays optional; when omitted, logging falls back to a built-in console adapter.
  * @internal
  */
 export type MaterializedBusOptions = Omit<
   Required<Options>,
-  'duplicateSubscriptionStrategy' | 'thresholds' | 'logger'
+  'duplicateSubscriptionStrategy' | 'leakDetection' | 'thresholds' | 'verbose' | 'logger'
 > & {
-  thresholds: Required<ListenerThresholds>;
+  leakDetection: MaterializedLeakDetection;
   duplicateSubscriptionStrategy: DuplicateSubscriptionStrategy;
   logger?: LoggerProvider;
 };
+
+/**
+ * Merge leak-detection overrides onto `base`. The deprecated `thresholds` and `verbose`
+ * apply first, so `leakDetection` wins where both set the same thing. On their own they
+ * turn detection back on, as setting a finite threshold did before `leakDetection: false` existed.
+ * @internal
+ */
+export function resolveLeakDetection(
+  base: MaterializedLeakDetection,
+  overrides: Pick<Options, 'leakDetection' | 'thresholds' | 'verbose'>
+): MaterializedLeakDetection {
+  const {leakDetection, thresholds, verbose} = overrides;
+  const legacy: MaterializedLeakDetection = {
+    ...base,
+    enabled: base.enabled || thresholds !== undefined || verbose !== undefined,
+    thresholds: {...base.thresholds, ...thresholds},
+    cadence: verbose === undefined ? base.cadence : (verbose ? 'every' : 'boundary')
+  };
+  if(leakDetection === false) {
+    return {...legacy, enabled: false};
+  } else if(leakDetection === undefined) {
+    return legacy;
+  }
+  return {
+    enabled: true,
+    thresholds: {...legacy.thresholds, ...leakDetection.thresholds},
+    cadence: leakDetection.cadence ?? legacy.cadence,
+    downstreamPipes: resolveDownstreamPipes(legacy.downstreamPipes, leakDetection.downstreamPipes)
+  };
+}
+
+function resolveDownstreamPipes(
+  base: MaterializedLeakDetection['downstreamPipes'],
+  override: LeakDetectionOptions['downstreamPipes']
+): MaterializedLeakDetection['downstreamPipes'] {
+  if(override === undefined) {
+    return base;
+  } else if(typeof base === 'object' && typeof override === 'object') {
+    return {thresholds: {...base.thresholds, ...override.thresholds}};
+  }
+  return override;
+}
 
 const DEFAULT_DUPLICATE_SUBSCRIPTION_STRATEGY: DuplicateSubscriptionStrategy = {
   observability: 'collapse',

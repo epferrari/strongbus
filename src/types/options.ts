@@ -17,12 +17,31 @@ export interface ListenerThresholds {
 }
 
 /**
+ * Memory-leak detection for a bus's own listeners. Logs go through {@link Options.logger}.
+ * @prop thresholds {@link ListenerThresholds} - per-event listener counts at which to log, merged key-by-key onto defaults
+ * @prop cadence [`'boundary'`] - `'boundary'` logs at threshold crossings and their multiples;
+ * `'every'` logs on every listener added above a threshold
+ * @prop downstreamPipes [`false`] - whether edges to buses this bus pipes into count toward its leak detection.
+ * Edges get their own count, separate from every event's listeners (including `tap` handlers on `'*'`).
+ * `true` checks that count against `thresholds`; `{thresholds}` checks it against these thresholds instead
+ * (unset keys fall back to `thresholds`). Incognito edges count too. Listeners on the downstream bus never count here.
+ */
+export interface LeakDetectionOptions {
+  thresholds?: Partial<ListenerThresholds>;
+  cadence?: 'boundary'|'every';
+  downstreamPipes?: boolean|{thresholds: Partial<ListenerThresholds>};
+}
+
+/**
  * @prop onUnhandledEvent [`'ignore'`] — what to do when an event is emitted with no listeners:
  * `'ignore'` (default no-op), `'throw'`, or a custom `(event, payload) => void` callback
  * @prop name `"Anonymous"` - A name for the bus. Included in warn/info/error potential memory leak messages and unhandled event errors thrown
- * @prop thresholds {@link ListenerThresholds}
- * @prop logger {@link Logger | () => Logger} - How to log potential memory leaks, if thresholds are < Infinity. When omitted, a built-in console adapter is used.
- * @prop verbose [false] - should memory leak warnings be output on every listener added above the thresholds, or only at intervals
+ * @prop leakDetection {@link LeakDetectionOptions} - memory-leak detection settings, or `false` to turn it off
+ * @prop thresholds - deprecated, use `leakDetection.thresholds`. Turns leak detection back on if it was off.
+ * Overridden by `leakDetection` when both are set
+ * @prop logger {@link Logger | () => Logger} - Where Strongbus logs, including potential memory leaks. When omitted, a built-in console adapter is used.
+ * @prop verbose - deprecated, use `leakDetection.cadence` (`true` is `'every'`). Turns leak detection back on if it
+ * was off. Overridden by `leakDetection` when both are set
  * @prop coalesceDownstreamLifecycleEvents [true] - when true, coalesce will/did add/remove hooks to one
  * emission per event key during `pipe()` / `unpipe()` reconcile of a heavily-subscribed downstream bus
  * @prop duplicateSubscriptionStrategy - how duplicate listenable+handler registrations behave
@@ -38,8 +57,11 @@ export interface ListenerThresholds {
  */
 export interface Options {
   name?: string;
+  leakDetection?: false|LeakDetectionOptions;
+  /** @deprecated Use `leakDetection.thresholds`. */
   thresholds?: Partial<ListenerThresholds>;
   logger?: LoggerProvider;
+  /** @deprecated Use `leakDetection.cadence`. */
   verbose?: boolean;
   coalesceDownstreamLifecycleEvents?: boolean;
   duplicateSubscriptionStrategy?: Partial<DuplicateSubscriptionStrategy>;

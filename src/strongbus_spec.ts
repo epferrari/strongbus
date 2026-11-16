@@ -3,7 +3,7 @@ import {CancelablePromise, parallel, sleep, TimeoutExpiredError} from 'jaasync';
 
 import * as Strongbus from './';
 import type {Scanner} from './scanner';
-import {StrongbusLogMessages} from './strongbusLogger';
+import {DOWNSTREAM_PIPES, StrongbusLogMessages} from './strongbusLogger';
 import type {Logger} from './types/logger';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import type {EventMap} from './types/events';
@@ -61,27 +61,60 @@ describe('Strongbus.Bus', () => {
       expect(eventSink).toHaveBeenCalledWith({event: 'foo', payload: 'eagle'});
     });
 
-    describe('thresholds', () => {
-      it('sets default thresholds', () => {
-        const options: Strongbus.Options = (bus as any).options;
-        expect(options.thresholds.info).toEqual(100);
-        expect(options.thresholds.warn).toEqual(500);
-        expect(options.thresholds.error).toEqual(Infinity);
+    describe('leakDetection', () => {
+      it('enables leak detection with default thresholds and boundary cadence', () => {
+        const {leakDetection} = (bus as any).options;
+        expect(leakDetection).toEqual({
+          enabled: true,
+          thresholds: {info: 100, warn: 500, error: Infinity},
+          cadence: 'boundary',
+          downstreamPipes: false
+        });
       });
 
       it('allows setting custom thresholds', () => {
         bus = new Strongbus.Bus<TestEventMap>({
-          thresholds: {
-            info: 7,
-            warn: 14,
-            error: 21
+          leakDetection: {
+            thresholds: {
+              info: 7,
+              warn: 14,
+              error: 21
+            }
           }
         });
 
-        const options: Strongbus.Options = (bus as any).options;
-        expect(options.thresholds.info).toEqual(7);
-        expect(options.thresholds.warn).toEqual(14);
-        expect(options.thresholds.error).toEqual(21);
+        const {leakDetection} = (bus as any).options;
+        expect(leakDetection.thresholds).toEqual({info: 7, warn: 14, error: 21});
+      });
+
+      it('accepts the deprecated thresholds and verbose options', () => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          thresholds: {info: 7},
+          verbose: true
+        });
+
+        const {leakDetection} = (bus as any).options;
+        expect(leakDetection.thresholds).toEqual({info: 7, warn: 500, error: Infinity});
+        expect(leakDetection.cadence).toBe('every');
+      });
+
+      it('prefers leakDetection over the deprecated options', () => {
+        bus = new Strongbus.Bus<TestEventMap>({
+          thresholds: {info: 7, warn: 14},
+          verbose: true,
+          leakDetection: {thresholds: {info: 3}, cadence: 'boundary'}
+        });
+
+        const {leakDetection} = (bus as any).options;
+        expect(leakDetection.thresholds).toEqual({info: 3, warn: 14, error: Infinity});
+        expect(leakDetection.cadence).toBe('boundary');
+      });
+
+      it('disables leak detection when set to false', () => {
+        bus = new Strongbus.Bus<TestEventMap>({leakDetection: false});
+
+        const {leakDetection} = (bus as any).options;
+        expect(leakDetection.enabled).toBeFalse();
       });
 
       it('defaults coalesceDownstreamLifecycleEvents to true', () => {
@@ -124,7 +157,6 @@ describe('Strongbus.Bus', () => {
 
     beforeAll(() => {
       baseline = {...(new Strongbus.Bus() as any).options};
-      baseline.thresholds = {...baseline.thresholds};
     });
 
     afterEach(() => {
@@ -134,27 +166,102 @@ describe('Strongbus.Bus', () => {
     it('merges partial options onto static defaults for new instances', () => {
       Strongbus.Bus.configure({
         onUnhandledEvent: 'throw',
-        verbose: false,
-        thresholds: {warn: 12}
+        leakDetection: {thresholds: {warn: 12}}
       });
 
       const configured = new Strongbus.Bus<TestEventMap>();
-      const options: Strongbus.Options = (configured as any).options;
+      const options = (configured as any).options;
 
       expect(options.onUnhandledEvent).toBe('throw');
-      expect(options.verbose).toBeFalse();
-      expect(options.thresholds.info).toBe(100);
-      expect(options.thresholds.warn).toBe(12);
-      expect(options.thresholds.error).toBe(Infinity);
+      expect(options.leakDetection.cadence).toBe('boundary');
+      expect(options.leakDetection.thresholds).toEqual({info: 100, warn: 12, error: Infinity});
     });
 
     it('accumulates successive configure calls', () => {
       Strongbus.Bus.configure({onUnhandledEvent: 'throw'});
+      Strongbus.Bus.configure({leakDetection: {cadence: 'every'}});
+      Strongbus.Bus.configure({leakDetection: {thresholds: {info: 3}}});
+
+      const options = (new Strongbus.Bus() as any).options;
+      expect(options.onUnhandledEvent).toBe('throw');
+      expect(options.leakDetection.cadence).toBe('every');
+      expect(options.leakDetection.thresholds.info).toBe(3);
+    });
+
+    it('keeps leak detection settings while disabled, and restores them when re-enabled', () => {
+      Strongbus.Bus.configure({leakDetection: {thresholds: {info: 3}}});
+      Strongbus.Bus.configure({leakDetection: false});
+      expect((new Strongbus.Bus() as any).options.leakDetection.enabled).toBeFalse();
+
+      Strongbus.Bus.configure({leakDetection: {cadence: 'every'}});
+      const {leakDetection} = (new Strongbus.Bus() as any).options;
+      expect(leakDetection.enabled).toBeTrue();
+      expect(leakDetection.thresholds.info).toBe(3);
+      expect(leakDetection.cadence).toBe('every');
+    });
+
+    it('merges successive downstreamPipes thresholds, and replaces them with a boolean', () => {
+      Strongbus.Bus.configure({leakDetection: {downstreamPipes: {thresholds: {info: 5}}}});
+      Strongbus.Bus.configure({leakDetection: {downstreamPipes: {thresholds: {warn: 9}}}});
+      expect((new Strongbus.Bus() as any).options.leakDetection.downstreamPipes).toEqual({thresholds: {info: 5, warn: 9}});
+
+      Strongbus.Bus.configure({leakDetection: {downstreamPipes: true}});
+      expect((new Strongbus.Bus() as any).options.leakDetection.downstreamPipes).toBeTrue();
+    });
+
+    it('re-enables leak detection through the deprecated thresholds option', () => {
+      Strongbus.Bus.configure({leakDetection: false});
+      Strongbus.Bus.configure({thresholds: {info: 3}});
+
+      const {leakDetection} = (new Strongbus.Bus() as any).options;
+      expect(leakDetection.enabled).toBeTrue();
+      expect(leakDetection.thresholds.info).toBe(3);
+    });
+
+    it('re-enables leak detection through the deprecated verbose option', () => {
+      Strongbus.Bus.configure({leakDetection: false});
       Strongbus.Bus.configure({verbose: false});
 
-      const options: Strongbus.Options = (new Strongbus.Bus() as any).options;
-      expect(options.onUnhandledEvent).toBe('throw');
-      expect(options.verbose).toBeFalse();
+      const {leakDetection} = (new Strongbus.Bus() as any).options;
+      expect(leakDetection.enabled).toBeTrue();
+      expect(leakDetection.cadence).toBe('boundary');
+    });
+
+    it('re-enables leak detection through the deprecated static setters', () => {
+      Strongbus.Bus.configure({leakDetection: false});
+      Strongbus.Bus.defaultThresholds = {warn: 7};
+      expect((new Strongbus.Bus() as any).options.leakDetection).toEqual(
+        jasmine.objectContaining({enabled: true, thresholds: {info: 100, warn: 7, error: Infinity}})
+      );
+
+      Strongbus.Bus.configure({leakDetection: false});
+      Strongbus.Bus.verbose = true;
+      expect((new Strongbus.Bus() as any).options.leakDetection).toEqual(
+        jasmine.objectContaining({enabled: true, cadence: 'every'})
+      );
+    });
+
+    it('prefers leakDetection: false over deprecated options in the same call', () => {
+      Strongbus.Bus.configure({leakDetection: false, thresholds: {info: 3}, verbose: true});
+
+      const {leakDetection} = (new Strongbus.Bus() as any).options;
+      expect(leakDetection.enabled).toBeFalse();
+      expect(leakDetection.thresholds.info).toBe(3);
+      expect(leakDetection.cadence).toBe('every');
+    });
+
+    it('logs again once deprecated thresholds are configured after leakDetection: false', () => {
+      const logger: jasmine.SpyObj<Logger> = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+      Strongbus.Bus.configure({leakDetection: false});
+      Strongbus.Bus.configure({thresholds: {info: 2}});
+      const configured = new Strongbus.Bus<TestEventMap>({name: 'Configured', logger});
+
+      configured.on('foo', () => undefined);
+      configured.on('foo', () => undefined);
+
+      expect(logger.info).toHaveBeenCalledOnceWith(
+        StrongbusLogMessages.infoThresholdReached('Configured Bus', 2, 'foo')
+      );
     });
 
     it('does not apply name via configure', () => {
@@ -448,6 +555,243 @@ describe('Strongbus.Bus', () => {
         });
       });
     }
+
+    describe('given an upstream bus piped into a downstream bus', () => {
+      let upstreamLogger: jasmine.SpyObj<Logger>;
+      let downstreamLogger: jasmine.SpyObj<Logger>;
+
+      function createLogger(): jasmine.SpyObj<Logger> {
+        return jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+      }
+
+      function expectNoLogs(logger: jasmine.SpyObj<Logger>, context: string): void {
+        expect(logger.info).withContext(context).not.toHaveBeenCalled();
+        expect(logger.warn).withContext(context).not.toHaveBeenCalled();
+        expect(logger.error).withContext(context).not.toHaveBeenCalled();
+      }
+
+      function addListeners(target: Strongbus.Bus<TestEventMap>, n: number): Strongbus.Subscription[] {
+        const subs = new Array(n);
+        for(let i = 0; i < n; i++) {
+          subs[i] = target.on('bar', () => true);
+        }
+        return subs;
+      }
+
+      beforeEach(() => {
+        upstreamLogger = createLogger();
+        downstreamLogger = createLogger();
+      });
+
+      describe('and the downstream bus disables leak detection', () => {
+        let upstream: Strongbus.Bus<TestEventMap>;
+        let downstream: Strongbus.Bus<TestEventMap>;
+
+        beforeEach(() => {
+          upstream = new Strongbus.Bus<TestEventMap>({
+            name: 'Upstream',
+            logger: upstreamLogger,
+            leakDetection: {thresholds: {info: 2, warn: 3, error: 4}}
+          });
+          downstream = new Strongbus.Bus<TestEventMap>({
+            name: 'Downstream',
+            logger: downstreamLogger,
+            leakDetection: false
+          });
+          upstream.pipe(downstream);
+        });
+
+        it('does not log on the upstream bus when downstream listeners exceed its thresholds', () => {
+          addListeners(downstream, 10);
+
+          expect(upstream.getListenerCountFor('bar')).toBe(10);
+          expectNoLogs(upstreamLogger, 'upstream');
+          expectNoLogs(downstreamLogger, 'downstream');
+        });
+
+        it('does not log on the upstream bus when downstream listeners are removed', () => {
+          const subs = addListeners(downstream, 10);
+          over(subs)();
+
+          expect(upstream.getListenerCountFor('bar')).toBe(0);
+          expectNoLogs(upstreamLogger, 'upstream');
+        });
+
+        it('compares only own listeners against the upstream bus\'s thresholds', () => {
+          addListeners(downstream, 10);
+          addListeners(upstream, 2);
+
+          expect(upstream.getListenerCountFor('bar')).toBe(12);
+          expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, 'bar')
+          );
+          expect(upstreamLogger.warn).not.toHaveBeenCalled();
+          expect(upstreamLogger.error).not.toHaveBeenCalled();
+        });
+      });
+
+      it('does not count pipe edges as upstream listeners by default', () => {
+        const upstream = new Strongbus.Bus<TestEventMap>({
+          name: 'Upstream',
+          logger: upstreamLogger,
+          leakDetection: {thresholds: {info: 2, warn: 3, error: 4}}
+        });
+        for(let i = 0; i < 5; i++) {
+          const downstream = new Strongbus.Bus<TestEventMap>({leakDetection: false});
+          upstream.pipe(downstream);
+          downstream.on('bar', () => true);
+        }
+
+        expect(upstream.getListenerCountFor('bar')).toBe(5);
+        expectNoLogs(upstreamLogger, 'upstream');
+      });
+
+      it('applies the downstream bus\'s thresholds to its own listeners', () => {
+        const upstream = new Strongbus.Bus<TestEventMap>({
+          name: 'Upstream',
+          logger: upstreamLogger,
+          leakDetection: false
+        });
+        const downstream = new Strongbus.Bus<TestEventMap>({
+          name: 'Downstream',
+          logger: downstreamLogger,
+          leakDetection: {thresholds: {info: 2}}
+        });
+        upstream.pipe(downstream);
+
+        addListeners(downstream, 2);
+
+        expect(downstreamLogger.info).toHaveBeenCalledOnceWith(
+          StrongbusLogMessages.infoThresholdReached('Downstream Bus', 2, 'bar')
+        );
+        expectNoLogs(upstreamLogger, 'upstream');
+      });
+
+      describe('and the upstream bus sets `leakDetection.downstreamPipes=true`', () => {
+        const thresholds = {info: 2, warn: 3, error: 4};
+        let upstream: Strongbus.Bus<TestEventMap>;
+
+        function pipeInto(n: number, options?: Strongbus.SubscribeOptions): Strongbus.Bus<TestEventMap>[] {
+          return Array.from({length: n}, () => upstream.pipe(new Strongbus.Bus<TestEventMap>(), options));
+        }
+
+        beforeEach(() => {
+          upstream = new Strongbus.Bus<TestEventMap>({
+            name: 'Upstream',
+            logger: upstreamLogger,
+            leakDetection: {thresholds, downstreamPipes: true}
+          });
+        });
+
+        it('counts pipe edges against the listener thresholds', () => {
+          pipeInto(2);
+          expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, DOWNSTREAM_PIPES)
+          );
+        });
+
+        it('counts pipe edges separately from taps', () => {
+          upstream.tap(() => undefined);
+          pipeInto(1);
+          expectNoLogs(upstreamLogger, 'one tap and one pipe edge');
+
+          upstream.tap(() => undefined);
+          expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, '*')
+          );
+          upstreamLogger.info.calls.reset();
+
+          pipeInto(1);
+          expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, DOWNSTREAM_PIPES)
+          );
+        });
+
+        it('counts incognito pipe edges', () => {
+          pipeInto(2, {incognito: true});
+          expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, DOWNSTREAM_PIPES)
+          );
+        });
+
+        it('does not count a repeated pipe to the same bus', () => {
+          const [downstream] = pipeInto(1);
+          upstream.pipe(downstream);
+          expectNoLogs(upstreamLogger, 'upstream');
+        });
+
+        it('logs when unpiping drops the count below a threshold', () => {
+          const [downstream] = pipeInto(3);
+          upstreamLogger.info.calls.reset();
+
+          upstream.unpipe(downstream);
+          expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.memoryPressureReducedBelowWarnThreshold('Upstream Bus', thresholds, 2, DOWNSTREAM_PIPES)
+          );
+        });
+
+        it('still does not count listeners on the downstream bus', () => {
+          const [downstream] = pipeInto(1);
+          addListeners(downstream, 10);
+          expectNoLogs(upstreamLogger, 'upstream');
+        });
+      });
+
+      describe('and the upstream bus sets `leakDetection.downstreamPipes={thresholds}`', () => {
+        let upstream: Strongbus.Bus<TestEventMap>;
+
+        function pipeInto(n: number): void {
+          for(let i = 0; i < n; i++) {
+            upstream.pipe(new Strongbus.Bus<TestEventMap>());
+          }
+        }
+
+        it('counts pipe edges against the pipe edge thresholds', () => {
+          upstream = new Strongbus.Bus<TestEventMap>({
+            name: 'Upstream',
+            logger: upstreamLogger,
+            leakDetection: {thresholds: {info: 2}, downstreamPipes: {thresholds: {info: 10}}}
+          });
+          upstream.tap(() => undefined);
+          pipeInto(9);
+          expectNoLogs(upstreamLogger, 'below pipe edge info threshold');
+
+          pipeInto(1);
+          expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 10, DOWNSTREAM_PIPES)
+          );
+        });
+
+        it('falls back to the listener thresholds for unset keys', () => {
+          upstream = new Strongbus.Bus<TestEventMap>({
+            name: 'Upstream',
+            logger: upstreamLogger,
+            leakDetection: {thresholds: {warn: 3}, downstreamPipes: {thresholds: {info: 2}}}
+          });
+          pipeInto(4);
+          expect(upstreamLogger.warn).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.warnThresholdExceeded('Upstream Bus', 3, 4, DOWNSTREAM_PIPES)
+          );
+        });
+      });
+    });
+
+    describe('given `options.leakDetection=false`', () => {
+      it('does not log as listeners are added past the default thresholds or removed', () => {
+        const logger: jasmine.SpyObj<Logger> = jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+        bus = new Strongbus.Bus<TestEventMap>({logger, leakDetection: false});
+
+        const subs: Strongbus.Subscription[] = [];
+        for(let i = 0; i < 501; i++) {
+          subs.push(bus.on('bar', () => true));
+        }
+        over(subs)();
+
+        expect(logger.info).not.toHaveBeenCalled();
+        expect(logger.warn).not.toHaveBeenCalled();
+        expect(logger.error).not.toHaveBeenCalled();
+      });
+    });
 
   });
 

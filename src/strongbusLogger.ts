@@ -1,4 +1,5 @@
 import type {ListenerThresholds} from './types/options';
+import type {MaterializedLeakDetection} from './types/materializedBusOptions';
 import {
   StrongbusLogCode,
   type Logger,
@@ -24,6 +25,14 @@ export type ErrorHandlerFailureDetails = {
 /** @internal */
 export type LogLevel = 'never' | 'debug' | 'info' | 'warn' | 'error';
 
+/**
+ * What leak messages name in place of an event for pipe edge counts.
+ * @internal
+ */
+export const DOWNSTREAM_PIPES = 'downstream pipes';
+
+type LeakSubject<TEventMap extends EventMap> = EventKeys<TEventMap>|WILDCARD|typeof DOWNSTREAM_PIPES;
+
 
 /**
  * Domain-oriented adapter over {@link Logger} / {@link LoggerProvider}.
@@ -32,34 +41,71 @@ export type LogLevel = 'never' | 'debug' | 'info' | 'warn' | 'error';
 export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
   private readonly name: string;
   private readonly provider: LoggerProvider|undefined;
-  private readonly thresholds: Required<ListenerThresholds>;
-  private readonly verbose: boolean;
+  private readonly leakDetection: MaterializedLeakDetection;
 
   constructor(params: {
     name: string;
     provider?: LoggerProvider;
-    thresholds: Required<ListenerThresholds>;
-    verbose: boolean;
+    leakDetection: MaterializedLeakDetection;
   }) {
     Object.assign(this, params);
   }
 
   public onAddListener(event: EventKeys<TEventMap>|WILDCARD, n: number) {
-    if(this.verbose) {
-      this.onAddListenerVerbose(event, n);
-    } else {
-      this.onAddListenerNonVerbose(event, n);
+    if(this.leakDetection.enabled) {
+      this.checkAdded(event, n, this.leakDetection.thresholds);
     }
   }
 
   public onListenerRemoved(event: EventKeys<TEventMap>|WILDCARD, count: number): void {
-    const {name, thresholds} = this;
+    if(this.leakDetection.enabled) {
+      this.checkRemoved(event, count, this.leakDetection.thresholds);
+    }
+  }
+
+  /** @param edges - downstream edges after the one added */
+  public onDownstreamPipeAdded(edges: number): void {
+    const thresholds = this.downstreamPipeThresholds();
+    if(thresholds) {
+      this.checkAdded(DOWNSTREAM_PIPES, edges, thresholds);
+    }
+  }
+
+  /** @param edges - downstream edges after the one removed */
+  public onDownstreamPipeRemoved(edges: number): void {
+    const thresholds = this.downstreamPipeThresholds();
+    if(thresholds) {
+      this.checkRemoved(DOWNSTREAM_PIPES, edges, thresholds);
+    }
+  }
+
+  /** The thresholds pipe edges are checked against, or `undefined` when they are not counted */
+  private downstreamPipeThresholds(): Required<ListenerThresholds>|undefined {
+    const {enabled, downstreamPipes, thresholds} = this.leakDetection;
+    if(!enabled || downstreamPipes === false) {
+      return undefined;
+    } else if(downstreamPipes === true) {
+      return thresholds;
+    }
+    return {...thresholds, ...downstreamPipes.thresholds};
+  }
+
+  private checkAdded(subject: LeakSubject<TEventMap>, n: number, thresholds: Required<ListenerThresholds>): void {
+    if(this.leakDetection.cadence === 'every') {
+      this.onAddListenerVerbose(subject, n, thresholds);
+    } else {
+      this.onAddListenerNonVerbose(subject, n, thresholds);
+    }
+  }
+
+  private checkRemoved(subject: LeakSubject<TEventMap>, count: number, thresholds: Required<ListenerThresholds>): void {
+    const {name} = this;
     if(count === thresholds.error - 1) {
-      this.info(buildMemoryPressureReducedBelowErrorThreshold(name, thresholds, count, event));
+      this.info(buildMemoryPressureReducedBelowErrorThreshold(name, thresholds, count, subject));
     } else if(count === thresholds.warn - 1) {
-      this.info(buildMemoryPressureReducedBelowWarnThreshold(name, thresholds, count, event));
+      this.info(buildMemoryPressureReducedBelowWarnThreshold(name, thresholds, count, subject));
     } else if(count === thresholds.info - 1) {
-      this.info(buildMemoryPressureReducedBelowInfoThreshold(name, count, event));
+      this.info(buildMemoryPressureReducedBelowInfoThreshold(name, count, subject));
     }
   }
 
@@ -114,8 +160,7 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
     this.debug(buildUseDuringDestroy(this.name, method));
   }
 
-  private onAddListenerNonVerbose(event: EventKeys<TEventMap>|WILDCARD, n: number) {
-    const {thresholds} = this;
+  private onAddListenerNonVerbose(event: LeakSubject<TEventMap>, n: number, thresholds: Required<ListenerThresholds>) {
     if(n === thresholds.info) {
       this.info(buildInfoThresholdReached(this.name, thresholds.info, event));
     } else if(n === thresholds.warn) {
@@ -148,8 +193,8 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
     }
   }
 
-  private onAddListenerVerbose(event: EventKeys<TEventMap>|WILDCARD, count: number) {
-    const {name, thresholds} = this;
+  private onAddListenerVerbose(event: LeakSubject<TEventMap>, count: number, thresholds: Required<ListenerThresholds>) {
+    const {name} = this;
     if(count > thresholds.error) {
       this.error({
         code: StrongbusLogCode.ErrorThresholdExceeded,

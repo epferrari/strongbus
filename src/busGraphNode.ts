@@ -124,6 +124,7 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
         this.warnUnsoundPath(upstream, downstream);
       }
     }
+    this.logger.onDownstreamPipeAdded(this.graph.downstreams.size);
     return node;
   }
 
@@ -143,6 +144,7 @@ export abstract class BusGraphNode<TEventMap extends EventMap = EventMap> {
     downstream.onDisconnectedAsDownstreamNode(this);
     this.resolveWarnedPathsTo(downstream);
     this.invalidateListenerCachesUpstream();
+    this.logger.onDownstreamPipeRemoved(this.graph.downstreams.size);
   }
 
   /**
