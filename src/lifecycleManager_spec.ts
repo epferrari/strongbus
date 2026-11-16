@@ -21,7 +21,7 @@ describe('LifecycleManager', () => {
         enabled: true,
         thresholds: {info: 100, warn: 500, error: Infinity},
         cadence: 'boundary',
-        pipeEdges: false
+        downstreamPipes: false
       }
     });
     lifecycleOptions = {coalesceDownstreamLifecycleEvents: false, suppressDefaultUnhandledErrorLogging: true};

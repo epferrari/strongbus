@@ -21,7 +21,7 @@ export interface ListenerThresholds {
  * @prop thresholds {@link ListenerThresholds} - per-event listener counts at which to log, merged key-by-key onto defaults
  * @prop cadence [`'boundary'`] - `'boundary'` logs at threshold crossings and their multiples;
  * `'every'` logs on every listener added above a threshold
- * @prop pipeEdges [`false`] - whether edges to buses this bus pipes into count toward its leak detection.
+ * @prop downstreamPipes [`false`] - whether edges to buses this bus pipes into count toward its leak detection.
  * Edges get their own count, separate from every event's listeners (including `tap` handlers on `'*'`).
  * `true` checks that count against `thresholds`; `{thresholds}` checks it against these thresholds instead
  * (unset keys fall back to `thresholds`). Incognito edges count too. Listeners on the downstream bus never count here.
@@ -29,7 +29,7 @@ export interface ListenerThresholds {
 export interface LeakDetectionOptions {
   thresholds?: Partial<ListenerThresholds>;
   cadence?: 'boundary'|'every';
-  pipeEdges?: boolean|{thresholds: Partial<ListenerThresholds>};
+  downstreamPipes?: boolean|{thresholds: Partial<ListenerThresholds>};
 }
 
 /**

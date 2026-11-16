@@ -162,7 +162,7 @@ Pipe into another `Bus`, counting the downstream's listeners as handlers on this
 `{incognito: true}` — see [Incognito subscriptions](#incognito-subscriptions)). Returns the downstream bus
 (so pipes chain and subclasses are preserved). The downstream must be a real `Bus` instance. Downstream
 listeners do not count toward this bus's [memory-leak thresholds](#memory-leak-detection); the edge itself can,
-with [`leakDetection.pipeEdges`](#pipe-edges).
+with [`leakDetection.downstreamPipes`](#downstream-pipes).
 
 Shared events must be payload-compatible: identical types, or a one-way widen within the same primitive
 family (`'a'|'b' → string`, `true → boolean`, `1|2 → number`). Object payloads still require an exact match.
@@ -744,7 +744,7 @@ new Bus<Events>({
   leakDetection: {
     thresholds: {info: 100, warn: 500, error: Infinity}, // the defaults; set any subset
     cadence: 'boundary',                                 // default; or 'every'
-    pipeEdges: false                                     // default; or true, or {thresholds}
+    downstreamPipes: false                               // default; or true, or {thresholds}
   }
 });
 
@@ -754,7 +754,7 @@ new Bus<Events>({leakDetection: false}); // never log leak warnings for this bus
 - `thresholds` — per-event listener counts at which to log.
 - `cadence` — `'boundary'` throttles messages to threshold crossings and their multiples; `'every'` logs on every
   listener added above a threshold.
-- `pipeEdges` — whether edges to buses this bus pipes into count, described below.
+- `downstreamPipes` — whether edges to buses this bus pipes into count, described below.
 
 `false` turns detection off but keeps the bus's settings, so a later `Bus.configure({leakDetection: {...}})` turns it
 back on with them. The top-level `thresholds` and `verbose` options are deprecated aliases for
@@ -775,11 +775,11 @@ upstream.getListenerCountFor('message'); // 1000
 // no leak logs from either bus: `downstream` has detection off, and `upstream` has no own listeners
 ```
 
-### Pipe edges
+### Downstream pipes
 
 A `pipe(bus)` edge retains the downstream bus, and every listener on it, until it is unpiped. By default edges are not
 counted, so a bus that keeps piping into short-lived buses without unpiping them leaks without a log. Set
-`pipeEdges` to count them. Edges get their own count, logged as `"downstream pipes"` and kept separate from every
+`downstreamPipes` to count them. Edges get their own count, logged as `"downstream pipes"` and kept separate from every
 event's listeners, `tap` handlers included. The two settings differ only in the thresholds that count is checked
 against:
 
@@ -791,7 +791,7 @@ Incognito edges count, as incognito taps do. Piping the same bus again is not co
 the count drops back below a threshold.
 
 ```typescript
-const hub = new Bus<Events>({leakDetection: {pipeEdges: {thresholds: {info: 1000, warn: 5000}}}});
+const hub = new Bus<Events>({leakDetection: {downstreamPipes: {thresholds: {info: 1000, warn: 5000}}}});
 ```
 
 ## License

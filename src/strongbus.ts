@@ -88,7 +88,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
         error: Infinity
       },
       cadence: 'boundary',
-      pipeEdges: false
+      downstreamPipes: false
     },
     coalesceDownstreamLifecycleEvents: true,
     duplicateSubscriptionStrategy: resolveDuplicateSubscriptionStrategy(),

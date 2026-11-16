@@ -1,4 +1,4 @@
-import {PIPE_EDGES, StrongbusLogger, StrongbusLogMessages} from './strongbusLogger';
+import {DOWNSTREAM_PIPES, StrongbusLogger, StrongbusLogMessages} from './strongbusLogger';
 import type {Logger} from './types/logger';
 import type {MaterializedLeakDetection} from './types/materializedBusOptions';
 
@@ -10,7 +10,7 @@ interface TestEventMap {
 describe('StrongbusLogger', () => {
   const name = 'TestBus';
   const thresholds = {info: 10, warn: 25, error: 60};
-  const leakDetection: MaterializedLeakDetection = {enabled: true, thresholds, cadence: 'boundary', pipeEdges: false};
+  const leakDetection: MaterializedLeakDetection = {enabled: true, thresholds, cadence: 'boundary', downstreamPipes: false};
   let logger: jasmine.SpyObj<Logger>;
 
   function createLogger(overrides?: Partial<MaterializedLeakDetection>): StrongbusLogger<TestEventMap> {
@@ -290,59 +290,59 @@ describe('StrongbusLogger', () => {
     });
   });
 
-  describe('#onPipeEdgeAdded / #onPipeEdgeRemoved', () => {
-    describe('given pipeEdges=false', () => {
+  describe('#onDownstreamPipeAdded / #onDownstreamPipeRemoved', () => {
+    describe('given downstreamPipes=false', () => {
       it('does not log', () => {
         const subject = createLogger();
-        subject.onPipeEdgeAdded(thresholds.info);
-        subject.onPipeEdgeRemoved(thresholds.info - 1);
+        subject.onDownstreamPipeAdded(thresholds.info);
+        subject.onDownstreamPipeRemoved(thresholds.info - 1);
         expect(logger.info).not.toHaveBeenCalled();
       });
     });
 
-    describe('given pipeEdges=true', () => {
+    describe('given downstreamPipes=true', () => {
       it('checks edges against the listener thresholds', () => {
-        createLogger({pipeEdges: true}).onPipeEdgeAdded(thresholds.info);
+        createLogger({downstreamPipes: true}).onDownstreamPipeAdded(thresholds.info);
         expect(logger.info).toHaveBeenCalledWith(
-          StrongbusLogMessages.infoThresholdReached(name, thresholds.info, PIPE_EDGES)
+          StrongbusLogMessages.infoThresholdReached(name, thresholds.info, DOWNSTREAM_PIPES)
         );
       });
 
       it('logs when edges drop below a listener threshold', () => {
-        createLogger({pipeEdges: true}).onPipeEdgeRemoved(thresholds.info - 1);
+        createLogger({downstreamPipes: true}).onDownstreamPipeRemoved(thresholds.info - 1);
         expect(logger.info).toHaveBeenCalledWith(
-          StrongbusLogMessages.memoryPressureReducedBelowInfoThreshold(name, thresholds.info - 1, PIPE_EDGES)
+          StrongbusLogMessages.memoryPressureReducedBelowInfoThreshold(name, thresholds.info - 1, DOWNSTREAM_PIPES)
         );
       });
 
       it('does not log when leak detection is disabled', () => {
-        const subject = createLogger({pipeEdges: true, enabled: false});
-        subject.onPipeEdgeAdded(thresholds.info);
-        subject.onPipeEdgeRemoved(thresholds.info - 1);
+        const subject = createLogger({downstreamPipes: true, enabled: false});
+        subject.onDownstreamPipeAdded(thresholds.info);
+        subject.onDownstreamPipeRemoved(thresholds.info - 1);
         expect(logger.info).not.toHaveBeenCalled();
       });
     });
 
-    describe('given pipeEdges={thresholds}', () => {
+    describe('given downstreamPipes={thresholds}', () => {
       it('checks edges against the pipe edge thresholds', () => {
-        createLogger({pipeEdges: {thresholds: {info: 2}}}).onPipeEdgeAdded(2);
+        createLogger({downstreamPipes: {thresholds: {info: 2}}}).onDownstreamPipeAdded(2);
         expect(logger.info).toHaveBeenCalledWith(
-          StrongbusLogMessages.infoThresholdReached(name, 2, PIPE_EDGES)
+          StrongbusLogMessages.infoThresholdReached(name, 2, DOWNSTREAM_PIPES)
         );
       });
 
       it('falls back to the listener thresholds for unset keys', () => {
         const count = thresholds.warn + 1;
-        createLogger({pipeEdges: {thresholds: {info: 2}}}).onPipeEdgeAdded(count);
+        createLogger({downstreamPipes: {thresholds: {info: 2}}}).onDownstreamPipeAdded(count);
         expect(logger.warn).toHaveBeenCalledWith(
-          StrongbusLogMessages.warnThresholdExceeded(name, thresholds.warn, count, PIPE_EDGES)
+          StrongbusLogMessages.warnThresholdExceeded(name, thresholds.warn, count, DOWNSTREAM_PIPES)
         );
       });
 
       it('logs when edges drop below a pipe edge threshold', () => {
-        createLogger({pipeEdges: {thresholds: {info: 2}}}).onPipeEdgeRemoved(1);
+        createLogger({downstreamPipes: {thresholds: {info: 2}}}).onDownstreamPipeRemoved(1);
         expect(logger.info).toHaveBeenCalledWith(
-          StrongbusLogMessages.memoryPressureReducedBelowInfoThreshold(name, 1, PIPE_EDGES)
+          StrongbusLogMessages.memoryPressureReducedBelowInfoThreshold(name, 1, DOWNSTREAM_PIPES)
         );
       });
     });

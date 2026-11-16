@@ -13,7 +13,7 @@ export type MaterializedLeakDetection = {
   thresholds: Required<ListenerThresholds>;
   cadence: Required<LeakDetectionOptions>['cadence'];
   /** Partial thresholds stay partial, so they keep following `thresholds` when it is configured later. */
-  pipeEdges: Required<LeakDetectionOptions>['pipeEdges'];
+  downstreamPipes: Required<LeakDetectionOptions>['downstreamPipes'];
 };
 
 /**
@@ -58,14 +58,14 @@ export function resolveLeakDetection(
     enabled: true,
     thresholds: {...legacy.thresholds, ...leakDetection.thresholds},
     cadence: leakDetection.cadence ?? legacy.cadence,
-    pipeEdges: resolvePipeEdges(legacy.pipeEdges, leakDetection.pipeEdges)
+    downstreamPipes: resolveDownstreamPipes(legacy.downstreamPipes, leakDetection.downstreamPipes)
   };
 }
 
-function resolvePipeEdges(
-  base: MaterializedLeakDetection['pipeEdges'],
-  override: LeakDetectionOptions['pipeEdges']
-): MaterializedLeakDetection['pipeEdges'] {
+function resolveDownstreamPipes(
+  base: MaterializedLeakDetection['downstreamPipes'],
+  override: LeakDetectionOptions['downstreamPipes']
+): MaterializedLeakDetection['downstreamPipes'] {
   if(override === undefined) {
     return base;
   } else if(typeof base === 'object' && typeof override === 'object') {

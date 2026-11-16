@@ -3,7 +3,7 @@ import {CancelablePromise, parallel, sleep, TimeoutExpiredError} from 'jaasync';
 
 import * as Strongbus from './';
 import type {Scanner} from './scanner';
-import {PIPE_EDGES, StrongbusLogMessages} from './strongbusLogger';
+import {DOWNSTREAM_PIPES, StrongbusLogMessages} from './strongbusLogger';
 import type {Logger} from './types/logger';
 import {INTERNAL_PROMISE} from './utils/internalPromiseSymbol';
 import type {EventMap} from './types/events';
@@ -68,7 +68,7 @@ describe('Strongbus.Bus', () => {
           enabled: true,
           thresholds: {info: 100, warn: 500, error: Infinity},
           cadence: 'boundary',
-          pipeEdges: false
+          downstreamPipes: false
         });
       });
 
@@ -200,13 +200,13 @@ describe('Strongbus.Bus', () => {
       expect(leakDetection.cadence).toBe('every');
     });
 
-    it('merges successive pipeEdges thresholds, and replaces them with a boolean', () => {
-      Strongbus.Bus.configure({leakDetection: {pipeEdges: {thresholds: {info: 5}}}});
-      Strongbus.Bus.configure({leakDetection: {pipeEdges: {thresholds: {warn: 9}}}});
-      expect((new Strongbus.Bus() as any).options.leakDetection.pipeEdges).toEqual({thresholds: {info: 5, warn: 9}});
+    it('merges successive downstreamPipes thresholds, and replaces them with a boolean', () => {
+      Strongbus.Bus.configure({leakDetection: {downstreamPipes: {thresholds: {info: 5}}}});
+      Strongbus.Bus.configure({leakDetection: {downstreamPipes: {thresholds: {warn: 9}}}});
+      expect((new Strongbus.Bus() as any).options.leakDetection.downstreamPipes).toEqual({thresholds: {info: 5, warn: 9}});
 
-      Strongbus.Bus.configure({leakDetection: {pipeEdges: true}});
-      expect((new Strongbus.Bus() as any).options.leakDetection.pipeEdges).toBeTrue();
+      Strongbus.Bus.configure({leakDetection: {downstreamPipes: true}});
+      expect((new Strongbus.Bus() as any).options.leakDetection.downstreamPipes).toBeTrue();
     });
 
     it('re-enables leak detection through the deprecated thresholds option', () => {
@@ -667,7 +667,7 @@ describe('Strongbus.Bus', () => {
         expectNoLogs(upstreamLogger, 'upstream');
       });
 
-      describe('and the upstream bus sets `leakDetection.pipeEdges=true`', () => {
+      describe('and the upstream bus sets `leakDetection.downstreamPipes=true`', () => {
         const thresholds = {info: 2, warn: 3, error: 4};
         let upstream: Strongbus.Bus<TestEventMap>;
 
@@ -679,14 +679,14 @@ describe('Strongbus.Bus', () => {
           upstream = new Strongbus.Bus<TestEventMap>({
             name: 'Upstream',
             logger: upstreamLogger,
-            leakDetection: {thresholds, pipeEdges: true}
+            leakDetection: {thresholds, downstreamPipes: true}
           });
         });
 
         it('counts pipe edges against the listener thresholds', () => {
           pipeInto(2);
           expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
-            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, PIPE_EDGES)
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, DOWNSTREAM_PIPES)
           );
         });
 
@@ -703,14 +703,14 @@ describe('Strongbus.Bus', () => {
 
           pipeInto(1);
           expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
-            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, PIPE_EDGES)
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, DOWNSTREAM_PIPES)
           );
         });
 
         it('counts incognito pipe edges', () => {
           pipeInto(2, {incognito: true});
           expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
-            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, PIPE_EDGES)
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, DOWNSTREAM_PIPES)
           );
         });
 
@@ -726,7 +726,7 @@ describe('Strongbus.Bus', () => {
 
           upstream.unpipe(downstream);
           expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
-            StrongbusLogMessages.memoryPressureReducedBelowWarnThreshold('Upstream Bus', thresholds, 2, PIPE_EDGES)
+            StrongbusLogMessages.memoryPressureReducedBelowWarnThreshold('Upstream Bus', thresholds, 2, DOWNSTREAM_PIPES)
           );
         });
 
@@ -737,7 +737,7 @@ describe('Strongbus.Bus', () => {
         });
       });
 
-      describe('and the upstream bus sets `leakDetection.pipeEdges={thresholds}`', () => {
+      describe('and the upstream bus sets `leakDetection.downstreamPipes={thresholds}`', () => {
         let upstream: Strongbus.Bus<TestEventMap>;
 
         function pipeInto(n: number): void {
@@ -750,7 +750,7 @@ describe('Strongbus.Bus', () => {
           upstream = new Strongbus.Bus<TestEventMap>({
             name: 'Upstream',
             logger: upstreamLogger,
-            leakDetection: {thresholds: {info: 2}, pipeEdges: {thresholds: {info: 10}}}
+            leakDetection: {thresholds: {info: 2}, downstreamPipes: {thresholds: {info: 10}}}
           });
           upstream.tap(() => undefined);
           pipeInto(9);
@@ -758,7 +758,7 @@ describe('Strongbus.Bus', () => {
 
           pipeInto(1);
           expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
-            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 10, PIPE_EDGES)
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 10, DOWNSTREAM_PIPES)
           );
         });
 
@@ -766,11 +766,11 @@ describe('Strongbus.Bus', () => {
           upstream = new Strongbus.Bus<TestEventMap>({
             name: 'Upstream',
             logger: upstreamLogger,
-            leakDetection: {thresholds: {warn: 3}, pipeEdges: {thresholds: {info: 2}}}
+            leakDetection: {thresholds: {warn: 3}, downstreamPipes: {thresholds: {info: 2}}}
           });
           pipeInto(4);
           expect(upstreamLogger.warn).toHaveBeenCalledOnceWith(
-            StrongbusLogMessages.warnThresholdExceeded('Upstream Bus', 3, 4, PIPE_EDGES)
+            StrongbusLogMessages.warnThresholdExceeded('Upstream Bus', 3, 4, DOWNSTREAM_PIPES)
           );
         });
       });

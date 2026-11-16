@@ -29,9 +29,9 @@ export type LogLevel = 'never' | 'debug' | 'info' | 'warn' | 'error';
  * What leak messages name in place of an event for pipe edge counts.
  * @internal
  */
-export const PIPE_EDGES = 'downstream pipes';
+export const DOWNSTREAM_PIPES = 'downstream pipes';
 
-type LeakSubject<TEventMap extends EventMap> = EventKeys<TEventMap>|WILDCARD|typeof PIPE_EDGES;
+type LeakSubject<TEventMap extends EventMap> = EventKeys<TEventMap>|WILDCARD|typeof DOWNSTREAM_PIPES;
 
 
 /**
@@ -64,30 +64,30 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
   }
 
   /** @param edges - downstream edges after the one added */
-  public onPipeEdgeAdded(edges: number): void {
-    const thresholds = this.pipeEdgeThresholds();
+  public onDownstreamPipeAdded(edges: number): void {
+    const thresholds = this.downstreamPipeThresholds();
     if(thresholds) {
-      this.checkAdded(PIPE_EDGES, edges, thresholds);
+      this.checkAdded(DOWNSTREAM_PIPES, edges, thresholds);
     }
   }
 
   /** @param edges - downstream edges after the one removed */
-  public onPipeEdgeRemoved(edges: number): void {
-    const thresholds = this.pipeEdgeThresholds();
+  public onDownstreamPipeRemoved(edges: number): void {
+    const thresholds = this.downstreamPipeThresholds();
     if(thresholds) {
-      this.checkRemoved(PIPE_EDGES, edges, thresholds);
+      this.checkRemoved(DOWNSTREAM_PIPES, edges, thresholds);
     }
   }
 
   /** The thresholds pipe edges are checked against, or `undefined` when they are not counted */
-  private pipeEdgeThresholds(): Required<ListenerThresholds>|undefined {
-    const {enabled, pipeEdges, thresholds} = this.leakDetection;
-    if(!enabled || pipeEdges === false) {
+  private downstreamPipeThresholds(): Required<ListenerThresholds>|undefined {
+    const {enabled, downstreamPipes, thresholds} = this.leakDetection;
+    if(!enabled || downstreamPipes === false) {
       return undefined;
-    } else if(pipeEdges === true) {
+    } else if(downstreamPipes === true) {
       return thresholds;
     }
-    return {...thresholds, ...pipeEdges.thresholds};
+    return {...thresholds, ...downstreamPipes.thresholds};
   }
 
   private checkAdded(subject: LeakSubject<TEventMap>, n: number, thresholds: Required<ListenerThresholds>): void {
