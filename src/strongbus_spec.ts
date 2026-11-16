@@ -449,6 +449,120 @@ describe('Strongbus.Bus', () => {
       });
     }
 
+    describe('given an upstream bus piped into a downstream bus', () => {
+      let upstreamLogger: jasmine.SpyObj<Logger>;
+      let downstreamLogger: jasmine.SpyObj<Logger>;
+
+      function createLogger(): jasmine.SpyObj<Logger> {
+        return jasmine.createSpyObj('logger', ['info', 'warn', 'error', 'debug']);
+      }
+
+      function expectNoLogs(logger: jasmine.SpyObj<Logger>, context: string): void {
+        expect(logger.info).withContext(context).not.toHaveBeenCalled();
+        expect(logger.warn).withContext(context).not.toHaveBeenCalled();
+        expect(logger.error).withContext(context).not.toHaveBeenCalled();
+      }
+
+      function addListeners(target: Strongbus.Bus<TestEventMap>, n: number): Strongbus.Subscription[] {
+        const subs = new Array(n);
+        for(let i = 0; i < n; i++) {
+          subs[i] = target.on('bar', () => true);
+        }
+        return subs;
+      }
+
+      beforeEach(() => {
+        upstreamLogger = createLogger();
+        downstreamLogger = createLogger();
+      });
+
+      describe('and the downstream bus disables thresholds', () => {
+        let upstream: Strongbus.Bus<TestEventMap>;
+        let downstream: Strongbus.Bus<TestEventMap>;
+
+        beforeEach(() => {
+          upstream = new Strongbus.Bus<TestEventMap>({
+            name: 'Upstream',
+            logger: upstreamLogger,
+            thresholds: {info: 2, warn: 3, error: 4}
+          });
+          downstream = new Strongbus.Bus<TestEventMap>({
+            name: 'Downstream',
+            logger: downstreamLogger,
+            thresholds: {info: Infinity, warn: Infinity, error: Infinity}
+          });
+          upstream.pipe(downstream);
+        });
+
+        it('does not log on the upstream bus when downstream listeners exceed its thresholds', () => {
+          addListeners(downstream, 10);
+
+          expect(upstream.getListenerCountFor('bar')).toBe(10);
+          expectNoLogs(upstreamLogger, 'upstream');
+          expectNoLogs(downstreamLogger, 'downstream');
+        });
+
+        it('does not log on the upstream bus when downstream listeners are removed', () => {
+          const subs = addListeners(downstream, 10);
+          over(subs)();
+
+          expect(upstream.getListenerCountFor('bar')).toBe(0);
+          expectNoLogs(upstreamLogger, 'upstream');
+        });
+
+        it('compares only own listeners against the upstream bus\'s thresholds', () => {
+          addListeners(downstream, 10);
+          addListeners(upstream, 2);
+
+          expect(upstream.getListenerCountFor('bar')).toBe(12);
+          expect(upstreamLogger.info).toHaveBeenCalledOnceWith(
+            StrongbusLogMessages.infoThresholdReached('Upstream Bus', 2, 'bar')
+          );
+          expect(upstreamLogger.warn).not.toHaveBeenCalled();
+          expect(upstreamLogger.error).not.toHaveBeenCalled();
+        });
+      });
+
+      it('does not count pipe edges as upstream listeners', () => {
+        const upstream = new Strongbus.Bus<TestEventMap>({
+          name: 'Upstream',
+          logger: upstreamLogger,
+          thresholds: {info: 2, warn: 3, error: 4}
+        });
+        for(let i = 0; i < 5; i++) {
+          const downstream = new Strongbus.Bus<TestEventMap>({
+            thresholds: {info: Infinity, warn: Infinity, error: Infinity}
+          });
+          upstream.pipe(downstream);
+          downstream.on('bar', () => true);
+        }
+
+        expect(upstream.getListenerCountFor('bar')).toBe(5);
+        expectNoLogs(upstreamLogger, 'upstream');
+      });
+
+      it('applies the downstream bus\'s thresholds to its own listeners', () => {
+        const upstream = new Strongbus.Bus<TestEventMap>({
+          name: 'Upstream',
+          logger: upstreamLogger,
+          thresholds: {info: Infinity, warn: Infinity, error: Infinity}
+        });
+        const downstream = new Strongbus.Bus<TestEventMap>({
+          name: 'Downstream',
+          logger: downstreamLogger,
+          thresholds: {info: 2, warn: Infinity, error: Infinity}
+        });
+        upstream.pipe(downstream);
+
+        addListeners(downstream, 2);
+
+        expect(downstreamLogger.info).toHaveBeenCalledOnceWith(
+          StrongbusLogMessages.infoThresholdReached('Downstream Bus', 2, 'bar')
+        );
+        expectNoLogs(upstreamLogger, 'upstream');
+      });
+    });
+
   });
 
   describe('#emit', () => {
