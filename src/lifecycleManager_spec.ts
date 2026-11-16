@@ -17,8 +17,11 @@ describe('LifecycleManager', () => {
     logger = new StrongbusLogger<TestEventMap>({
       name: 'test',
       provider: console,
-      thresholds: {info: 100, warn: 500, error: Infinity},
-      verbose: false
+      leakDetection: {
+        enabled: true,
+        thresholds: {info: 100, warn: 500, error: Infinity},
+        cadence: 'boundary'
+      }
     });
     lifecycleOptions = {coalesceDownstreamLifecycleEvents: false, suppressDefaultUnhandledErrorLogging: true};
     host = jasmine.createSpyObj('host', [

@@ -1,4 +1,5 @@
 import type {ListenerThresholds} from './types/options';
+import type {MaterializedLeakDetection} from './types/materializedBusOptions';
 import {
   StrongbusLogCode,
   type Logger,
@@ -32,20 +33,24 @@ export type LogLevel = 'never' | 'debug' | 'info' | 'warn' | 'error';
 export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
   private readonly name: string;
   private readonly provider: LoggerProvider|undefined;
-  private readonly thresholds: Required<ListenerThresholds>;
-  private readonly verbose: boolean;
+  private readonly leakDetection: MaterializedLeakDetection;
 
   constructor(params: {
     name: string;
     provider?: LoggerProvider;
-    thresholds: Required<ListenerThresholds>;
-    verbose: boolean;
+    leakDetection: MaterializedLeakDetection;
   }) {
     Object.assign(this, params);
   }
 
+  private get thresholds(): Required<ListenerThresholds> {
+    return this.leakDetection.thresholds;
+  }
+
   public onAddListener(event: EventKeys<TEventMap>|WILDCARD, n: number) {
-    if(this.verbose) {
+    if(!this.leakDetection.enabled) {
+      return;
+    } else if(this.leakDetection.cadence === 'every') {
       this.onAddListenerVerbose(event, n);
     } else {
       this.onAddListenerNonVerbose(event, n);
@@ -54,7 +59,9 @@ export class StrongbusLogger<TEventMap extends EventMap = EventMap> {
 
   public onListenerRemoved(event: EventKeys<TEventMap>|WILDCARD, count: number): void {
     const {name, thresholds} = this;
-    if(count === thresholds.error - 1) {
+    if(!this.leakDetection.enabled) {
+      return;
+    } else if(count === thresholds.error - 1) {
       this.info(buildMemoryPressureReducedBelowErrorThreshold(name, thresholds, count, event));
     } else if(count === thresholds.warn - 1) {
       this.info(buildMemoryPressureReducedBelowWarnThreshold(name, thresholds, count, event));

@@ -1,5 +1,6 @@
 import {StrongbusLogger, StrongbusLogMessages} from './strongbusLogger';
 import type {Logger} from './types/logger';
+import type {MaterializedLeakDetection} from './types/materializedBusOptions';
 
 interface TestEventMap {
   foo: number;
@@ -9,15 +10,14 @@ interface TestEventMap {
 describe('StrongbusLogger', () => {
   const name = 'TestBus';
   const thresholds = {info: 10, warn: 25, error: 60};
+  const leakDetection: MaterializedLeakDetection = {enabled: true, thresholds, cadence: 'boundary'};
   let logger: jasmine.SpyObj<Logger>;
 
-  function createLogger(overrides?: {verbose?: boolean}): StrongbusLogger<TestEventMap> {
+  function createLogger(overrides?: Partial<MaterializedLeakDetection>): StrongbusLogger<TestEventMap> {
     return new StrongbusLogger<TestEventMap>({
       name,
       provider: logger,
-      thresholds,
-      verbose: false,
-      ...overrides
+      leakDetection: {...leakDetection, ...overrides}
     });
   }
 
@@ -42,8 +42,7 @@ describe('StrongbusLogger', () => {
           resolveCount++;
           return logger;
         },
-        thresholds,
-        verbose: false
+        leakDetection
       });
 
       expect(resolveCount).toBe(0);
@@ -75,8 +74,7 @@ describe('StrongbusLogger', () => {
       it('logs record.message alone when context is undefined', () => {
         const subject = new StrongbusLogger<TestEventMap>({
           name,
-          thresholds,
-          verbose: false
+          leakDetection
         });
         const entry = StrongbusLogMessages.duplicateSubscription(name, 'on', 'foo');
 
@@ -92,8 +90,7 @@ describe('StrongbusLogger', () => {
       it('logs record.message and record.context when context is present', () => {
         const subject = new StrongbusLogger<TestEventMap>({
           name,
-          thresholds,
-          verbose: false
+          leakDetection
         });
         const details = {
           errorHandlerError: new Error('boom'),
@@ -155,7 +152,7 @@ describe('StrongbusLogger', () => {
   });
 
   describe('#onAddListener', () => {
-    describe('given verbose=false', () => {
+    describe('given cadence=\'boundary\'', () => {
       it('logs info when the info threshold is first reached', () => {
         createLogger().onAddListener('foo', thresholds.info);
         expect(logger.info).toHaveBeenCalledWith(
@@ -209,9 +206,9 @@ describe('StrongbusLogger', () => {
       });
     });
 
-    describe('given verbose=true', () => {
+    describe('given cadence=\'every\'', () => {
       it('logs info every time the count is above the info threshold', () => {
-        createLogger({verbose: true}).onAddListener('foo', thresholds.info + 1);
+        createLogger({cadence: 'every'}).onAddListener('foo', thresholds.info + 1);
         expect(logger.info).toHaveBeenCalledWith(
           jasmine.objectContaining({message: jasmine.stringMatching(/listeners for "foo"/)})
         );
@@ -220,7 +217,7 @@ describe('StrongbusLogger', () => {
       });
 
       it('logs warn every time the count is above the warn threshold', () => {
-        createLogger({verbose: true}).onAddListener('foo', thresholds.warn + 1);
+        createLogger({cadence: 'every'}).onAddListener('foo', thresholds.warn + 1);
         expect(logger.warn).toHaveBeenCalledWith(
           jasmine.objectContaining({message: jasmine.stringMatching(/Potential Memory Leak/)})
         );
@@ -228,14 +225,26 @@ describe('StrongbusLogger', () => {
       });
 
       it('logs error every time the count is above the error threshold', () => {
-        createLogger({verbose: true}).onAddListener('foo', thresholds.error + 1);
+        createLogger({cadence: 'every'}).onAddListener('foo', thresholds.error + 1);
         expect(logger.error).toHaveBeenCalledWith(
           jasmine.objectContaining({message: jasmine.stringMatching(/Potential Memory Leak/)})
         );
       });
 
       it('does not log when the count is at or below the info threshold', () => {
-        createLogger({verbose: true}).onAddListener('foo', thresholds.info);
+        createLogger({cadence: 'every'}).onAddListener('foo', thresholds.info);
+        expect(logger.info).not.toHaveBeenCalled();
+        expect(logger.warn).not.toHaveBeenCalled();
+        expect(logger.error).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('given leak detection is disabled', () => {
+      it('does not log at or above any threshold', () => {
+        const subject = createLogger({enabled: false});
+        subject.onAddListener('foo', thresholds.info);
+        subject.onAddListener('foo', thresholds.error + 1);
+        createLogger({enabled: false, cadence: 'every'}).onAddListener('foo', thresholds.error + 1);
         expect(logger.info).not.toHaveBeenCalled();
         expect(logger.warn).not.toHaveBeenCalled();
         expect(logger.error).not.toHaveBeenCalled();
@@ -273,6 +282,11 @@ describe('StrongbusLogger', () => {
       expect(logger.info).not.toHaveBeenCalled();
       expect(logger.warn).not.toHaveBeenCalled();
       expect(logger.error).not.toHaveBeenCalled();
+    });
+
+    it('does not log when leak detection is disabled', () => {
+      createLogger({enabled: false}).onListenerRemoved('foo', thresholds.info - 1);
+      expect(logger.info).not.toHaveBeenCalled();
     });
   });
 });

@@ -26,7 +26,8 @@ import {
   type MaterializedBusOptions,
   DEFAULT_NAME,
   uniqueName,
-  resolveDuplicateSubscriptionStrategy
+  resolveDuplicateSubscriptionStrategy,
+  resolveLeakDetection
 } from './types/materializedBusOptions';
 import {ListenerScope, type IntrospectionOptions} from './types/listenerScope';
 import type {
@@ -79,12 +80,15 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
 
   private static defaultOptions: MaterializedBusOptions = {
     name: DEFAULT_NAME,
-    thresholds: {
-      info: 100,
-      warn: 500,
-      error: Infinity
+    leakDetection: {
+      enabled: true,
+      thresholds: {
+        info: 100,
+        warn: 500,
+        error: Infinity
+      },
+      cadence: 'boundary'
     },
-    verbose: false,
     coalesceDownstreamLifecycleEvents: true,
     duplicateSubscriptionStrategy: resolveDuplicateSubscriptionStrategy(),
     onUnhandledEvent: 'ignore',
@@ -94,7 +98,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
 
   /**
    * Merge `options` onto {@link Bus} static defaults for all subsequently constructed
-   * instances. Nested `thresholds` are merged recursively. `name` cannot be set here;
+   * instances. Nested `leakDetection` settings are merged recursively. `name` cannot be set here;
    * pass it to the constructor for per-instance naming.
    */
   public static configure(options: ConfigurableBusOptions): void {
@@ -110,14 +114,14 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
   }
 
   /**
-   * @deprecated Use {@link Bus.configure} instead.
+   * @deprecated Use {@link Bus.configure} with `leakDetection.thresholds` instead.
    */
   public static set defaultThresholds(thresholds: Partial<ListenerThresholds>) {
     Bus.configure({thresholds});
   }
 
   /**
-   * @deprecated Use {@link Bus.configure} instead.
+   * @deprecated Use {@link Bus.configure} with `leakDetection.cadence` instead.
    */
   public static set verbose(verbose: boolean) {
     Bus.configure({verbose});
@@ -134,16 +138,14 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     base: MaterializedBusOptions,
     overrides: Partial<Options> = {}
   ): MaterializedBusOptions {
+    const {leakDetection, thresholds, verbose, duplicateSubscriptionStrategy, ...rest} = overrides;
     return {
       ...base,
-      ...overrides,
-      thresholds: {
-        ...base.thresholds,
-        ...overrides.thresholds
-      },
+      ...rest,
+      leakDetection: resolveLeakDetection(base.leakDetection, {leakDetection, thresholds, verbose}),
       duplicateSubscriptionStrategy: resolveDuplicateSubscriptionStrategy({
         ...base.duplicateSubscriptionStrategy,
-        ...overrides.duplicateSubscriptionStrategy
+        ...duplicateSubscriptionStrategy
       })
     };
   }
@@ -257,8 +259,7 @@ export class Bus<TEventMap extends EventMap = EventMap> extends BusGraphNode<TEv
     this.logger = new StrongbusLogger<TEventMap>({
       name: this.name,
       provider: this.options.logger,
-      thresholds: this.options.thresholds,
-      verbose: this.options.verbose
+      leakDetection: this.options.leakDetection
     });
     this.lifecycle = new LifecycleManager<TEventMap>({
       host: this.host,
