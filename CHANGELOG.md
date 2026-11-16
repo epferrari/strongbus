@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   logged as `"downstream pipes"`, with unset keys falling back to `leakDetection.thresholds`. Incognito edges
   count. Listeners on a downstream bus still never count toward the upstream's thresholds.
 
+  **Upcoming breaking change:** the next major version will default `pipeEdges` to `true`, so pipe edges
+  count alongside `tap` handlers against the default thresholds (`info: 100`, `warn: 500`). Buses that
+  legitimately pipe into many buses should set `pipeEdges: {thresholds}` to fit their fan-out, or
+  `pipeEdges: false` to keep today's behavior.
+
 ### Deprecated
 
 - **`options.thresholds` and `options.verbose`** — Use `leakDetection.thresholds` and `leakDetection.cadence`
